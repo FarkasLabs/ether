@@ -26,6 +26,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"path"
 	"path/filepath"
 	"regexp"
 	"sort"
@@ -567,18 +568,115 @@ func (s *Service) download(ctx context.Context, c Candidate) ([]byte, error) {
 		return nil, err
 	}
 	defer resp.Body.Close()
-	raw, err := io.ReadAll(io.LimitReader(resp.Body, 16<<20))
+	raw, err := io.ReadAll(io.LimitReader(resp.Body, maxSubtitleBytes+1))
 	if err != nil {
 		return nil, err
 	}
 	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("subtitle file fetch: %s", resp.Status)
 	}
-	return unzipSubtitle(raw)
+	if len(raw) > maxSubtitleBytes {
+		return nil, fmt.Errorf("subtitle download too large")
+	}
+	return unzipSubtitleCandidate(raw, c)
 }
 
-// unzipSubtitle extracts the first .srt/.vtt entry when the download is a zip.
-func unzipSubtitle(raw []byte) ([]byte, error) {
+// maxSubtitleBytes bounds one subtitle entry/file; anything larger is an
+// explicit error, never a silently truncated subtitle.
+const maxSubtitleBytes = 16 << 20
+
+// zipJunk reports macOS archive noise that must never be picked as the
+// subtitle: __MACOSX/ resource forks, ._* AppleDouble files, .DS_Store
+// and directory entries.
+func zipJunk(f *zip.File) bool {
+	if f.FileInfo().IsDir() || strings.HasSuffix(f.Name, "/") {
+		return true
+	}
+	for _, seg := range strings.Split(f.Name, "/") {
+		if seg == "__MACOSX" {
+			return true
+		}
+	}
+	base := path.Base(f.Name)
+	return base == ".DS_Store" || strings.HasPrefix(base, "._")
+}
+
+// Aggregate budget for trying zip entries: a zip bomb must not cost
+// dozens of seconds of decompression/parsing, so trying stops after
+// maxZipTriedEntries entries or maxZipExpandedBytes expanded in total,
+// whichever comes first.
+const (
+	maxZipExpandedBytes = 32 << 20
+	maxZipTriedEntries  = 16
+)
+
+// zipEntryHints recognises only suffix labels, avoiding language codes in titles.
+// Unlabelled entries inherit the provider's candidate metadata. Explicit labels
+// conflicting with it are never returned under that metadata.
+func zipEntryHints(name string, c Candidate) (languageRank, styleRank int, compatible bool) {
+	base := strings.TrimSuffix(strings.ToLower(path.Base(name)), strings.ToLower(path.Ext(name)))
+	parts := strings.FieldsFunc(base, func(r rune) bool {
+		return r == '.' || r == '_' || r == '-' || r == ' ' || r == '[' || r == ']' || r == '(' || r == ')'
+	})
+	forced, sdh, normal := false, false, false
+	// Recognise a bounded vocabulary at the end, in either language/style order.
+	// "it" is intentionally omitted: it is a common title word.
+	codes := map[string]string{"en": "en", "eng": "en", "fr": "fr", "fra": "fr", "fre": "fr", "es": "es", "spa": "es", "de": "de", "deu": "de", "ger": "de", "pt": "pt", "por": "pt", "pob": "pt-br", "ptbr": "pt-br", "ptpt": "pt-pt", "zh": "zh", "zho": "zh", "chi": "zh", "ja": "ja", "jpn": "ja", "ita": "it", "nl": "nl", "nld": "nl", "ru": "ru", "rus": "ru", "ko": "ko", "kor": "ko"}
+	foundLanguage := false
+	for len(parts) > 1 {
+		last := parts[len(parts)-1]
+		switch last {
+		case "forced":
+			forced = true
+		case "sdh", "hi", "cc":
+			sdh = true
+		case "normal", "full":
+			normal = true
+		default:
+			if foundLanguage {
+				goto done
+			}
+			code, ok := codes[last]
+			if len(parts) > 2 && (last == "br" || last == "pt" || last == "cn" || last == "tw") {
+				prev := parts[len(parts)-2]
+				if prev == "pt" || prev == "zh" {
+					code, ok = prev+"-"+last, true
+					parts = parts[:len(parts)-1]
+				}
+			}
+			if !ok {
+				goto done
+			}
+			tier := langtag.MatchTier(c.Language, code)
+			if tier == 0 {
+				return 0, 0, false
+			}
+			languageRank = tier
+			foundLanguage = true
+		}
+		parts = parts[:len(parts)-1]
+	}
+done:
+	if forced && !c.Forced || sdh && !c.HearingImp || normal && (c.Forced || c.HearingImp) || normal && (forced || sdh) {
+		return 0, 0, false
+	}
+	if forced == c.Forced && sdh == c.HearingImp && (forced || sdh || normal) {
+		styleRank = 1
+	}
+
+	return languageRank, styleRank, true
+}
+
+// unzipSubtitle is retained for callers without candidate style metadata.
+func unzipSubtitle(raw []byte, lang string) ([]byte, error) {
+	return unzipSubtitleCandidate(raw, Candidate{Language: lang})
+}
+
+// unzipSubtitleCandidate chooses only entries compatible with known filename
+// labels, preferring explicit language and style matches before cue count.
+// Expansion and parsing are bounded even when an entry is corrupt.
+func unzipSubtitleCandidate(raw []byte, candidate Candidate) ([]byte, error) {
+	lang := candidate.Language
 	if len(raw) < 4 || raw[0] != 'P' || raw[1] != 'K' {
 		return raw, nil
 	}
@@ -586,19 +684,116 @@ func unzipSubtitle(raw []byte) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
+	type entry struct {
+		f                       *zip.File
+		prio                    int // 0: srt/vtt, 1: ass/ssa
+		languageRank, styleRank int
+	}
+	var entries []entry
 	for _, f := range zr.File {
-		ext := strings.ToLower(filepath.Ext(f.Name))
-		if ext != ".srt" && ext != ".vtt" {
+		if zipJunk(f) {
 			continue
 		}
-		rc, err := f.Open()
-		if err != nil {
-			return nil, err
+		prio := -1
+		switch strings.ToLower(filepath.Ext(f.Name)) {
+		case ".srt", ".vtt":
+			prio = 0
+		case ".ass", ".ssa":
+			prio = 1
 		}
-		defer rc.Close()
-		return io.ReadAll(io.LimitReader(rc, 16<<20))
+		if prio >= 0 {
+			lr, sr, ok := zipEntryHints(f.Name, candidate)
+			if ok {
+				entries = append(entries, entry{f: f, prio: prio, languageRank: lr, styleRank: sr})
+			}
+		}
 	}
-	return nil, fmt.Errorf("zip contains no .srt/.vtt subtitle")
+	sort.SliceStable(entries, func(i, j int) bool {
+		if entries[i].languageRank != entries[j].languageRank {
+			return entries[i].languageRank > entries[j].languageRank
+		}
+		if entries[i].styleRank != entries[j].styleRank {
+			return entries[i].styleRank > entries[j].styleRank
+		}
+		return entries[i].prio < entries[j].prio
+	})
+	type usable struct {
+		data                    []byte
+		cues                    int
+		languageRank, styleRank int
+	}
+	var best *usable
+	var tooLarge, lastErr error
+	expanded, tried := 0, 0
+	budgetExhausted := false
+	for _, e := range entries {
+		if tried >= maxZipTriedEntries || expanded >= maxZipExpandedBytes {
+			budgetExhausted = true
+			break
+		}
+		tried++
+		if e.f.UncompressedSize64 > maxSubtitleBytes {
+			tooLarge = fmt.Errorf("zip subtitle %q too large: %d bytes exceeds %d byte limit", e.f.Name, e.f.UncompressedSize64, maxSubtitleBytes)
+			continue
+		}
+		rc, err := e.f.Open()
+		if err != nil {
+			lastErr = err
+			continue
+		}
+		remaining := maxZipExpandedBytes - expanded
+		limit := min(maxSubtitleBytes+1, remaining)
+		data, err := io.ReadAll(io.LimitReader(rc, int64(limit)))
+		rc.Close()
+		expanded += len(data)
+		if len(data) == remaining {
+			budgetExhausted = true
+			break
+		}
+		if err != nil {
+			lastErr = err
+			continue
+		}
+		if len(data) > maxSubtitleBytes {
+			tooLarge = fmt.Errorf("zip subtitle %q too large: exceeds %d byte limit", e.f.Name, maxSubtitleBytes)
+			continue
+		}
+		srt, _, err := NormalizeLang(data, lang)
+		if err != nil {
+			lastErr = err
+		} else if parsed, perr := ParseCues(srt); perr != nil {
+			// Count parsed cues from the SRT NormalizeLang rendered
+			// (it already dispatches ParseCues/ParseASS), never raw
+			// "-->" occurrences: arrows inside dialogue text would
+			// inflate the count and crown a stub over a full track.
+			lastErr = perr
+		} else if len(parsed) == 0 {
+			lastErr = fmt.Errorf("zip subtitle %q has no cues", e.f.Name)
+		} else if cand := (&usable{data, len(parsed), e.languageRank, e.styleRank}); best == nil ||
+			(cand.languageRank > best.languageRank) ||
+			(cand.languageRank == best.languageRank && cand.styleRank > best.styleRank) ||
+			(cand.languageRank == best.languageRank && cand.styleRank == best.styleRank && cand.cues > best.cues) {
+			best = cand
+		}
+		if expanded >= maxZipExpandedBytes {
+			budgetExhausted = true
+			break
+		}
+	}
+	if best != nil {
+		return best.data, nil
+	}
+	if budgetExhausted {
+		err := fmt.Errorf("zip subtitle budget exhausted after %d entries tried, %d bytes expanded (limits %d entries, %d bytes)", tried, expanded, maxZipTriedEntries, maxZipExpandedBytes)
+		if lastErr != nil {
+			return nil, fmt.Errorf("%w: %w", err, lastErr)
+		}
+		return nil, err
+	}
+	if tooLarge != nil {
+		return nil, tooLarge
+	}
+	return nil, fmt.Errorf("zip contains no usable .srt/.vtt/.ass/.ssa subtitle")
 }
 
 func cacheID(title *core.Title, lang string, fileID int64) string {

@@ -14,6 +14,12 @@ import (
 
 func TestOwnerCacheClearBlock(t *testing.T) {
 	a := setupTestApp(t, true)
+	// Complete startup reconciliation before injecting this synthetic live pin.
+	// It has no real session, so the first sweep correctly treats it as stale.
+	// ReconcilePins serializes that sweep; waiting on a timer would still race.
+	if err := a.playback.ReconcilePins(context.Background()); err != nil {
+		t.Fatal(err)
+	}
 	if err := a.users.SetOwner(context.Background(), plextv.Account{ID: 42, Username: "owner"}, "test-owner"); err != nil {
 		t.Fatal(err)
 	}

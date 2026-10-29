@@ -151,65 +151,80 @@ func (c *Catalog) hydrateSlice(ctx context.Context, items []core.Title) error {
 	if err := c.airedCounts(ctx, items); err != nil {
 		return err
 	}
-	idx := map[core.RatingKey]int{}
+	// Same shape as hydrateHomeRelease: query once per distinct key, but
+	// apply each row to EVERY occurrence of that key in the slice. A title
+	// can appear on several shelves (in different chunks, too); mapping a
+	// key to a single index would leave the other copies unhydrated, and
+	// querying per occurrence would hydrate a copy once per chunk it
+	// appears in.
+	idx := map[core.RatingKey][]int{}
+	keys := make([]any, 0, len(items))
 	for i := range items {
-		idx[items[i].Key] = i
+		if _, ok := idx[items[i].Key]; !ok {
+			keys = append(keys, int64(items[i].Key))
+		}
+		idx[items[i].Key] = append(idx[items[i].Key], i)
 	}
-	args := keyArgs(items)
-	ph := placeholders(len(items))
 	if err := c.hydrateHomeRelease(ctx, items); err != nil {
 		return err
 	}
-	// genres
-	if err := c.scanPairs(ctx, `SELECT key,genre FROM catalog_genres WHERE key IN (`+ph+`) ORDER BY genre`, args, func(i int, v string) {
-		items[i].Genres = append(items[i].Genres, v)
-	}, idx); err != nil {
-		return err
-	}
-	if err := c.scanPairs(ctx, `SELECT key,keyword FROM catalog_keywords WHERE key IN (`+ph+`) ORDER BY keyword`, args, func(i int, v string) {
-		items[i].Keywords = append(items[i].Keywords, v)
-	}, idx); err != nil {
-		return err
-	}
-	if err := c.scanPairs(ctx, `SELECT key,studio FROM catalog_studios WHERE key IN (`+ph+`) ORDER BY studio`, args, func(i int, v string) {
-		items[i].Studios = append(items[i].Studios, v)
-	}, idx); err != nil {
-		return err
-	}
-	if err := c.scanPairs(ctx, `SELECT key,country FROM catalog_countries WHERE key IN (`+ph+`) ORDER BY country`, args, func(i int, v string) {
-		items[i].Countries = append(items[i].Countries, v)
-	}, idx); err != nil {
-		return err
-	}
-	rows, err := c.db.QueryContext(ctx, `SELECT key,person_tmdb,name,role,kind,thumb FROM catalog_credits WHERE key IN (`+ph+`) ORDER BY kind,ord`, args...)
-	if err != nil {
-		return err
-	}
-	defer rows.Close()
-	for rows.Next() {
-		var k, pid int64
-		var name, role, kind, thumb string
-		if err := rows.Scan(&k, &pid, &name, &role, &kind, &thumb); err != nil {
+	// Bound SQLite parameters independently of the caller's page size
+	// (same 200 as hydrateHomeRelease/titlesByKeys).
+	const batch = 200
+	for start := 0; start < len(keys); start += batch {
+		args := keys[start:min(start+batch, len(keys))]
+		ph := placeholders(len(args))
+		// genres
+		if err := c.scanPairs(ctx, `SELECT key,genre FROM catalog_genres WHERE key IN (`+ph+`) ORDER BY genre`, args, func(i int, v string) {
+			items[i].Genres = append(items[i].Genres, v)
+		}, idx); err != nil {
 			return err
 		}
-		i, ok := idx[core.RatingKey(k)]
-		if !ok {
-			continue
+		if err := c.scanPairs(ctx, `SELECT key,keyword FROM catalog_keywords WHERE key IN (`+ph+`) ORDER BY keyword`, args, func(i int, v string) {
+			items[i].Keywords = append(items[i].Keywords, v)
+		}, idx); err != nil {
+			return err
 		}
-		p := core.Person{TMDB: pid, Name: name, Role: role, ThumbPath: thumb}
-		switch kind {
-		case "director":
-			items[i].Directors = append(items[i].Directors, p)
-		case "writer":
-			items[i].Writers = append(items[i].Writers, p)
-		case "crew":
-			items[i].Crew = append(items[i].Crew, p)
-		default:
-			items[i].Cast = append(items[i].Cast, p)
+		if err := c.scanPairs(ctx, `SELECT key,studio FROM catalog_studios WHERE key IN (`+ph+`) ORDER BY studio`, args, func(i int, v string) {
+			items[i].Studios = append(items[i].Studios, v)
+		}, idx); err != nil {
+			return err
 		}
-	}
-	if err := rows.Err(); err != nil {
-		return err
+		if err := c.scanPairs(ctx, `SELECT key,country FROM catalog_countries WHERE key IN (`+ph+`) ORDER BY country`, args, func(i int, v string) {
+			items[i].Countries = append(items[i].Countries, v)
+		}, idx); err != nil {
+			return err
+		}
+		if err := func() error {
+			rows, err := c.db.QueryContext(ctx, `SELECT key,person_tmdb,name,role,kind,thumb FROM catalog_credits WHERE key IN (`+ph+`) ORDER BY kind,ord`, args...)
+			if err != nil {
+				return err
+			}
+			defer rows.Close()
+			for rows.Next() {
+				var k, pid int64
+				var name, role, kind, thumb string
+				if err := rows.Scan(&k, &pid, &name, &role, &kind, &thumb); err != nil {
+					return err
+				}
+				p := core.Person{TMDB: pid, Name: name, Role: role, ThumbPath: thumb}
+				for _, i := range idx[core.RatingKey(k)] {
+					switch kind {
+					case "director":
+						items[i].Directors = append(items[i].Directors, p)
+					case "writer":
+						items[i].Writers = append(items[i].Writers, p)
+					case "crew":
+						items[i].Crew = append(items[i].Crew, p)
+					default:
+						items[i].Cast = append(items[i].Cast, p)
+					}
+				}
+			}
+			return rows.Err()
+		}(); err != nil {
+			return err
+		}
 	}
 	// Series identity for seasons/episodes, including its original name and
 	// keywords: one batched read for every show in this slice rather than
@@ -231,45 +246,55 @@ func (c *Catalog) hydrateSlice(ctx context.Context, items []core.Title) error {
 	if len(shows) == 0 {
 		return nil
 	}
-	showPH := placeholders(len(showArgs))
-	srows, err := c.db.QueryContext(ctx, `SELECT key,imdb,tvdb,year,original_title FROM catalog_titles WHERE key IN (`+showPH+`)`, showArgs...)
-	if err != nil {
-		return err
-	}
-	defer srows.Close()
-	for srows.Next() {
-		var k int64
-		var id seriesIdentity
-		if err := srows.Scan(&k, &id.imdb, &id.tvdb, &id.year, &id.original); err != nil {
+	// showArgs is already deduplicated above; chunk it like keys. Each
+	// show lands in exactly one chunk, so identities/keywords accumulate
+	// without duplication.
+	for start := 0; start < len(showArgs); start += batch {
+		partArgs := showArgs[start:min(start+batch, len(showArgs))]
+		showPH := placeholders(len(partArgs))
+		if err := func() error {
+			srows, err := c.db.QueryContext(ctx, `SELECT key,imdb,tvdb,year,original_title FROM catalog_titles WHERE key IN (`+showPH+`)`, partArgs...)
+			if err != nil {
+				return err
+			}
+			defer srows.Close()
+			for srows.Next() {
+				var k int64
+				var id seriesIdentity
+				if err := srows.Scan(&k, &id.imdb, &id.tvdb, &id.year, &id.original); err != nil {
+					return err
+				}
+				if show := shows[core.RatingKey(k)]; show != nil {
+					*show = id
+				}
+			}
+			return srows.Err()
+		}(); err != nil {
 			return err
 		}
-		if show := shows[core.RatingKey(k)]; show != nil {
-			*show = id
-		}
-	}
-	if err := srows.Err(); err != nil {
-		return err
-	}
-	// Seasons and episodes carry the show's keywords (as they do its genres
-	// and rating) so keyword policies and rules that hide a show also hide
-	// its children.
-	krows, err := c.db.QueryContext(ctx, `SELECT key,keyword FROM catalog_keywords WHERE key IN (`+showPH+`) ORDER BY keyword`, showArgs...)
-	if err != nil {
-		return err
-	}
-	defer krows.Close()
-	for krows.Next() {
-		var k int64
-		var v string
-		if err := krows.Scan(&k, &v); err != nil {
+		// Seasons and episodes carry the show's keywords (as they do its genres
+		// and rating) so keyword policies and rules that hide a show also hide
+		// its children.
+		if err := func() error {
+			krows, err := c.db.QueryContext(ctx, `SELECT key,keyword FROM catalog_keywords WHERE key IN (`+showPH+`) ORDER BY keyword`, partArgs...)
+			if err != nil {
+				return err
+			}
+			defer krows.Close()
+			for krows.Next() {
+				var k int64
+				var v string
+				if err := krows.Scan(&k, &v); err != nil {
+					return err
+				}
+				if show := shows[core.RatingKey(k)]; show != nil {
+					show.keywords = append(show.keywords, v)
+				}
+			}
+			return krows.Err()
+		}(); err != nil {
 			return err
 		}
-		if show := shows[core.RatingKey(k)]; show != nil {
-			show.keywords = append(show.keywords, v)
-		}
-	}
-	if err := krows.Err(); err != nil {
-		return err
 	}
 	for i := range items {
 		show := shows[items[i].ShowKey]
@@ -295,7 +320,10 @@ func (c *Catalog) hydrateSlice(ctx context.Context, items []core.Title) error {
 	return nil
 }
 
-func (c *Catalog) scanPairs(ctx context.Context, q string, args []any, apply func(i int, v string), idx map[core.RatingKey]int) error {
+// scanPairs applies each (key, value) row to every slice index registered
+// for that key in idx, so duplicated titles are hydrated exactly once per
+// occurrence.
+func (c *Catalog) scanPairs(ctx context.Context, q string, args []any, apply func(i int, v string), idx map[core.RatingKey][]int) error {
 	rows, err := c.db.QueryContext(ctx, q, args...)
 	if err != nil {
 		return err
@@ -307,7 +335,7 @@ func (c *Catalog) scanPairs(ctx context.Context, q string, args []any, apply fun
 		if err := rows.Scan(&k, &v); err != nil {
 			return err
 		}
-		if i, ok := idx[core.RatingKey(k)]; ok {
+		for _, i := range idx[core.RatingKey(k)] {
 			apply(i, v)
 		}
 	}
