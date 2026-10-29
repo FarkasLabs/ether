@@ -359,8 +359,8 @@ func (s *Server) prepare(ctx context.Context, pr *Request, p *playRequest) (*cor
 	if rr, ok := s.d.Playback.(core.RemuxRequirer); ok && rr.RequiresRemux(ps.ID) {
 		requiresRemux = true
 	}
-	proto := ps.Resolution.Release.Protocol
-	preferRemux := p.mde && onDemandSession(ps) && proto != core.ProtocolTorrent && proto != core.ProtocolHTTP
+	preferRemux := p.mde && onDemandSession(ps) && ps.Resolution.Release.Protocol != core.ProtocolTorrent &&
+		ps.Resolution.Release.Protocol != core.ProtocolHTTP
 	if (preferRemux || requiresRemux) && p.opts.DirectStream && onDemandSession(ps) && dec.Kind == core.DecisionDirectPlay && s.d.Transcoder != nil {
 		dec.Kind = core.DecisionRemux
 		dec.VideoCopy, dec.AudioCopy = true, true
