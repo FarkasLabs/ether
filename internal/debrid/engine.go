@@ -1338,6 +1338,21 @@ func (s *httpSource) Size() int64       { return s.f.size }
 func (s *httpSource) Name() string      { p, _ := s.f.payload(); return p.Name() }
 func (s *httpSource) ReleaseID() string { return s.f.id }
 
+// Origin implements core.OriginSource with the debrid service's name.
+func (s *httpSource) Origin() string {
+	p, _ := s.f.payload()
+	if p.IsDirect() {
+		return "HTTP"
+	}
+	if label, ok := kindLabels[p.Kind]; ok {
+		return label
+	}
+	if p.Kind != "" {
+		return p.Kind
+	}
+	return "Debrid"
+}
+
 // RetryDirectPlay keeps the file representation stable across a temporary CDN
 // failure: native clients retry the same Range URL without a new decision.
 func (s *httpSource) RetryDirectPlay() bool { return true }
