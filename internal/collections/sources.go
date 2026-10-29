@@ -106,7 +106,10 @@ func (s *Service) discoverInto(ctx context.Context, sp *core.CollectionSpec, kin
 	items, _, err := s.api.discover(ctx, kind, q, want, pagesFor(want))
 	if err != nil {
 		res.warnings = append(res.warnings, fmt.Sprintf("TMDB %s: %v", what, err))
-		return
+		var partial *partialListError
+		if !errors.As(err, &partial) {
+			return
+		}
 	}
 	res.titles = append(res.titles, items...)
 	if len(covered) == 0 {

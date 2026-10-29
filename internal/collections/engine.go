@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/sha1"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"hash/fnv"
 	"math/rand/v2"
@@ -579,7 +580,10 @@ func (s *Service) pushdown(ctx context.Context, sp *core.CollectionSpec, rules [
 		items, _, err := s.api.discover(ctx, kind, q, want, pagesFor(want))
 		if err != nil {
 			warn("TMDB discover: %v", err)
-			return
+			var partial *partialListError
+			if !errors.As(err, &partial) {
+				return
+			}
 		}
 		for _, t := range items {
 			m := assured[t.Key]
@@ -896,7 +900,10 @@ func (s *Service) providerSet(ctx context.Context, sp *core.CollectionSpec, r *r
 		items, _, err := s.api.discover(ctx, kind, q, 400, 20)
 		if err != nil {
 			warn("TMDB watch providers: %v", err)
-			continue
+			var partial *partialListError
+			if !errors.As(err, &partial) {
+				continue
+			}
 		}
 		for _, t := range items {
 			set[t.Key] = true
