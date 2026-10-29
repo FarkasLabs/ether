@@ -437,6 +437,7 @@
   "m_03213c1ff80106": "Ether dekrypterar nedladdningen med lösenordet för säkerhetskopian, kontrollerar dess kontrollsummor och databas och förbereder den sedan i en separat datamapp. Inget ändras förrän du stoppar Ether och startar det från den mappen.",
   "m_03220ccf27e3c6": "Tjänst",
   "m_03247787be910a": "Evergreen",
+  "m_0325d90f9a82ff": "Simkl-inställningarna har sparats.",
   "m_032878aab35eb2": "Otillgänglig serie",
   "m_0328e2be5b7581": {
     "one": "{count} minut",
@@ -817,6 +818,7 @@
   "m_05e4aa1cda58ac": "Plex-serverns URL",
   "m_05e4c1d12376f9": "Förhandsvisning · {count}",
   "m_05e72ccb182a01": "Lämna tomt för att använda den medföljande ffmpeg.",
+  "m_05e77bc6927101": "Senast importerade aktivitet: {when}",
   "m_05ea87fc0d10d9": "Inte byggd ännu",
   "m_05f0500aa8c134": "Lägg till en indexerare",
   "m_05f250064a7948": "Lägg till regel",
@@ -893,6 +895,7 @@
   "m_0679e8425086e0": "Anslut TMDB och välj vilka titlar och vilken metadata dina tittare upptäcker.",
   "m_067bb0539831f8": "Inte på den här sidan",
   "m_068139f25abb8b": "0.0.0.0 lyssnar på alla nätverksgränssnitt.",
+  "m_06833aab41a35d": "Öppna Simkls godkännandesida och ange koden {code}.",
   "m_068bab67236a91": {
     "one": "{count} föreslagen träff",
     "other": "{count} föreslagna träffar"
@@ -927,6 +930,7 @@
   "m_06bad1fa6cc4f9": "{channel} slutar ta emot varningar. Dess leveranshistorik behålls.",
   "m_06bbd497183976": "lokal fil test uppspelning",
   "m_06bbf60ee1e71a": "Animerade filmer med åldersgräns PG och lägre",
+  "m_06bc87a6a90cae": "Ett historikobjekt kunde inte skickas.",
   "m_06bca84cfad22f": "När titeln kom in i din katalog",
   "m_06c0935072e32f": "API-anrop till indexerare och debrid som används av källvalidering.",
   "m_06c12e2ed9b98b": "Går på bio nu",
@@ -1142,6 +1146,7 @@
   "m_08672e346ed98a": "av live-IPTV-kanalerna har programinformation",
   "m_0867352e4bc55a": "Uppspelningen bytte källa",
   "m_0869c8ac9a4134": "Originalomslag",
+  "m_086a0fea5bf230": "Kontrollera anslutningen",
   "m_086ae5ebef35ab": {
     "one": "{count} länk uppdaterad",
     "other": "{count} länkar uppdaterade"
@@ -1244,6 +1249,7 @@
   "m_092a782bcbb664": "Skapa en bot med BotFather, skriv först till den och ange sedan dess bot-token och mottagarens chatt-ID. Gruppchatt-ID:n kan vara negativa.",
   "m_092af70629a76c": "Saknade affischer faller tillbaka på TMDB. Säsonger och avsnitt behåller TMDB-omslag.",
   "m_092b213bf2afe9": "Spår {n}",
+  "m_092f7b7825363d": "Väntar på godkännande.",
   "m_092f8d6802688d": "Original",
   "m_09305281a52197": "Fältet {label}",
   "m_0931cd10fc2286": "STARTTLS (vanligtvis 587)",
@@ -1309,6 +1315,7 @@
   "m_09a6372dc347db": "Ladda upp {name}",
   "m_09a87f5bfb453b": "Senast importerad {when} · {span} programinformation",
   "m_09a9b9012738ea": "Releasen fästes",
+  "m_09ac1b92a7f43f": "Koppla från",
   "m_09ac7c244189c5": {
     "one": "{count} definition installerad, används av dina indexerare ovan.",
     "other": "{count} definitioner installerade, alla används av dina indexerare ovan."
@@ -1344,6 +1351,7 @@
   "m_09ed7ba38ed5c0": "En M3U-spellista, eventuellt med guide",
   "m_09eea65fa736d3": "Lossa",
   "m_09eecf68ce70d8": "Språk",
+  "m_09f0cf7f1a901d": "Ett animeavsnitt hoppades över eftersom dess numrering inte kunde verifieras.",
   "m_09f138b73b2072": "Fördröjning för sammanfattning (minuter)",
   "m_09f245efad9b11": "Redigerar {layer}. Dra en rad för att förankra den på den platsen endast för den här tittaren.",
   "m_09f2c17d731155": "Tillgänglighetsinställningarna sparades",
@@ -1352,6 +1360,7 @@
   "m_09fc493cfce120": "Spara och skicka testping",
   "m_09fd2b0ba528bc": "Latens {ms} ms · ingen användning registrerad den här månaden",
   "m_09ffdb5082d7fe": "Debug+",
+  "m_0a01c327f46051": "Synkronisera historik",
   "m_0a047d973d6e39": "Regi",
   "m_0a0569b726b225": "Sparad",
   "m_0a05e691579a3a": "okänt",
@@ -1367,6 +1376,10 @@
   "m_0a1e6292314c1b": "Återuppta nya strömmar",
   "m_0a1ed215e9aca5": "Inga veckorapporter har skickats ännu.",
   "m_0a1f6a6e22044c": "Justera timing",
+  "m_0a220beea2f81b": {
+    "one": "Koden går ut {time}. Vänta minst {count} sekund mellan kontrollerna.",
+    "other": "Koden går ut {time}. Vänta minst {count} sekunder mellan kontrollerna."
+  },
   "m_0a2669af912806": "Det här är ett metadatabibliotek. Uppspelningskällor hittas när en tittare trycker på play.",
   "m_0a28c471d85ca2": "Ge samlingen ett namn.",
   "m_0a2fd7667195a3": "Tillåt HDR",
@@ -1670,6 +1683,10 @@
   "m_0c73b94faca1ed": "Katalogens hälsa",
   "m_0c743b3826f19b": "TELEVISION",
   "m_0c77cfbda0bd90": "Läser in titlar…",
+  "m_0c79ba4e8dcf94": {
+    "one": "{count} historikpost bearbetades; {skipped} hoppades över.",
+    "other": "{count} historikposter bearbetades; {skipped} hoppades över."
+  },
   "m_0c7a3810288c4a": "App",
   "m_0c7e5b0f8762e0": "Den valda filen överskrider storleksgränsen för import.",
   "m_0c7eed91df4e91": "Källtittarens Plex-token",
@@ -1845,6 +1862,7 @@
   "m_0dae67d1ac7c4c": "Helgkväll",
   "m_0db284d0f8a678": "Indexeraren togs bort",
   "m_0db7c4d3a22fa2": "Konfigurera en kanal",
+  "m_0dbb25b7677340": "Synkroniseringen är pausad till {when}.",
   "m_0dbb50a9b27e1a": "Streamingtjänst",
   "m_0dbdefec306063": "öppna",
   "m_0dbf9d2207c702": {
@@ -2171,6 +2189,7 @@
   "m_1073abec097e6c": "Offentligt värdnamn",
   "m_107c55bf7f5fde": "Färgsätter genererat omslag. Automatisk matchar huvudaffischen.",
   "m_107ef7c828b72e": "Av rapporterar den version som Ether är verifierat mot. Plex-appar aktiverar funktioner efter serverversion, så att följa den senaste kan exponera funktioner som Ether inte stöder.",
+  "m_1082d1a6a743cc": "Simkl-kontot har anslutits.",
   "m_1084ceab8e0923": {
     "one": "{count} hämtning",
     "other": "{count} hämtningar"
@@ -2272,6 +2291,7 @@
     "other": "{count} tillagda"
   },
   "m_1138a4def1b4d0": "Katalogen kan ha ändrats sedan ditt senaste besök.",
+  "m_113a8a4f50e4d5": "Köade historikposter: {count}",
   "m_113cd3d4067144": {
     "one": "{count} samling · Omslag som visas i Plex",
     "other": "{count} samlingar · Omslag som visas i Plex"
@@ -2479,6 +2499,7 @@
     "one": "Nyaste posterna först. {count} post sparad i minnet.",
     "other": "Nyaste posterna först. {count} poster sparade i minnet."
   },
+  "m_128fa41a415266": "Återanslutning krävs",
   "m_12908cd74a0ff3": "start tävling varm uppvärmning",
   "m_1290df5277a7a7": "FFmpeg-detaljer",
   "m_129a23e10f8e0d": "Håll diskutrymme ledigt (GiB)",
@@ -2796,6 +2817,7 @@
   "m_150d4141714c86": "Ägartoken",
   "m_150e4f4a537a1f": "Klienter som använde den som standard kommer att använda {profile}.",
   "m_15123a8748a0cf": "Spara layout",
+  "m_151382d7c792f9": "Simkl har kopplats från.",
   "m_151665e44b96df": "Endast TV-avsnitt",
   "m_151769a9fde954": "Inställningar",
   "m_15178f403e2dc1": "På andra ställen",
@@ -2817,6 +2839,7 @@
   "m_152f2e75437c37": "Titlar taggade med ett TMDB-nyckelord",
   "m_1530a071c3f814": "Speltid",
   "m_15364765e67f5a": "Egen bild-URL",
+  "m_153824e8dc2503": "Leveranskön är full; vissa slutföranden köades inte.",
   "m_153a49b5cbdb2d": "Importerad post använder sin källas inloggning; tillagda reserver använder ingen",
   "m_153b591c96b759": "Porten som vidarebefordras på din router. 0 använder serverporten.",
   "m_153b7806dcbd8a": "Spara synlighet",
@@ -2824,6 +2847,7 @@
   "m_1542ffb4446264": "Spelade",
   "m_15435288ba1090": "Källan importerades",
   "m_1549705b6eb2a1": "Tidsblock måste ha giltiga start- och sluttider utan överlappning.",
+  "m_154a22a8b1bba6": "Registrera din egen Simkl AUTH V2-app. En enhetsapp behöver ett klient-ID; registreringar av serverappar behöver även en klienthemlighet.",
   "m_154b7942a282ca": "föredrar {sources}",
   "m_154c9d7a784dda": "Från",
   "m_154e5b21a86344": "Återställ Hem-deduplicering",
@@ -3017,6 +3041,7 @@
   "m_16ac3b3a51af4e": "Ny",
   "m_16af1c381e0a96": "Redundansbyte",
   "m_16b5e03d146667": "{list} (filmer)",
+  "m_16b609ee054878": "Aktivera Simkl",
   "m_16b78968cf1c10": "Blockera…",
   "m_16ba1e30f4556a": "Varför de här titlarna?",
   "m_16bb42c944043e": "Offentlig port",
@@ -3065,6 +3090,7 @@
   "m_1714b1066bdca4": "Behåll det som streamas",
   "m_17152fb08bc875": "{day} {time}",
   "m_1715f6c892adb8": "Om du ändrar lagringen eller dess mapp måste noden startas om. Befintliga cachade byte ligger kvar i sin ursprungliga mapp.",
+  "m_17167efa86027e": "Simkl kunde inte identifiera ett historikobjekt.",
   "m_171b382894bddd": "Klientidentifierare",
   "m_171c8f732a9d67": "Det gick inte att läsa in modeller: {error}",
   "m_171cc315f1d2f0": "Bevakningslisteinställningarna sparades",
@@ -3160,6 +3186,7 @@
   "m_17d092a4b6fbef": "Använder upp till sex tillgängliga medlemsaffischer. För att välja filmer och deras ordning, använd handplockade titlar under Bygg och sortera efter Källans ordning. Omslaget faller tillbaka på en enda bild när färre än fyra affischer finns.",
   "m_17d18603d1b603": "Live",
   "m_17d70445db7cd8": "Alla med Live-TV-åtkomst",
+  "m_17dd578a313a44": "Simkl-behörigheten har gått ut eller återkallats. Återanslut för att fortsätta.",
   "m_17e1ea676b52a8": "Kapitel och hoppa över-markörer",
   "m_17e280c82d8638": "Väntar på en ström · {date}",
   "m_17e4ab8ca11d3d": "En stabil blandning; guiden hoppar aldrig.",
@@ -3396,6 +3423,7 @@
   "m_197383d90f0087": "Spara korrigering",
   "m_19746b0c3cb06c": "Testa OpenSubtitles",
   "m_197478dba70ea3": "Redigera ordning för {viewer}",
+  "m_19759626500d10": "Synkroniseringen behåller befintlig historik och tar inte bort sedda objekt. Animeavsnitt utan verifierad mappning hoppas över.",
   "m_197805698e6a5b": "När installationen är klar låses den här adminsidan till ditt Plex-konto. Du kan öppna installationen igen senare från Anslutning.",
   "m_197f395ae133e3": "Ny programinformation finns i guiden.",
   "m_1982dc436baac0": "Webbplatsinställningar",
@@ -4081,6 +4109,7 @@
   "m_1eb24748a2dfb4": "Läser in språkfunktioner",
   "m_1eb2eb9aa60cf2": "Kontrollerar installerade definitioner…",
   "m_1eb329e25cc73e": "Torrentreleaser streamas via ditt debrid-konto.",
+  "m_1eb4e5a0839480": "Spara Simkl-inställningar",
   "m_1ebc587c4a89d4": "Filtrera efter namn, indexerare eller orsak…",
   "m_1ec00fba6be639": "Kvalitet",
   "m_1ec3617d2cde86": "Valfri",
@@ -4178,6 +4207,7 @@
   "m_1f63847755c543": "Förankra {title} genom att dra",
   "m_1f63dd73d695c0": "Förhandsvisa sparad ordning",
   "m_1f6459b6d96d5b": "Fjärrprofil",
+  "m_1f664f6b9eec3b": "Anslut en tittares Simkl-konto för att importera tittarhistorik och skicka slutförda uppspelningar.",
   "m_1f69767390b86a": "År",
   "m_1f6c206c676272": "Ingen värd",
   "m_1f7223c74bf3d9": "Välj en tittare",
@@ -4256,6 +4286,7 @@
   "m_1fe8763c7edbf2": "Visa hemlighet",
   "m_1fe9a3548a3056": "Lägsta formatpoäng",
   "m_1feb91f603617e": "TV",
+  "m_1fed1cfe1ca4fc": "Öppna Simkl-godkännande",
   "m_1ff30d480cdeec": "Specifika tittare",
   "m_1ff744c021f99f": {
     "one": "Det Plex Hem som alla {count} tittare får",

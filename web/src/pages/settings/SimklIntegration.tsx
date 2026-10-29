@@ -1,6 +1,8 @@
 import { Button, SettingsSection } from "@braedonsaunders/appkit-ui";
 import { useEffect, useState } from "react";
+import { getLocale, localized, t, tn, tx } from "../../i18n";
 import { api, apiFetch } from "../../lib/api";
+import { formatNumber } from "../../lib/format";
 import type { EtherUser } from "../../lib/types";
 
 type Settings = { enabled: boolean; clientId: string; clientSecret: string };
@@ -19,6 +21,14 @@ type Device = {
   expiresAt: string;
   interval: number;
 };
+
+/** Human text for the sync warning codes the server reports. */
+const WARNINGS = localized<Record<string, string>>(() => ({
+  auth_revoked: t("Simkl authorization expired or was revoked. Reconnect to continue."),
+  queue_full: t("The delivery queue is full; some completions were not queued."),
+  anime_mapping: t("An anime episode was skipped because its numbering could not be verified."),
+  not_found: t("Simkl could not resolve a history item."),
+}));
 
 export function SimklIntegration() {
   const [settings, setSettings] = useState<Settings | null>(null);
@@ -91,7 +101,9 @@ export function SimklIntegration() {
   return (
     <SettingsSection
       title="Simkl"
-      description="Connect a viewer's Simkl account to import watched history and send completed playback."
+      description={t(
+        "Connect a viewer's Simkl account to import watched history and send completed playback.",
+      )}
     >
       {error && (
         <p role="alert" className="text-sm text-danger">
@@ -106,8 +118,9 @@ export function SimklIntegration() {
       {settings && (
         <div className="space-y-3">
           <p className="text-sm text-fg-muted">
-            Register your own Simkl AUTH V2 app. A device app needs a client ID; server app
-            registrations also need a client secret.
+            {t(
+              "Register your own Simkl AUTH V2 app. A device app needs a client ID; server app registrations also need a client secret.",
+            )}
           </p>
           <label className="block">
             <input
@@ -115,10 +128,10 @@ export function SimklIntegration() {
               checked={settings.enabled}
               onChange={(e) => setSettings({ ...settings, enabled: e.target.checked })}
             />{" "}
-            Enable Simkl
+            {t("Enable Simkl")}
           </label>
           <label className="block">
-            Client ID{" "}
+            {t("Client ID")}{" "}
             <input
               className="w-full rounded border border-border bg-surface px-2 py-1"
               value={settings.clientId}
@@ -126,7 +139,7 @@ export function SimklIntegration() {
             />
           </label>
           <label className="block">
-            Client secret{" "}
+            {t("Client secret")}{" "}
             <input
               className="w-full rounded border border-border bg-surface px-2 py-1"
               type="password"
@@ -142,17 +155,17 @@ export function SimklIntegration() {
                 const cfg = await apiFetch<{ value: Settings }>("/config/simkl");
                 setSettings(cfg.value);
                 setDevice(null);
-                setMessage("Simkl settings saved.");
+                setMessage(t("Simkl settings saved."));
               })
             }
           >
-            Save Simkl settings
+            {t("Save Simkl settings")}
           </Button>
         </div>
       )}
       <div className="mt-4 space-y-3">
         <label className="block">
-          Viewer{" "}
+          {t("Viewer")}{" "}
           <select
             disabled={busy}
             value={viewer}
@@ -170,37 +183,39 @@ export function SimklIntegration() {
           <p className="text-sm">
             {status.connected
               ? status.needsReconnect
-                ? "Reconnect required"
-                : "Connected"
-              : "Not connected"}
+                ? t("Reconnect required")
+                : t("Connected")
+              : t("Not connected")}
           </p>
         )}
         {status?.queued ? (
-          <p className="text-sm">{`Queued history entries: ${status.queued}`}</p>
+          <p className="text-sm">
+            {t("Queued history entries: {count}", { count: formatNumber(status.queued) })}
+          </p>
         ) : null}
         {status?.lastSync && (
-          <p className="text-sm text-fg-muted">Last imported activity: {status.lastSync}</p>
+          <p className="text-sm text-fg-muted">
+            {t("Last imported activity: {when}", { when: status.lastSync })}
+          </p>
         )}
         {status?.backoffUntil && status.backoffUntil > Date.now() ? (
-          <p className="text-sm text-fg-muted">{`Sync paused until ${new Date(status.backoffUntil).toLocaleString()}.`}</p>
+          <p className="text-sm text-fg-muted">
+            {t("Sync paused until {when}.", {
+              when: new Date(status.backoffUntil).toLocaleString(getLocale()),
+            })}
+          </p>
         ) : null}
         {status?.warning && (
           <p className="text-sm text-fg-muted">
-            {status.warning === "auth_revoked"
-              ? "Simkl authorization expired or was revoked. Reconnect to continue."
-              : status.warning === "queue_full"
-                ? "The delivery queue is full; some completions were not queued."
-                : status.warning === "anime_mapping"
-                  ? "An anime episode was skipped because its numbering could not be verified."
-                  : status.warning === "not_found"
-                    ? "Simkl could not resolve a history item."
-                    : "A history item could not be sent."}
+            {WARNINGS[status.warning] ?? t("A history item could not be sent.")}
           </p>
         )}
         {device && (
           <div className="space-y-2">
             <p>
-              Open the Simkl approval page and enter code <strong>{device.userCode}</strong>.
+              {tx("Open the Simkl approval page and enter code {code}.", {
+                code: <strong>{device.userCode}</strong>,
+              })}
             </p>
             {verification && (
               <a
@@ -209,12 +224,16 @@ export function SimklIntegration() {
                 rel="noopener noreferrer"
                 className="underline"
               >
-                Open Simkl approval
+                {t("Open Simkl approval")}
               </a>
             )}
             <p className="text-sm text-fg-muted">
-              The code expires at {new Date(device.expiresAt).toLocaleTimeString()}. Wait at least{" "}
-              {device.interval} seconds between checks.
+              {tn(
+                device.interval,
+                "The code expires at {time}. Wait at least {count} second between checks.",
+                "The code expires at {time}. Wait at least {count} seconds between checks.",
+                { time: new Date(device.expiresAt).toLocaleTimeString(getLocale()) },
+              )}
             </p>
             <Button
               disabled={busy}
@@ -224,12 +243,12 @@ export function SimklIntegration() {
                   if (r.status === "authorized") {
                     setDevice(null);
                     await refresh();
-                    setMessage("Simkl account connected.");
-                  } else setMessage("Waiting for approval.");
+                    setMessage(t("Simkl account connected."));
+                  } else setMessage(t("Waiting for approval."));
                 })
               }
             >
-              Check connection
+              {t("Check connection")}
             </Button>
           </div>
         )}
@@ -242,7 +261,7 @@ export function SimklIntegration() {
               })
             }
           >
-            Connect
+            {t("Connect")}
           </Button>
           <Button
             disabled={
@@ -252,11 +271,18 @@ export function SimklIntegration() {
               void act(async () => {
                 const r = await post<{ imported: number; skipped: number }>("sync");
                 await refresh();
-                setMessage(`Processed ${r.imported} history entries; skipped ${r.skipped}.`);
+                setMessage(
+                  tn(
+                    r.imported,
+                    "Processed {count} history entry; skipped {skipped}.",
+                    "Processed {count} history entries; skipped {skipped}.",
+                    { skipped: formatNumber(r.skipped) },
+                  ),
+                );
               })
             }
           >
-            Sync history
+            {t("Sync history")}
           </Button>
           <Button
             disabled={busy || !viewer || (!status?.connected && !device)}
@@ -265,16 +291,17 @@ export function SimklIntegration() {
                 await post("disconnect");
                 setDevice(null);
                 await refresh();
-                setMessage("Simkl disconnected.");
+                setMessage(t("Simkl disconnected."));
               })
             }
           >
-            Disconnect
+            {t("Disconnect")}
           </Button>
         </div>
         <p className="text-sm text-fg-muted">
-          Sync keeps existing history and does not remove watched items. Anime episodes without a
-          verified mapping are skipped.
+          {t(
+            "Sync keeps existing history and does not remove watched items. Anime episodes without a verified mapping are skipped.",
+          )}
         </p>
       </div>
     </SettingsSection>

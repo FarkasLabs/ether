@@ -437,6 +437,7 @@
   "m_03213c1ff80106": "Ether indirmenin şifresini yedek parolasıyla çözer, sağlama toplamlarını ve veritabanını denetler, ardından ayrı bir veri klasöründe hazırlar. Ether'i durdurup o klasörden başlatana kadar hiçbir şey değişmez.",
   "m_03220ccf27e3c6": "Hizmet",
   "m_03247787be910a": "Her zaman geçerli",
+  "m_0325d90f9a82ff": "Simkl ayarları kaydedildi.",
   "m_032878aab35eb2": "Kullanılamayan dizi",
   "m_0328e2be5b7581": {
     "one": "{count} dakika",
@@ -817,6 +818,7 @@
   "m_05e4aa1cda58ac": "Plex sunucu URL'si",
   "m_05e4c1d12376f9": "Önizleme · {count}",
   "m_05e72ccb182a01": "Paketle gelen ffmpeg'i kullanmak için boş bırakın.",
+  "m_05e77bc6927101": "Son içe aktarılan etkinlik: {when}",
   "m_05ea87fc0d10d9": "Henüz oluşturulmadı",
   "m_05f0500aa8c134": "Dizinleyici ekle",
   "m_05f250064a7948": "Kural ekle",
@@ -893,6 +895,7 @@
   "m_0679e8425086e0": "TMDB'yi bağlayın ve izleyicilerinizin keşfedeceği başlıkları ve üst verileri seçin.",
   "m_067bb0539831f8": "Bu sayfada yok",
   "m_068139f25abb8b": "0.0.0.0 her ağ arayüzünü dinler.",
+  "m_06833aab41a35d": "Simkl onay sayfasını açın ve {code} kodunu girin.",
   "m_068bab67236a91": {
     "one": "{count} önerilen eşleşme",
     "other": "{count} önerilen eşleşme"
@@ -927,6 +930,7 @@
   "m_06bad1fa6cc4f9": "{channel} artık uyarı almaz. Teslimat geçmişi korunur.",
   "m_06bbd497183976": "yerel dosya test oynatma",
   "m_06bbf60ee1e71a": "PG ve altı derecelendirmeli animasyon filmleri",
+  "m_06bc87a6a90cae": "Bir geçmiş öğesi gönderilemedi.",
   "m_06bca84cfad22f": "Başlığın kataloğunuza girdiği zaman",
   "m_06c0935072e32f": "Kaynak doğrulamasının kullandığı dizinleyici ve debrid API çağrıları.",
   "m_06c12e2ed9b98b": "Şu an vizyonda",
@@ -1142,6 +1146,7 @@
   "m_08672e346ed98a": "canlı IPTV kanalının programı var",
   "m_0867352e4bc55a": "Oynatma kaynak değiştirdi",
   "m_0869c8ac9a4134": "Orijinal görsel",
+  "m_086a0fea5bf230": "Bağlantıyı denetle",
   "m_086ae5ebef35ab": {
     "one": "{count} bağlantı yenilendi",
     "other": "{count} bağlantı yenilendi"
@@ -1244,6 +1249,7 @@
   "m_092a782bcbb664": "BotFather ile bir bot oluşturun, önce ona mesaj gönderin, ardından bot belirtecini ve hedef sohbet kimliğini girin. Grup sohbeti kimlikleri negatif olabilir.",
   "m_092af70629a76c": "Eksik posterler için TMDB'ye geri dönülür. Sezonlar ve bölümler TMDB görselini korur.",
   "m_092b213bf2afe9": "İz {n}",
+  "m_092f7b7825363d": "Onay bekleniyor.",
   "m_092f8d6802688d": "Orijinal",
   "m_09305281a52197": "{label} alanı",
   "m_0931cd10fc2286": "STARTTLS (genellikle 587)",
@@ -1309,6 +1315,7 @@
   "m_09a6372dc347db": "{name} yükle",
   "m_09a87f5bfb453b": "Son içe aktarma {when} · {span} program",
   "m_09a9b9012738ea": "Sürüm sabitlendi",
+  "m_09ac1b92a7f43f": "Bağlantıyı kes",
   "m_09ac7c244189c5": {
     "one": "{count} tanım yüklü, hepsi yukarıdaki dizinleyicileriniz tarafından kullanılıyor.",
     "other": "{count} tanım yüklü, hepsi yukarıdaki dizinleyicileriniz tarafından kullanılıyor."
@@ -1344,6 +1351,7 @@
   "m_09ed7ba38ed5c0": "Bir M3U oynatma listesi, isteğe bağlı olarak rehberle birlikte",
   "m_09eea65fa736d3": "Sabitlemeyi kaldır",
   "m_09eecf68ce70d8": "Dil",
+  "m_09f0cf7f1a901d": "Numaralandırması doğrulanamadığı için bir anime bölümü atlandı.",
   "m_09f138b73b2072": "Özet gecikmesi (dakika)",
   "m_09f245efad9b11": "{layer} düzenleniyor. Bir satırı yalnızca bu izleyici için o konuma sabitlemek üzere sürükleyin.",
   "m_09f2c17d731155": "Kullanılabilirlik ayarları kaydedildi",
@@ -1352,6 +1360,7 @@
   "m_09fc493cfce120": "Kaydet ve test ping'i gönder",
   "m_09fd2b0ba528bc": "Gecikme {ms} ms · bu ay kayıtlı kullanım yok",
   "m_09ffdb5082d7fe": "Hata ayıklama+",
+  "m_0a01c327f46051": "Geçmişi eşitle",
   "m_0a047d973d6e39": "Yönetmen",
   "m_0a0569b726b225": "Kaydedildi",
   "m_0a05e691579a3a": "bilinmiyor",
@@ -1367,6 +1376,10 @@
   "m_0a1e6292314c1b": "Yeni akışları sürdür",
   "m_0a1ed215e9aca5": "Henüz haftalık rapor gönderilmedi.",
   "m_0a1f6a6e22044c": "Zamanlamayı ayarla",
+  "m_0a220beea2f81b": {
+    "one": "Kodun süresi {time} saatinde dolar. Denetimler arasında en az {count} saniye bekleyin.",
+    "other": "Kodun süresi {time} saatinde dolar. Denetimler arasında en az {count} saniye bekleyin."
+  },
   "m_0a2669af912806": "Bu bir üst veri kitaplığıdır. Oynatma kaynakları, bir izleyici oynat'a bastığında çözümlenir.",
   "m_0a28c471d85ca2": "Koleksiyona bir ad verin.",
   "m_0a2fd7667195a3": "HDR'ye izin ver",
@@ -1670,6 +1683,10 @@
   "m_0c73b94faca1ed": "Katalog sağlığı",
   "m_0c743b3826f19b": "TELEVİZYON",
   "m_0c77cfbda0bd90": "Başlıklar yükleniyor…",
+  "m_0c79ba4e8dcf94": {
+    "one": "{count} geçmiş kaydı işlendi, {skipped} atlandı.",
+    "other": "{count} geçmiş kaydı işlendi, {skipped} atlandı."
+  },
   "m_0c7a3810288c4a": "Uygulama",
   "m_0c7e5b0f8762e0": "Seçilen dosya içe aktarma boyutu sınırını aşıyor.",
   "m_0c7eed91df4e91": "Kaynak izleyicinin Plex belirteci",
@@ -1845,6 +1862,7 @@
   "m_0dae67d1ac7c4c": "Hafta sonu gecesi",
   "m_0db284d0f8a678": "Dizinleyici kaldırıldı",
   "m_0db7c4d3a22fa2": "Kanal kur",
+  "m_0dbb25b7677340": "Eşitleme {when} tarihine kadar duraklatıldı.",
   "m_0dbb50a9b27e1a": "Akış hizmeti",
   "m_0dbdefec306063": "aç",
   "m_0dbf9d2207c702": {
@@ -2171,6 +2189,7 @@
   "m_1073abec097e6c": "Genel ana makine adı",
   "m_107c55bf7f5fde": "Oluşturulan görseli renklendirir. Otomatik, ilk posterle eşleşir.",
   "m_107ef7c828b72e": "Kapalıyken Ether'in doğrulandığı sürüm bildirilir. Plex uygulamaları özellikleri sunucu sürümüne göre açar, bu nedenle izleme, Ether'in desteklemediği özellikleri açığa çıkarabilir.",
+  "m_1082d1a6a743cc": "Simkl hesabı bağlandı.",
   "m_1084ceab8e0923": {
     "one": "{count} indirme",
     "other": "{count} indirme"
@@ -2272,6 +2291,7 @@
     "other": "{count} eklendi"
   },
   "m_1138a4def1b4d0": "Katalog son ziyaretinizden bu yana değişmiş olabilir.",
+  "m_113a8a4f50e4d5": "Kuyruktaki geçmiş kayıtları: {count}",
   "m_113cd3d4067144": {
     "one": "{count} koleksiyon · Plex'te gösterilen görseller",
     "other": "{count} koleksiyon · Plex'te gösterilen görseller"
@@ -2479,6 +2499,7 @@
     "one": "En yeni kayıtlar önce. Bellekte {count} kayıt tutuluyor.",
     "other": "En yeni kayıtlar önce. Bellekte {count} kayıt tutuluyor."
   },
+  "m_128fa41a415266": "Yeniden bağlanmak gerekiyor",
   "m_12908cd74a0ff3": "başlangıç yarış ısınma",
   "m_1290df5277a7a7": "FFmpeg ayrıntıları",
   "m_129a23e10f8e0d": "Boş disk alanı bırak (GiB)",
@@ -2796,6 +2817,7 @@
   "m_150d4141714c86": "Sahip belirteci",
   "m_150e4f4a537a1f": "Onu varsayılan olarak kullanan istemciler {profile} kullanacak.",
   "m_15123a8748a0cf": "Düzeni kaydet",
+  "m_151382d7c792f9": "Simkl bağlantısı kesildi.",
   "m_151665e44b96df": "Yalnızca dizi bölümleri",
   "m_151769a9fde954": "Ayarlar",
   "m_15178f403e2dc1": "Başka yerde",
@@ -2817,6 +2839,7 @@
   "m_152f2e75437c37": "Bir TMDB anahtar kelimesiyle etiketlenmiş başlıklar",
   "m_1530a071c3f814": "Süre",
   "m_15364765e67f5a": "Özel görsel URL'si",
+  "m_153824e8dc2503": "Teslim kuyruğu dolu; bazı tamamlanma bildirimleri kuyruğa alınmadı.",
   "m_153a49b5cbdb2d": "İçe aktarılan kayıt kaynağının girişini kullanır; eklenen yedekler hiçbirini kullanmaz",
   "m_153b591c96b759": "Yönlendiricinizde yönlendirilen bağlantı noktası. 0, sunucu bağlantı noktasını kullanır.",
   "m_153b7806dcbd8a": "Görünürlüğü kaydet",
@@ -2824,6 +2847,7 @@
   "m_1542ffb4446264": "Oynatılan",
   "m_15435288ba1090": "Kaynak içe aktarıldı",
   "m_1549705b6eb2a1": "Zaman bloklarının geçerli başlangıç ve bitiş saatleri olmalı ve çakışmamalıdır.",
+  "m_154a22a8b1bba6": "Kendi Simkl AUTH V2 uygulamanızı kaydedin. Cihaz uygulaması için istemci kimliği gerekir; sunucu uygulamaları ayrıca istemci gizli anahtarı da ister.",
   "m_154b7942a282ca": "tercih: {sources}",
   "m_154c9d7a784dda": "Başlangıç",
   "m_154e5b21a86344": "Ana Sayfa tekrar önlemeyi sıfırla",
@@ -3017,6 +3041,7 @@
   "m_16ac3b3a51af4e": "Yeni",
   "m_16af1c381e0a96": "Yük devretme",
   "m_16b5e03d146667": "{list} (filmler)",
+  "m_16b609ee054878": "Simkl'i etkinleştir",
   "m_16b78968cf1c10": "Engelle…",
   "m_16ba1e30f4556a": "Neden bu başlıklar?",
   "m_16bb42c944043e": "Genel bağlantı noktası",
@@ -3065,6 +3090,7 @@
   "m_1714b1066bdca4": "Akışa alınanı sakla",
   "m_17152fb08bc875": "{day} {time}",
   "m_1715f6c892adb8": "Depolamayı veya klasörünü değiştirmek düğümün yeniden başlatılmasını gerektirir. Mevcut önbellek baytları özgün klasöründe kalır.",
+  "m_17167efa86027e": "Simkl bir geçmiş öğesini eşleştiremedi.",
   "m_171b382894bddd": "İstemci tanımlayıcısı",
   "m_171c8f732a9d67": "Modeller yüklenemedi: {error}",
   "m_171cc315f1d2f0": "İzleme Listesi ayarları kaydedildi",
@@ -3160,6 +3186,7 @@
   "m_17d092a4b6fbef": "Mevcut en fazla altı üye posterini kullanır. Filmleri ve sıralarını seçmek için Oluştur bölümünde elle seçilen başlıkları kullanın ve Kaynak sırasına göre sıralayın. Dörtten az poster varsa görsel tek bir görüntüye döner.",
   "m_17d18603d1b603": "Canlı",
   "m_17d70445db7cd8": "Canlı TV erişimi olan herkes",
+  "m_17dd578a313a44": "Simkl yetkilendirmesinin süresi doldu veya iptal edildi. Devam etmek için yeniden bağlanın.",
   "m_17e1ea676b52a8": "Bölümler ve atlama işaretçileri",
   "m_17e280c82d8638": "Akış bekleniyor · {date}",
   "m_17e4ab8ca11d3d": "Kararlı bir karıştırma; rehber asla sıçramaz.",
@@ -3396,6 +3423,7 @@
   "m_197383d90f0087": "Düzeltmeyi kaydet",
   "m_19746b0c3cb06c": "OpenSubtitles'ı test et",
   "m_197478dba70ea3": "{viewer} için sırayı düzenle",
+  "m_19759626500d10": "Eşitleme mevcut geçmişi korur ve izlenen öğeleri kaldırmaz. Doğrulanmış eşlemesi olmayan anime bölümleri atlanır.",
   "m_197805698e6a5b": "Kurulumu tamamlamak bu yönetim sayfasını Plex hesabınıza kilitler. Kurulumu daha sonra Bağlantı bölümünden yeniden açabilirsiniz.",
   "m_197f395ae133e3": "Güncel programlar rehberde.",
   "m_1982dc436baac0": "Site ayarları",
@@ -4081,6 +4109,7 @@
   "m_1eb24748a2dfb4": "Dil özellikleri yükleniyor",
   "m_1eb2eb9aa60cf2": "Yüklü tanımlar denetleniyor…",
   "m_1eb329e25cc73e": "Torrent sürümleri debrid hesabınız üzerinden akışa alınır.",
+  "m_1eb4e5a0839480": "Simkl ayarlarını kaydet",
   "m_1ebc587c4a89d4": "Ada, dizinleyiciye veya nedene göre filtrele…",
   "m_1ec00fba6be639": "Kalite",
   "m_1ec3617d2cde86": "Herhangi",
@@ -4178,6 +4207,7 @@
   "m_1f63847755c543": "{title} öğesini sürükleyerek sabitle",
   "m_1f63dd73d695c0": "Kaydedilen sırayı önizle",
   "m_1f6459b6d96d5b": "Uzak profil",
+  "m_1f664f6b9eec3b": "İzleme geçmişini içe aktarmak ve tamamlanan oynatmaları göndermek için bir izleyicinin Simkl hesabını bağlayın.",
   "m_1f69767390b86a": "Yıl",
   "m_1f6c206c676272": "Ana makine yok",
   "m_1f7223c74bf3d9": "Bir izleyici seçin",
@@ -4256,6 +4286,7 @@
   "m_1fe8763c7edbf2": "Gizli bilgiyi göster",
   "m_1fe9a3548a3056": "Minimum biçim puanı",
   "m_1feb91f603617e": "TV",
+  "m_1fed1cfe1ca4fc": "Simkl onayını aç",
   "m_1ff30d480cdeec": "Belirli izleyiciler",
   "m_1ff744c021f99f": {
     "one": "Tüm {count} izleyicinin gördüğü Plex Ana Sayfası",

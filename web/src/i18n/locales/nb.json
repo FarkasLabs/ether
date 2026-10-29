@@ -437,6 +437,7 @@
   "m_03213c1ff80106": "Ether dekrypterer nedlastingen med sikkerhetskopipassordet, sjekker sjekksummene og databasen, og klargjør den deretter i en separat datamappe. Ingenting endres før du stopper Ether og starter den fra den mappen.",
   "m_03220ccf27e3c6": "Tjeneste",
   "m_03247787be910a": "Evergreen",
+  "m_0325d90f9a82ff": "Simkl-innstillingene er lagret.",
   "m_032878aab35eb2": "Utilgjengelig serie",
   "m_0328e2be5b7581": {
     "one": "{count} minutt",
@@ -817,6 +818,7 @@
   "m_05e4aa1cda58ac": "Plex-server-URL",
   "m_05e4c1d12376f9": "Forhåndsvisning · {count}",
   "m_05e72ccb182a01": "La stå tom for å bruke den medfølgende ffmpeg.",
+  "m_05e77bc6927101": "Sist importerte aktivitet: {when}",
   "m_05ea87fc0d10d9": "Ikke bygget ennå",
   "m_05f0500aa8c134": "Legg til en indekserer",
   "m_05f250064a7948": "Legg til regel",
@@ -893,6 +895,7 @@
   "m_0679e8425086e0": "Koble til TMDB og velg titlene og metadataene seerne dine oppdager.",
   "m_067bb0539831f8": "Ikke på denne siden",
   "m_068139f25abb8b": "0.0.0.0 lytter på alle nettverksgrensesnitt.",
+  "m_06833aab41a35d": "Åpne godkjenningssiden til Simkl og skriv inn koden {code}.",
   "m_068bab67236a91": {
     "one": "{count} foreslått treff",
     "other": "{count} foreslåtte treff"
@@ -927,6 +930,7 @@
   "m_06bad1fa6cc4f9": "{channel} slutter å motta varsler. Leveringshistorikken beholdes.",
   "m_06bbd497183976": "lokal fil test avspilling",
   "m_06bbf60ee1e71a": "Animasjonsfilmer med PG eller lavere aldersgrense",
+  "m_06bc87a6a90cae": "Et historikkelement kunne ikke sendes.",
   "m_06bca84cfad22f": "Når tittelen kom inn i katalogen din",
   "m_06c0935072e32f": "Indekserer- og debrid-API-kall brukt av kildevalidering.",
   "m_06c12e2ed9b98b": "På kino nå",
@@ -1142,6 +1146,7 @@
   "m_08672e346ed98a": "av direkte IPTV-kanaler har programoppføringer",
   "m_0867352e4bc55a": "Avspilling byttet kilde",
   "m_0869c8ac9a4134": "Originalt omslag",
+  "m_086a0fea5bf230": "Sjekk tilkobling",
   "m_086ae5ebef35ab": {
     "one": "{count} lenke oppdatert",
     "other": "{count} lenker oppdatert"
@@ -1244,6 +1249,7 @@
   "m_092a782bcbb664": "Opprett en bot med BotFather, send den en melding først, og skriv deretter inn bot-tokenet og mål-chat-ID-en. Gruppechat-ID-er kan være negative.",
   "m_092af70629a76c": "Manglende plakater faller tilbake til TMDB. Sesonger og episoder beholder TMDB-omslag.",
   "m_092b213bf2afe9": "Spor {n}",
+  "m_092f7b7825363d": "Venter på godkjenning.",
   "m_092f8d6802688d": "Original",
   "m_09305281a52197": "Felt for {label}",
   "m_0931cd10fc2286": "STARTTLS (vanligvis 587)",
@@ -1309,6 +1315,7 @@
   "m_09a6372dc347db": "Last opp {name}",
   "m_09a87f5bfb453b": "Sist importert {when} · {span} med programoppføringer",
   "m_09a9b9012738ea": "Utgivelsen er festet",
+  "m_09ac1b92a7f43f": "Koble fra",
   "m_09ac7c244189c5": {
     "one": "{count} definisjon installert, og den brukes av indekserere ovenfor.",
     "other": "{count} definisjoner installert, alle brukt av indekserere ovenfor."
@@ -1344,6 +1351,7 @@
   "m_09ed7ba38ed5c0": "En M3U-spilleliste, eventuelt med en guide",
   "m_09eea65fa736d3": "Løsne",
   "m_09eecf68ce70d8": "Språk",
+  "m_09f0cf7f1a901d": "En anime-episode ble hoppet over fordi nummereringen ikke kunne bekreftes.",
   "m_09f138b73b2072": "Samlevarsel-forsinkelse (minutter)",
   "m_09f245efad9b11": "Redigerer {layer}. Dra en rad for å forankre den til den plassen for kun denne seeren.",
   "m_09f2c17d731155": "Tilgjengelighetsinnstillinger lagret",
@@ -1352,6 +1360,7 @@
   "m_09fc493cfce120": "Lagre og send testping",
   "m_09fd2b0ba528bc": "Ventetid {ms} ms · ingen bruk registrert denne måneden",
   "m_09ffdb5082d7fe": "Debug+",
+  "m_0a01c327f46051": "Synkroniser historikk",
   "m_0a047d973d6e39": "Regissert av",
   "m_0a0569b726b225": "Lagret",
   "m_0a05e691579a3a": "ukjent",
@@ -1367,6 +1376,10 @@
   "m_0a1e6292314c1b": "Gjenoppta nye strømmer",
   "m_0a1ed215e9aca5": "Ingen ukentlige rapporter er sendt ennå.",
   "m_0a1f6a6e22044c": "Juster timing",
+  "m_0a220beea2f81b": {
+    "one": "Koden utløper {time}. Vent minst {count} sekund mellom hver sjekk.",
+    "other": "Koden utløper {time}. Vent minst {count} sekunder mellom hver sjekk."
+  },
   "m_0a2669af912806": "Dette er et metadatabibliotek. Avspillingskilder løses når en seer trykker på avspilling.",
   "m_0a28c471d85ca2": "Gi samlingen et navn.",
   "m_0a2fd7667195a3": "Tillat HDR",
@@ -1670,6 +1683,10 @@
   "m_0c73b94faca1ed": "Katalogens helse",
   "m_0c743b3826f19b": "TV",
   "m_0c77cfbda0bd90": "Laster titler …",
+  "m_0c79ba4e8dcf94": {
+    "one": "Behandlet {count} historikkoppføring, hoppet over {skipped}.",
+    "other": "Behandlet {count} historikkoppføringer, hoppet over {skipped}."
+  },
   "m_0c7a3810288c4a": "App",
   "m_0c7e5b0f8762e0": "Den valgte filen overskrider størrelsesgrensen for import.",
   "m_0c7eed91df4e91": "Kildeseerens Plex-token",
@@ -1845,6 +1862,7 @@
   "m_0dae67d1ac7c4c": "Helgekveld",
   "m_0db284d0f8a678": "Indekserer fjernet",
   "m_0db7c4d3a22fa2": "Sett opp en kanal",
+  "m_0dbb25b7677340": "Synkroniseringen er satt på pause til {when}.",
   "m_0dbb50a9b27e1a": "Strømmetjeneste",
   "m_0dbdefec306063": "åpne",
   "m_0dbf9d2207c702": {
@@ -2171,6 +2189,7 @@
   "m_1073abec097e6c": "Offentlig vertsnavn",
   "m_107c55bf7f5fde": "Farger genererte omslag. Automatisk tilpasses hovedplakaten.",
   "m_107ef7c828b72e": "Av rapporterer versjonen Ether er verifisert mot. Plex-apper slår på funksjoner etter serverversjon, så sporing kan eksponere funksjoner Ether ikke støtter.",
+  "m_1082d1a6a743cc": "Simkl-kontoen er koblet til.",
   "m_1084ceab8e0923": {
     "one": "{count} henting",
     "other": "{count} hentinger"
@@ -2272,6 +2291,7 @@
     "other": "{count} lagt til"
   },
   "m_1138a4def1b4d0": "Katalogen kan ha endret seg siden forrige besøk.",
+  "m_113a8a4f50e4d5": "Historikkoppføringer i kø: {count}",
   "m_113cd3d4067144": {
     "one": "{count} samling · Omslag vist i Plex",
     "other": "{count} samlinger · Omslag vist i Plex"
@@ -2479,6 +2499,7 @@
     "one": "Nyeste oppføringer først. {count} oppføring er lagret i minnet.",
     "other": "Nyeste oppføringer først. {count} oppføringer er lagret i minnet."
   },
+  "m_128fa41a415266": "Må kobles til igjen",
   "m_12908cd74a0ff3": "oppstart kappløp varm",
   "m_1290df5277a7a7": "FFmpeg-detaljer",
   "m_129a23e10f8e0d": "Hold diskplass ledig (GiB)",
@@ -2796,6 +2817,7 @@
   "m_150d4141714c86": "Eier-token",
   "m_150e4f4a537a1f": "Klienter som brukte den som standard, vil bruke {profile}.",
   "m_15123a8748a0cf": "Lagre oppsett",
+  "m_151382d7c792f9": "Simkl er koblet fra.",
   "m_151665e44b96df": "Kun TV-episoder",
   "m_151769a9fde954": "Innstillinger",
   "m_15178f403e2dc1": "Andre steder",
@@ -2817,6 +2839,7 @@
   "m_152f2e75437c37": "Titler merket med et TMDB-nøkkelord",
   "m_1530a071c3f814": "Spilletid",
   "m_15364765e67f5a": "Egendefinert bilde-URL",
+  "m_153824e8dc2503": "Leveringskøen er full. Noen fullføringer ble ikke lagt i kø.",
   "m_153a49b5cbdb2d": "Importert oppføring bruker påloggingen til kilden sin; tillagte reserver bruker ingen",
   "m_153b591c96b759": "Porten som videresendes på ruteren din. 0 bruker serverporten.",
   "m_153b7806dcbd8a": "Lagre synlighet",
@@ -2824,6 +2847,7 @@
   "m_1542ffb4446264": "Spilt av",
   "m_15435288ba1090": "Kilden er importert",
   "m_1549705b6eb2a1": "Tidsblokker må ha gyldige start- og sluttider uten overlapp.",
+  "m_154a22a8b1bba6": "Registrer din egen Simkl AUTH V2-app. En enhetsapp trenger en klient-ID. Serverapper trenger også en klienthemmelighet.",
   "m_154b7942a282ca": "foretrekker {sources}",
   "m_154c9d7a784dda": "Fra",
   "m_154e5b21a86344": "Tilbakestill Hjem-duplikatfjerning",
@@ -3017,6 +3041,7 @@
   "m_16ac3b3a51af4e": "Ny",
   "m_16af1c381e0a96": "Failover",
   "m_16b5e03d146667": "{list} (filmer)",
+  "m_16b609ee054878": "Aktiver Simkl",
   "m_16b78968cf1c10": "Blokker …",
   "m_16ba1e30f4556a": "Hvorfor disse titlene?",
   "m_16bb42c944043e": "Offentlig port",
@@ -3065,6 +3090,7 @@
   "m_1714b1066bdca4": "Behold det som strømmes",
   "m_17152fb08bc875": "{day} {time}",
   "m_1715f6c892adb8": "Hvis du endrer lagringen eller mappen, må noden startes på nytt. Eksisterende hurtigbufrede byte blir værende i den opprinnelige mappen.",
+  "m_17167efa86027e": "Simkl kunne ikke gjenkjenne et historikkelement.",
   "m_171b382894bddd": "Klientidentifikator",
   "m_171c8f732a9d67": "Kunne ikke laste modeller: {error}",
   "m_171cc315f1d2f0": "Se-listeinnstillinger lagret",
@@ -3160,6 +3186,7 @@
   "m_17d092a4b6fbef": "Bruker opptil seks tilgjengelige medlemsplakater. For å velge filmene og rekkefølgen deres, bruk håndplukkede titler under Bygg og sorter etter Kilderekkefølge. Omslaget faller tilbake til ett enkelt bilde når færre enn fire plakater er tilgjengelige.",
   "m_17d18603d1b603": "Direkte",
   "m_17d70445db7cd8": "Alle med tilgang til Direkte-TV",
+  "m_17dd578a313a44": "Simkl-autorisasjonen er utløpt eller trukket tilbake. Koble til igjen for å fortsette.",
   "m_17e1ea676b52a8": "Kapitler og hopp over-markører",
   "m_17e280c82d8638": "Venter på en strøm · {date}",
   "m_17e4ab8ca11d3d": "En stabil tilfeldig rekkefølge; programguiden hopper aldri.",
@@ -3396,6 +3423,7 @@
   "m_197383d90f0087": "Lagre korrigering",
   "m_19746b0c3cb06c": "Test OpenSubtitles",
   "m_197478dba70ea3": "Rediger rekkefølge for {viewer}",
+  "m_19759626500d10": "Synkronisering beholder eksisterende historikk og fjerner ikke sette elementer. Anime-episoder uten bekreftet tilordning hoppes over.",
   "m_197805698e6a5b": "Når oppsettet er fullført, låses denne administrasjonssiden til Plex-kontoen din. Du kan åpne oppsettet igjen senere fra Tilkobling.",
   "m_197f395ae133e3": "Nye programoppføringer er i programguiden.",
   "m_1982dc436baac0": "Nettstedsinnstillinger",
@@ -4081,6 +4109,7 @@
   "m_1eb24748a2dfb4": "Laster språkfunksjoner",
   "m_1eb2eb9aa60cf2": "Sjekker installerte definisjoner…",
   "m_1eb329e25cc73e": "Torrent-utgivelser strømmes via debrid-kontoen din.",
+  "m_1eb4e5a0839480": "Lagre Simkl-innstillinger",
   "m_1ebc587c4a89d4": "Filtrer etter navn, indekserer eller årsak …",
   "m_1ec00fba6be639": "Kvalitet",
   "m_1ec3617d2cde86": "Alle",
@@ -4178,6 +4207,7 @@
   "m_1f63847755c543": "Forankre {title} ved å dra",
   "m_1f63dd73d695c0": "Forhåndsvis lagret rekkefølge",
   "m_1f6459b6d96d5b": "Ekstern profil",
+  "m_1f664f6b9eec3b": "Koble til en seers Simkl-konto for å importere visningshistorikk og sende fullførte avspillinger.",
   "m_1f69767390b86a": "År",
   "m_1f6c206c676272": "Ingen vert",
   "m_1f7223c74bf3d9": "Velg en seer",
@@ -4256,6 +4286,7 @@
   "m_1fe8763c7edbf2": "Vis hemmeligheten",
   "m_1fe9a3548a3056": "Minimum formatpoeng",
   "m_1feb91f603617e": "TV",
+  "m_1fed1cfe1ca4fc": "Åpne Simkl-godkjenning",
   "m_1ff30d480cdeec": "Bestemte seere",
   "m_1ff744c021f99f": {
     "one": "Plex Hjem alle {count} seer får",

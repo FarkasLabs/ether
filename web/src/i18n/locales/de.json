@@ -437,6 +437,7 @@
   "m_03213c1ff80106": "Ether entschlüsselt den Download mit dem Backup-Passwort, prüft Prüfsummen und Datenbank und bereitet ihn dann in einem separaten Datenordner vor. Es ändert sich nichts, bis du Ether beendest und aus diesem Ordner startest.",
   "m_03220ccf27e3c6": "Dienst",
   "m_03247787be910a": "Evergreens",
+  "m_0325d90f9a82ff": "Simkl-Einstellungen gespeichert.",
   "m_032878aab35eb2": "Nicht verfügbare Serie",
   "m_0328e2be5b7581": {
     "one": "{count} Minute",
@@ -817,6 +818,7 @@
   "m_05e4aa1cda58ac": "Plex-Server-URL",
   "m_05e4c1d12376f9": "Vorschau · {count}",
   "m_05e72ccb182a01": "Leer lassen, um das mitgelieferte ffmpeg zu verwenden.",
+  "m_05e77bc6927101": "Zuletzt importierte Aktivität: {when}",
   "m_05ea87fc0d10d9": "Noch nicht erstellt",
   "m_05f0500aa8c134": "Indexer hinzufügen",
   "m_05f250064a7948": "Regel hinzufügen",
@@ -893,6 +895,7 @@
   "m_0679e8425086e0": "Verbinde TMDB und lege fest, welche Titel und Metadaten deine Zuschauer entdecken.",
   "m_067bb0539831f8": "Nicht auf dieser Seite",
   "m_068139f25abb8b": "0.0.0.0 lauscht auf jeder Netzwerkschnittstelle.",
+  "m_06833aab41a35d": "Öffne die Simkl-Genehmigungsseite und gib den Code {code} ein.",
   "m_068bab67236a91": {
     "one": "{count} vorgeschlagener Treffer",
     "other": "{count} vorgeschlagene Treffer"
@@ -927,6 +930,7 @@
   "m_06bad1fa6cc4f9": "{channel} erhält keine Benachrichtigungen mehr. Der Zustellverlauf bleibt erhalten.",
   "m_06bbd497183976": "lokale Datei Test Wiedergabe",
   "m_06bbf60ee1e71a": "Animationsfilme mit Freigabe PG und darunter",
+  "m_06bc87a6a90cae": "Ein Verlaufseintrag konnte nicht gesendet werden.",
   "m_06bca84cfad22f": "Wann der Titel in deinen Katalog kam",
   "m_06c0935072e32f": "Indexer- und Debrid-API-Aufrufe der Quellenprüfung.",
   "m_06c12e2ed9b98b": "Aktuell im Kino",
@@ -1142,6 +1146,7 @@
   "m_08672e346ed98a": "der Live-IPTV-Kanäle haben Programmeinträge",
   "m_0867352e4bc55a": "Wiedergabe hat die Quelle gewechselt",
   "m_0869c8ac9a4134": "Originales Artwork",
+  "m_086a0fea5bf230": "Verbindung prüfen",
   "m_086ae5ebef35ab": {
     "one": "{count} Link aktualisiert",
     "other": "{count} Links aktualisiert"
@@ -1244,6 +1249,7 @@
   "m_092a782bcbb664": "Erstelle einen Bot mit BotFather, schreibe ihm zuerst eine Nachricht und gib dann sein Bot-Token und die Ziel-Chat-ID ein. Gruppen-Chat-IDs können negativ sein.",
   "m_092af70629a76c": "Fehlende Poster werden durch TMDB ersetzt. Staffeln und Episoden behalten TMDB-Artwork.",
   "m_092b213bf2afe9": "Trace {n}",
+  "m_092f7b7825363d": "Warten auf Genehmigung.",
   "m_092f8d6802688d": "Original",
   "m_09305281a52197": "Feld {label}",
   "m_0931cd10fc2286": "STARTTLS (meist 587)",
@@ -1309,6 +1315,7 @@
   "m_09a6372dc347db": "{name} hochladen",
   "m_09a87f5bfb453b": "Zuletzt importiert {when} · {span} Programmeinträge",
   "m_09a9b9012738ea": "Release angeheftet",
+  "m_09ac1b92a7f43f": "Trennen",
   "m_09ac7c244189c5": {
     "one": "{count} Definition installiert, sie wird von deinen Indexern oben verwendet.",
     "other": "{count} Definitionen installiert, alle werden von deinen Indexern oben verwendet."
@@ -1344,6 +1351,7 @@
   "m_09ed7ba38ed5c0": "Eine M3U-Playlist, optional mit Programm",
   "m_09eea65fa736d3": "Lösen",
   "m_09eecf68ce70d8": "Sprache",
+  "m_09f0cf7f1a901d": "Eine Anime-Folge wurde übersprungen, weil ihre Nummerierung nicht überprüft werden konnte.",
   "m_09f138b73b2072": "Zusammenfassungsverzögerung (Minuten)",
   "m_09f245efad9b11": "Bearbeitet wird: {layer}. Ziehe eine Reihe, um sie nur für diesen Zuschauer an dieser Position zu verankern.",
   "m_09f2c17d731155": "Verfügbarkeitseinstellungen gespeichert",
@@ -1352,6 +1360,7 @@
   "m_09fc493cfce120": "Speichern und Test-Ping senden",
   "m_09fd2b0ba528bc": "Latenz {ms} ms · keine Nutzung in diesem Monat aufgezeichnet",
   "m_09ffdb5082d7fe": "Debug+",
+  "m_0a01c327f46051": "Verlauf synchronisieren",
   "m_0a047d973d6e39": "Regie",
   "m_0a0569b726b225": "Gespeichert",
   "m_0a05e691579a3a": "unbekannt",
@@ -1367,6 +1376,10 @@
   "m_0a1e6292314c1b": "Neue Streams fortsetzen",
   "m_0a1ed215e9aca5": "Noch keine Wochenberichte gesendet.",
   "m_0a1f6a6e22044c": "Timing anpassen",
+  "m_0a220beea2f81b": {
+    "one": "Der Code läuft um {time} ab. Warte zwischen den Prüfungen mindestens {count} Sekunde.",
+    "other": "Der Code läuft um {time} ab. Warte zwischen den Prüfungen mindestens {count} Sekunden."
+  },
   "m_0a2669af912806": "Dies ist eine Metadaten-Mediathek. Wiedergabequellen werden aufgelöst, sobald ein Zuschauer auf Wiedergabe drückt.",
   "m_0a28c471d85ca2": "Gib der Sammlung einen Namen.",
   "m_0a2fd7667195a3": "HDR erlauben",
@@ -1670,6 +1683,10 @@
   "m_0c73b94faca1ed": "Katalogzustand",
   "m_0c743b3826f19b": "FERNSEHEN",
   "m_0c77cfbda0bd90": "Titel werden geladen…",
+  "m_0c79ba4e8dcf94": {
+    "one": "{count} Verlaufseintrag verarbeitet; {skipped} übersprungen.",
+    "other": "{count} Verlaufseinträge verarbeitet; {skipped} übersprungen."
+  },
   "m_0c7a3810288c4a": "App",
   "m_0c7e5b0f8762e0": "Die ausgewählte Datei überschreitet das Größenlimit für den Import.",
   "m_0c7eed91df4e91": "Plex-Token des Quell-Zuschauers",
@@ -1845,6 +1862,7 @@
   "m_0dae67d1ac7c4c": "Wochenendabend",
   "m_0db284d0f8a678": "Indexer entfernt",
   "m_0db7c4d3a22fa2": "Kanal einrichten",
+  "m_0dbb25b7677340": "Synchronisierung pausiert bis {when}.",
   "m_0dbb50a9b27e1a": "Streamingdienst",
   "m_0dbdefec306063": "öffnen",
   "m_0dbf9d2207c702": {
@@ -2171,6 +2189,7 @@
   "m_1073abec097e6c": "Öffentlicher Hostname",
   "m_107c55bf7f5fde": "Färbt generiertes Artwork ein. „Automatisch“ passt sich dem ersten Poster an.",
   "m_107ef7c828b72e": "„Aus“ meldet die Version, gegen die Ether geprüft wurde. Plex-Apps schalten Funktionen anhand der Serverversion frei, daher kann das Nachverfolgen Funktionen offenlegen, die Ether nicht unterstützt.",
+  "m_1082d1a6a743cc": "Simkl-Konto verbunden.",
   "m_1084ceab8e0923": {
     "one": "{count} Grab",
     "other": "{count} Grabs"
@@ -2272,6 +2291,7 @@
     "other": "{count} hinzugefügt"
   },
   "m_1138a4def1b4d0": "Der Katalog hat sich seit deinem letzten Besuch möglicherweise geändert.",
+  "m_113a8a4f50e4d5": "Eingereihte Verlaufseinträge: {count}",
   "m_113cd3d4067144": {
     "one": "{count} Sammlung · In Plex angezeigtes Artwork",
     "other": "{count} Sammlungen · In Plex angezeigtes Artwork"
@@ -2479,6 +2499,7 @@
     "one": "Neueste Einträge zuerst. {count} Eintrag im Arbeitsspeicher gehalten.",
     "other": "Neueste Einträge zuerst. {count} Einträge im Arbeitsspeicher gehalten."
   },
+  "m_128fa41a415266": "Erneutes Verbinden erforderlich",
   "m_12908cd74a0ff3": "Start Wettlauf Vorwärmen",
   "m_1290df5277a7a7": "FFmpeg-Details",
   "m_129a23e10f8e0d": "Festplattenplatz freihalten (GiB)",
@@ -2796,6 +2817,7 @@
   "m_150d4141714c86": "Besitzer-Token",
   "m_150e4f4a537a1f": "Clients, die es als Standard verwendet haben, verwenden {profile}.",
   "m_15123a8748a0cf": "Layout speichern",
+  "m_151382d7c792f9": "Simkl getrennt.",
   "m_151665e44b96df": "Nur Serienepisoden",
   "m_151769a9fde954": "Einstellungen",
   "m_15178f403e2dc1": "Anderswo",
@@ -2817,6 +2839,7 @@
   "m_152f2e75437c37": "Titel mit einem bestimmten TMDB-Schlagwort",
   "m_1530a071c3f814": "Laufzeit",
   "m_15364765e67f5a": "URL des eigenen Bildes",
+  "m_153824e8dc2503": "Die Zustellwarteschlange ist voll; einige Abschlüsse wurden nicht eingereiht.",
   "m_153a49b5cbdb2d": "Der importierte Eintrag nutzt die Anmeldung seiner Quelle; hinzugefügte Backups nutzen keine",
   "m_153b591c96b759": "Der an deinem Router weitergeleitete Port. 0 verwendet den Server-Port.",
   "m_153b7806dcbd8a": "Sichtbarkeit speichern",
@@ -2824,6 +2847,7 @@
   "m_1542ffb4446264": "Abgespielt",
   "m_15435288ba1090": "Quelle importiert",
   "m_1549705b6eb2a1": "Zeitblöcke brauchen gültige Start- und Endzeiten ohne Überschneidung.",
+  "m_154a22a8b1bba6": "Registriere deine eigene Simkl-AUTH-V2-App. Für eine Geräte-App ist eine Client-ID nötig; bei Server-App-Registrierungen wird außerdem ein Client-Secret benötigt.",
   "m_154b7942a282ca": "bevorzugt {sources}",
   "m_154c9d7a784dda": "Von",
   "m_154e5b21a86344": "Startseiten-Deduplizierung zurücksetzen",
@@ -3017,6 +3041,7 @@
   "m_16ac3b3a51af4e": "Neu",
   "m_16af1c381e0a96": "Failover",
   "m_16b5e03d146667": "{list} (Filme)",
+  "m_16b609ee054878": "Simkl aktivieren",
   "m_16b78968cf1c10": "Sperren…",
   "m_16ba1e30f4556a": "Warum diese Titel?",
   "m_16bb42c944043e": "Öffentlicher Port",
@@ -3065,6 +3090,7 @@
   "m_1714b1066bdca4": "Gestreamtes behalten",
   "m_17152fb08bc875": "{day} {time}",
   "m_1715f6c892adb8": "Eine Änderung des Speichers oder seines Ordners erfordert einen Neustart des Knotens. Vorhandene Cache-Bytes bleiben in ihrem ursprünglichen Ordner.",
+  "m_17167efa86027e": "Simkl konnte einen Verlaufseintrag nicht zuordnen.",
   "m_171b382894bddd": "Client-Kennung",
   "m_171c8f732a9d67": "Modelle konnten nicht geladen werden: {error}",
   "m_171cc315f1d2f0": "Merklisten-Einstellungen gespeichert",
@@ -3160,6 +3186,7 @@
   "m_17d092a4b6fbef": "Verwendet bis zu sechs verfügbare Poster der enthaltenen Titel. Um die Filme und ihre Reihenfolge selbst zu bestimmen, nutze unter „Aufbau“ handverlesene Titel und sortiere nach „Reihenfolge der Quelle“. Stehen weniger als vier Poster zur Verfügung, wird ein einzelnes Bild verwendet.",
   "m_17d18603d1b603": "Live",
   "m_17d70445db7cd8": "Alle mit Live-TV-Zugriff",
+  "m_17dd578a313a44": "Die Simkl-Autorisierung ist abgelaufen oder wurde widerrufen. Verbinde erneut, um fortzufahren.",
   "m_17e1ea676b52a8": "Kapitel und Überspringen-Marker",
   "m_17e280c82d8638": "Warten auf einen Stream · {date}",
   "m_17e4ab8ca11d3d": "Eine stabile Zufallsreihenfolge; das Programm springt nie.",
@@ -3396,6 +3423,7 @@
   "m_197383d90f0087": "Korrektur speichern",
   "m_19746b0c3cb06c": "OpenSubtitles testen",
   "m_197478dba70ea3": "Reihenfolge für {viewer} bearbeiten",
+  "m_19759626500d10": "Die Synchronisierung behält den vorhandenen Verlauf bei und entfernt keine gesehenen Titel. Anime-Folgen ohne überprüfte Zuordnung werden übersprungen.",
   "m_197805698e6a5b": "Mit dem Abschluss der Einrichtung wird diese Admin-Seite an dein Plex-Konto gebunden. Du kannst die Einrichtung später über „Konnektivität“ erneut öffnen.",
   "m_197f395ae133e3": "Neue Programmeinträge sind im Programm.",
   "m_1982dc436baac0": "Seiteneinstellungen",
@@ -4081,6 +4109,7 @@
   "m_1eb24748a2dfb4": "Sprachfunktionen werden geladen",
   "m_1eb2eb9aa60cf2": "Installierte Definitionen werden geprüft…",
   "m_1eb329e25cc73e": "Torrent-Releases werden über dein Debrid-Konto gestreamt.",
+  "m_1eb4e5a0839480": "Simkl-Einstellungen speichern",
   "m_1ebc587c4a89d4": "Nach Name, Indexer oder Grund filtern…",
   "m_1ec00fba6be639": "Qualität",
   "m_1ec3617d2cde86": "Beliebig",
@@ -4178,6 +4207,7 @@
   "m_1f63847755c543": "{title} durch Ziehen verankern",
   "m_1f63dd73d695c0": "Gespeicherte Reihenfolge ansehen",
   "m_1f6459b6d96d5b": "Remote-Profil",
+  "m_1f664f6b9eec3b": "Verbinde das Simkl-Konto eines Zuschauers, um den Wiedergabeverlauf zu importieren und abgeschlossene Wiedergaben zu senden.",
   "m_1f69767390b86a": "Jahr",
   "m_1f6c206c676272": "Kein Host",
   "m_1f7223c74bf3d9": "Zuschauer auswählen",
@@ -4256,6 +4286,7 @@
   "m_1fe8763c7edbf2": "Geheimnis anzeigen",
   "m_1fe9a3548a3056": "Minimale Format-Wertung",
   "m_1feb91f603617e": "TV",
+  "m_1fed1cfe1ca4fc": "Simkl-Genehmigung öffnen",
   "m_1ff30d480cdeec": "Bestimmte Zuschauer",
   "m_1ff744c021f99f": {
     "one": "Die Plex-Startseite, die {count} Zuschauer erhält",

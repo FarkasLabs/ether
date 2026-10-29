@@ -437,6 +437,7 @@
   "m_03213c1ff80106": "Ether ontsleutelt de download met het back-upwachtwoord, controleert de checksums en de database en bereidt het daarna voor in een aparte gegevensmap. Er verandert niets totdat je Ether stopt en vanuit die map start.",
   "m_03220ccf27e3c6": "Dienst",
   "m_03247787be910a": "Evergreens",
+  "m_0325d90f9a82ff": "Simkl-instellingen opgeslagen.",
   "m_032878aab35eb2": "Niet-beschikbare serie",
   "m_0328e2be5b7581": {
     "one": "{count} minuut",
@@ -817,6 +818,7 @@
   "m_05e4aa1cda58ac": "Plex-server-URL",
   "m_05e4c1d12376f9": "Voorbeeld · {count}",
   "m_05e72ccb182a01": "Laat leeg om de meegeleverde ffmpeg te gebruiken.",
+  "m_05e77bc6927101": "Laatst geïmporteerde activiteit: {when}",
   "m_05ea87fc0d10d9": "Nog niet opgebouwd",
   "m_05f0500aa8c134": "Een indexer toevoegen",
   "m_05f250064a7948": "Regel toevoegen",
@@ -893,6 +895,7 @@
   "m_0679e8425086e0": "Koppel TMDB en kies de titels en metadata die je kijkers ontdekken.",
   "m_067bb0539831f8": "Niet op deze pagina",
   "m_068139f25abb8b": "0.0.0.0 luistert op elke netwerkinterface.",
+  "m_06833aab41a35d": "Open de Simkl-goedkeuringspagina en voer code {code} in.",
   "m_068bab67236a91": {
     "one": "{count} voorgestelde koppeling",
     "other": "{count} voorgestelde koppelingen"
@@ -927,6 +930,7 @@
   "m_06bad1fa6cc4f9": "{channel} ontvangt geen meldingen meer. De bezorggeschiedenis blijft behouden.",
   "m_06bbd497183976": "lokaal bestand test afspelen",
   "m_06bbf60ee1e71a": "Animatiefilms met classificatie PG en lager",
+  "m_06bc87a6a90cae": "Een geschiedenisitem kon niet worden verzonden.",
   "m_06bca84cfad22f": "Wanneer de titel aan je catalogus is toegevoegd",
   "m_06c0935072e32f": "Indexer- en debrid-API-aanroepen die bronvalidatie gebruikt.",
   "m_06c12e2ed9b98b": "Nu in de bioscoop",
@@ -1142,6 +1146,7 @@
   "m_08672e346ed98a": "van de live IPTV-kanalen heeft programma-informatie",
   "m_0867352e4bc55a": "Afspelen is naar een andere bron overgeschakeld",
   "m_0869c8ac9a4134": "Origineel artwork",
+  "m_086a0fea5bf230": "Verbinding controleren",
   "m_086ae5ebef35ab": {
     "one": "{count} link vernieuwd",
     "other": "{count} links vernieuwd"
@@ -1244,6 +1249,7 @@
   "m_092a782bcbb664": "Maak een bot aan met BotFather, stuur eerst een bericht naar de bot en voer daarna het bottoken en de chat-ID van de bestemming in. Chat-ID's van groepen kunnen negatief zijn.",
   "m_092af70629a76c": "Ontbrekende posters vallen terug op TMDB. Seizoenen en afleveringen behouden TMDB-artwork.",
   "m_092b213bf2afe9": "Trace {n}",
+  "m_092f7b7825363d": "Wachten op goedkeuring.",
   "m_092f8d6802688d": "Origineel",
   "m_09305281a52197": "Veld {label}",
   "m_0931cd10fc2286": "STARTTLS (meestal 587)",
@@ -1309,6 +1315,7 @@
   "m_09a6372dc347db": "{name} uploaden",
   "m_09a87f5bfb453b": "Laatst geïmporteerd {when} · {span} aan programma's",
   "m_09a9b9012738ea": "Release vastgepind",
+  "m_09ac1b92a7f43f": "Loskoppelen",
   "m_09ac7c244189c5": {
     "one": "{count} definitie geïnstalleerd, gebruikt door je indexers hierboven.",
     "other": "{count} definities geïnstalleerd, allemaal gebruikt door je indexers hierboven."
@@ -1344,6 +1351,7 @@
   "m_09ed7ba38ed5c0": "Een M3U-afspeellijst, eventueel met een gids",
   "m_09eea65fa736d3": "Pin verwijderen",
   "m_09eecf68ce70d8": "Taal",
+  "m_09f0cf7f1a901d": "Een anime-aflevering is overgeslagen omdat de nummering niet kon worden geverifieerd.",
   "m_09f138b73b2072": "Overzichtsvertraging (minuten)",
   "m_09f245efad9b11": "Je bewerkt {layer}. Sleep een rij om hem alleen voor deze kijker aan die positie vast te zetten.",
   "m_09f2c17d731155": "Beschikbaarheidsinstellingen opgeslagen",
@@ -1352,6 +1360,7 @@
   "m_09fc493cfce120": "Opslaan en testping versturen",
   "m_09fd2b0ba528bc": "Latentie {ms} ms · geen gebruik geregistreerd deze maand",
   "m_09ffdb5082d7fe": "Debug+",
+  "m_0a01c327f46051": "Geschiedenis synchroniseren",
   "m_0a047d973d6e39": "Geregisseerd door",
   "m_0a0569b726b225": "Opgeslagen",
   "m_0a05e691579a3a": "onbekend",
@@ -1367,6 +1376,10 @@
   "m_0a1e6292314c1b": "Nieuwe streams hervatten",
   "m_0a1ed215e9aca5": "Nog geen wekelijkse rapporten verstuurd.",
   "m_0a1f6a6e22044c": "Timing aanpassen",
+  "m_0a220beea2f81b": {
+    "one": "De code verloopt om {time}. Wacht tussen controles minstens {count} seconde.",
+    "other": "De code verloopt om {time}. Wacht tussen controles minstens {count} seconden."
+  },
   "m_0a2669af912806": "Dit is een metadatabibliotheek. Afspeelbronnen worden opgezocht zodra een kijker op afspelen drukt.",
   "m_0a28c471d85ca2": "Geef de collectie een naam.",
   "m_0a2fd7667195a3": "HDR toestaan",
@@ -1670,6 +1683,10 @@
   "m_0c73b94faca1ed": "Catalogusstatus",
   "m_0c743b3826f19b": "TELEVISIE",
   "m_0c77cfbda0bd90": "Titels laden…",
+  "m_0c79ba4e8dcf94": {
+    "one": "{count} geschiedenisitem verwerkt; {skipped} overgeslagen.",
+    "other": "{count} geschiedenisitems verwerkt; {skipped} overgeslagen."
+  },
   "m_0c7a3810288c4a": "App",
   "m_0c7e5b0f8762e0": "Het geselecteerde bestand overschrijdt de groottelimiet voor import.",
   "m_0c7eed91df4e91": "Plex-token van de brongebruiker",
@@ -1845,6 +1862,7 @@
   "m_0dae67d1ac7c4c": "Weekendavond",
   "m_0db284d0f8a678": "Indexer verwijderd",
   "m_0db7c4d3a22fa2": "Een kanaal instellen",
+  "m_0dbb25b7677340": "Synchronisatie gepauzeerd tot {when}.",
   "m_0dbb50a9b27e1a": "Streamingdienst",
   "m_0dbdefec306063": "openen",
   "m_0dbf9d2207c702": {
@@ -2171,6 +2189,7 @@
   "m_1073abec097e6c": "Openbare hostnaam",
   "m_107c55bf7f5fde": "Kleurt gegenereerd artwork. Automatisch sluit aan bij de hoofdposter.",
   "m_107ef7c828b72e": "Uit rapporteert de versie waartegen Ether is geverifieerd. Plex-apps schakelen functies in op basis van de serverversie, dus volgen kan functies tonen die Ether niet ondersteunt.",
+  "m_1082d1a6a743cc": "Simkl-account verbonden.",
   "m_1084ceab8e0923": {
     "one": "{count} grab",
     "other": "{count} grabs"
@@ -2272,6 +2291,7 @@
     "other": "{count} toegevoegd"
   },
   "m_1138a4def1b4d0": "De catalogus is mogelijk gewijzigd sinds je laatste bezoek.",
+  "m_113a8a4f50e4d5": "Geschiedenisitems in de wachtrij: {count}",
   "m_113cd3d4067144": {
     "one": "{count} collectie · Artwork zoals getoond in Plex",
     "other": "{count} collecties · Artwork zoals getoond in Plex"
@@ -2479,6 +2499,7 @@
     "one": "Nieuwste items eerst. {count} item bewaard in het geheugen.",
     "other": "Nieuwste items eerst. {count} items bewaard in het geheugen."
   },
+  "m_128fa41a415266": "Opnieuw verbinden vereist",
   "m_12908cd74a0ff3": "opstart race opwarmen",
   "m_1290df5277a7a7": "FFmpeg-details",
   "m_129a23e10f8e0d": "Schijfruimte vrijhouden (GiB)",
@@ -2796,6 +2817,7 @@
   "m_150d4141714c86": "Eigenaarstoken",
   "m_150e4f4a537a1f": "Clients die het als standaard gebruikten, gebruiken {profile}.",
   "m_15123a8748a0cf": "Indeling opslaan",
+  "m_151382d7c792f9": "Simkl losgekoppeld.",
   "m_151665e44b96df": "Alleen tv-afleveringen",
   "m_151769a9fde954": "Instellingen",
   "m_15178f403e2dc1": "Elders",
@@ -2817,6 +2839,7 @@
   "m_152f2e75437c37": "Titels met een TMDB-trefwoord",
   "m_1530a071c3f814": "Speelduur",
   "m_15364765e67f5a": "Eigen afbeeldings-URL",
+  "m_153824e8dc2503": "De bezorgwachtrij is vol; sommige voltooide afspeelacties zijn niet in de wachtrij geplaatst.",
   "m_153a49b5cbdb2d": "Geïmporteerde invoer gebruikt de login van de bron; toegevoegde back-ups gebruiken er geen",
   "m_153b591c96b759": "De poort die op je router wordt doorgestuurd. 0 gebruikt de serverpoort.",
   "m_153b7806dcbd8a": "Zichtbaarheid opslaan",
@@ -2824,6 +2847,7 @@
   "m_1542ffb4446264": "Afgespeeld",
   "m_15435288ba1090": "Bron geïmporteerd",
   "m_1549705b6eb2a1": "Tijdblokken moeten geldige begin- en eindtijden hebben en mogen elkaar niet overlappen.",
+  "m_154a22a8b1bba6": "Registreer je eigen Simkl AUTH V2-app. Een apparaat-app heeft een client-ID nodig; voor serverapp-registraties is ook een clientgeheim vereist.",
   "m_154b7942a282ca": "geeft de voorkeur aan {sources}",
   "m_154c9d7a784dda": "Van",
   "m_154e5b21a86344": "Home-ontdubbeling terugzetten",
@@ -3017,6 +3041,7 @@
   "m_16ac3b3a51af4e": "Nieuw",
   "m_16af1c381e0a96": "Failover",
   "m_16b5e03d146667": "{list} (films)",
+  "m_16b609ee054878": "Simkl inschakelen",
   "m_16b78968cf1c10": "Blokkeren…",
   "m_16ba1e30f4556a": "Waarom deze titels?",
   "m_16bb42c944043e": "Openbare poort",
@@ -3065,6 +3090,7 @@
   "m_1714b1066bdca4": "Bewaar wat gestreamd is",
   "m_17152fb08bc875": "{day} {time}",
   "m_1715f6c892adb8": "Als je de opslag of de map wijzigt, moet de node opnieuw worden opgestart. Bestaande cachebytes blijven in hun oorspronkelijke map.",
+  "m_17167efa86027e": "Simkl kon een geschiedenisitem niet herleiden.",
   "m_171b382894bddd": "Client-ID",
   "m_171c8f732a9d67": "Modellen laden mislukt: {error}",
   "m_171cc315f1d2f0": "Watchlist-instellingen opgeslagen",
@@ -3160,6 +3186,7 @@
   "m_17d092a4b6fbef": "Gebruikt maximaal zes beschikbare posters van leden. Om de films en hun volgorde te kiezen, gebruik je handmatig gekozen titels bij Opbouw en sorteer je op Volgorde van de bron. Het artwork valt terug op één afbeelding als er minder dan vier posters beschikbaar zijn.",
   "m_17d18603d1b603": "Live",
   "m_17d70445db7cd8": "Iedereen met toegang tot Live tv",
+  "m_17dd578a313a44": "De Simkl-autorisatie is verlopen of ingetrokken. Verbind opnieuw om door te gaan.",
   "m_17e1ea676b52a8": "Hoofdstukken en overslaanmarkeringen",
   "m_17e280c82d8638": "Wachten op een stream · {date}",
   "m_17e4ab8ca11d3d": "Een stabiele shuffle; de gids springt nooit.",
@@ -3396,6 +3423,7 @@
   "m_197383d90f0087": "Correctie opslaan",
   "m_19746b0c3cb06c": "OpenSubtitles testen",
   "m_197478dba70ea3": "Volgorde voor {viewer} bewerken",
+  "m_19759626500d10": "Synchronisatie behoudt de bestaande geschiedenis en verwijdert geen bekeken titels. Anime-afleveringen zonder geverifieerde koppeling worden overgeslagen.",
   "m_197805698e6a5b": "Als je de installatie afrondt, wordt deze beheerpagina aan je Plex-account vergrendeld. Je kunt de installatie later opnieuw openen via Connectiviteit.",
   "m_197f395ae133e3": "Nieuwe programma's staan in de gids.",
   "m_1982dc436baac0": "Site-instellingen",
@@ -4081,6 +4109,7 @@
   "m_1eb24748a2dfb4": "Taalfuncties laden",
   "m_1eb2eb9aa60cf2": "Geïnstalleerde definities controleren…",
   "m_1eb329e25cc73e": "Torrentreleases streamen via je debrid-account.",
+  "m_1eb4e5a0839480": "Simkl-instellingen opslaan",
   "m_1ebc587c4a89d4": "Filter op naam, indexer of reden…",
   "m_1ec00fba6be639": "Kwaliteit",
   "m_1ec3617d2cde86": "Elke",
@@ -4178,6 +4207,7 @@
   "m_1f63847755c543": "{title} vastzetten door te slepen",
   "m_1f63dd73d695c0": "Voorbeeld van opgeslagen volgorde",
   "m_1f6459b6d96d5b": "Extern profiel",
+  "m_1f664f6b9eec3b": "Koppel het Simkl-account van een kijker om kijkgeschiedenis te importeren en voltooide afspeelacties te versturen.",
   "m_1f69767390b86a": "Jaar",
   "m_1f6c206c676272": "Geen host",
   "m_1f7223c74bf3d9": "Kies een kijker",
@@ -4256,6 +4286,7 @@
   "m_1fe8763c7edbf2": "Geheim tonen",
   "m_1fe9a3548a3056": "Minimale formaatscore",
   "m_1feb91f603617e": "Tv",
+  "m_1fed1cfe1ca4fc": "Simkl-goedkeuring openen",
   "m_1ff30d480cdeec": "Specifieke kijkers",
   "m_1ff744c021f99f": {
     "one": "De Plex Home die alle {count} kijker krijgt",

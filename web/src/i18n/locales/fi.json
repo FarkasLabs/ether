@@ -437,6 +437,7 @@
   "m_03213c1ff80106": "Ether purkaa latauksen salauksen varmuuskopion salasanalla, tarkistaa sen tarkistussummat ja tietokannan ja valmistelee sen erilliseen datakansioon. Mikään ei muutu, ennen kuin pysäytät Etherin ja käynnistät sen kyseisestä kansiosta.",
   "m_03220ccf27e3c6": "Palvelu",
   "m_03247787be910a": "Ikivihreä",
+  "m_0325d90f9a82ff": "Simkl-asetukset tallennettu.",
   "m_032878aab35eb2": "Ei saatavilla oleva sarja",
   "m_0328e2be5b7581": {
     "one": "{count} minuutti",
@@ -817,6 +818,7 @@
   "m_05e4aa1cda58ac": "Plex-palvelimen URL-osoite",
   "m_05e4c1d12376f9": "Esikatselu · {count}",
   "m_05e72ccb182a01": "Jätä tyhjäksi käyttääksesi mukana tulevaa ffmpegiä.",
+  "m_05e77bc6927101": "Viimeksi tuotu toiminta: {when}",
   "m_05ea87fc0d10d9": "Ei vielä rakennettu",
   "m_05f0500aa8c134": "Lisää indeksoija",
   "m_05f250064a7948": "Lisää sääntö",
@@ -893,6 +895,7 @@
   "m_0679e8425086e0": "Yhdistä TMDB ja valitse nimikkeet ja metatiedot, jotka katselijasi löytävät.",
   "m_067bb0539831f8": "Ei tällä sivulla",
   "m_068139f25abb8b": "0.0.0.0 kuuntelee kaikkia verkkoliitäntöjä.",
+  "m_06833aab41a35d": "Avaa Simklin hyväksymissivu ja anna koodi {code}.",
   "m_068bab67236a91": {
     "one": "{count} ehdotettu vastaavuus",
     "other": "{count} ehdotettua vastaavuutta"
@@ -927,6 +930,7 @@
   "m_06bad1fa6cc4f9": "{channel} lakkaa vastaanottamasta hälytyksiä. Sen toimitushistoria säilyy.",
   "m_06bbd497183976": "paikallinen tiedosto testi toisto",
   "m_06bbf60ee1e71a": "Animaatioelokuvat, joiden ikäluokitus on PG tai alempi",
+  "m_06bc87a6a90cae": "Yhtä historiakohdetta ei voitu lähettää.",
   "m_06bca84cfad22f": "Milloin nimike lisättiin katalogiisi",
   "m_06c0935072e32f": "Indeksoijan ja debridin API-kutsut, joita lähteiden validointi käyttää.",
   "m_06c12e2ed9b98b": "Nyt elokuvateattereissa",
@@ -1142,6 +1146,7 @@
   "m_08672e346ed98a": "live-IPTV-kanavista sisältää ohjelmatietoja",
   "m_0867352e4bc55a": "Toisto vaihtoi lähdettä",
   "m_0869c8ac9a4134": "Alkuperäinen kuvitus",
+  "m_086a0fea5bf230": "Tarkista yhteys",
   "m_086ae5ebef35ab": {
     "one": "{count} linkki päivitetty",
     "other": "{count} linkkiä päivitetty"
@@ -1244,6 +1249,7 @@
   "m_092a782bcbb664": "Luo botti BotFatherilla, lähetä sille ensin viesti ja anna sitten sen botin token ja kohteen keskustelun tunnus. Ryhmäkeskustelujen tunnukset voivat olla negatiivisia.",
   "m_092af70629a76c": "Puuttuvat julisteet haetaan TMDB:stä. Tuotantokaudet ja jaksot säilyttävät TMDB:n kuvituksen.",
   "m_092b213bf2afe9": "Jälki {n}",
+  "m_092f7b7825363d": "Odotetaan hyväksyntää.",
   "m_092f8d6802688d": "Alkuperäinen",
   "m_09305281a52197": "Kenttä: {label}",
   "m_0931cd10fc2286": "STARTTLS (yleensä 587)",
@@ -1309,6 +1315,7 @@
   "m_09a6372dc347db": "Lataa {name}",
   "m_09a87f5bfb453b": "Viimeksi tuotu {when} · {span} ohjelmatietoja",
   "m_09a9b9012738ea": "Julkaisu kiinnitetty",
+  "m_09ac1b92a7f43f": "Katkaise yhteys",
   "m_09ac7c244189c5": {
     "one": "{count} määritys asennettu, ja se on yllä olevien indeksoijiesi käytössä.",
     "other": "{count} määritystä asennettu, kaikki yllä olevien indeksoijiesi käytössä."
@@ -1344,6 +1351,7 @@
   "m_09ed7ba38ed5c0": "M3U-soittolista, tarvittaessa oppaan kanssa",
   "m_09eea65fa736d3": "Poista kiinnitys",
   "m_09eecf68ce70d8": "Kieli",
+  "m_09f0cf7f1a901d": "Anime-jakso ohitettiin, koska sen numerointia ei voitu vahvistaa.",
   "m_09f138b73b2072": "Yhteenvedon viive (minuuttia)",
   "m_09f245efad9b11": "Muokataan: {layer}. Ankkuroi rivi tähän paikkaan vetämällä, vain tälle katselijalle.",
   "m_09f2c17d731155": "Saatavuuden asetukset tallennettu",
@@ -1352,6 +1360,7 @@
   "m_09fc493cfce120": "Tallenna ja lähetä testiping",
   "m_09fd2b0ba528bc": "Viive {ms} ms · ei kirjattua käyttöä tässä kuussa",
   "m_09ffdb5082d7fe": "Debug+",
+  "m_0a01c327f46051": "Synkronoi historia",
   "m_0a047d973d6e39": "Ohjaaja",
   "m_0a0569b726b225": "Tallennettu",
   "m_0a05e691579a3a": "tuntematon",
@@ -1367,6 +1376,10 @@
   "m_0a1e6292314c1b": "Jatka uusia toistoja",
   "m_0a1ed215e9aca5": "Viikkoraportteja ei ole vielä lähetetty.",
   "m_0a1f6a6e22044c": "Säädä ajoitusta",
+  "m_0a220beea2f81b": {
+    "one": "Koodi vanhenee {time}. Odota vähintään {count} sekunti tarkistusten välillä.",
+    "other": "Koodi vanhenee {time}. Odota vähintään {count} sekuntia tarkistusten välillä."
+  },
   "m_0a2669af912806": "Tämä on metatietokirjasto. Toistolähteet selvitetään, kun katselija painaa toistoa.",
   "m_0a28c471d85ca2": "Anna kokoelmalle nimi.",
   "m_0a2fd7667195a3": "Salli HDR",
@@ -1670,6 +1683,10 @@
   "m_0c73b94faca1ed": "Katalogin kunto",
   "m_0c743b3826f19b": "TELEVISIO",
   "m_0c77cfbda0bd90": "Ladataan nimikkeitä…",
+  "m_0c79ba4e8dcf94": {
+    "one": "Käsitelty {count} historiamerkintä, ohitettu {skipped}.",
+    "other": "Käsitelty {count} historiamerkintää, ohitettu {skipped}."
+  },
   "m_0c7a3810288c4a": "Sovellus",
   "m_0c7e5b0f8762e0": "Valittu tiedosto ylittää tuonnin kokorajan.",
   "m_0c7eed91df4e91": "Lähdekatselijan Plex-token",
@@ -1845,6 +1862,7 @@
   "m_0dae67d1ac7c4c": "Viikonlopun ilta",
   "m_0db284d0f8a678": "Indeksoija poistettu",
   "m_0db7c4d3a22fa2": "Määritä kanava",
+  "m_0dbb25b7677340": "Synkronointi on keskeytetty, kunnes {when}.",
   "m_0dbb50a9b27e1a": "Suoratoistopalvelu",
   "m_0dbdefec306063": "avaa",
   "m_0dbf9d2207c702": {
@@ -2171,6 +2189,7 @@
   "m_1073abec097e6c": "Julkinen isäntänimi",
   "m_107c55bf7f5fde": "Sävyttää luodun kuvituksen. Automaattinen vastaa pääjulistetta.",
   "m_107ef7c828b72e": "Pois päältä ilmoittaa version, jota vasten Ether on varmennettu. Plex-sovellukset ottavat ominaisuuksia käyttöön palvelimen version mukaan, joten seuranta voi paljastaa ominaisuuksia, joita Ether ei tue.",
+  "m_1082d1a6a743cc": "Simkl-tili yhdistetty.",
   "m_1084ceab8e0923": {
     "one": "{count} lataus",
     "other": "{count} latausta"
@@ -2272,6 +2291,7 @@
     "other": "{count} lisätty"
   },
   "m_1138a4def1b4d0": "Katalogi on voinut muuttua edellisen käyntisi jälkeen.",
+  "m_113a8a4f50e4d5": "Jonossa olevat historiamerkinnät: {count}",
   "m_113cd3d4067144": {
     "one": "{count} kokoelma · Kuvitus näkyy Plexissä",
     "other": "{count} kokoelmaa · Kuvitus näkyy Plexissä"
@@ -2479,6 +2499,7 @@
     "one": "Uusimmat merkinnät ensin. {count} merkintä säilytetään muistissa.",
     "other": "Uusimmat merkinnät ensin. {count} merkintää säilytetään muistissa."
   },
+  "m_128fa41a415266": "Uudelleenyhdistäminen vaaditaan",
   "m_12908cd74a0ff3": "käynnistys kilpailu lämmitys toiston aloitus",
   "m_1290df5277a7a7": "FFmpegin tiedot",
   "m_129a23e10f8e0d": "Pidä levytilaa vapaana (GiB)",
@@ -2796,6 +2817,7 @@
   "m_150d4141714c86": "Omistajan token",
   "m_150e4f4a537a1f": "Asiakkaat, jotka käyttivät sitä oletuksena, käyttävät profiilia {profile}.",
   "m_15123a8748a0cf": "Tallenna asettelu",
+  "m_151382d7c792f9": "Simkl-yhteys katkaistu.",
   "m_151665e44b96df": "Vain TV-jaksot",
   "m_151769a9fde954": "Asetukset",
   "m_15178f403e2dc1": "Muualla",
@@ -2817,6 +2839,7 @@
   "m_152f2e75437c37": "Nimikkeet, joilla on tietty TMDB-avainsana",
   "m_1530a071c3f814": "Kesto",
   "m_15364765e67f5a": "Oman kuvan URL-osoite",
+  "m_153824e8dc2503": "Toimitusjono on täynnä, joten kaikkia valmistumisia ei lisätty jonoon.",
   "m_153a49b5cbdb2d": "Tuotu merkintä käyttää lähteensä kirjautumistietoja; lisätyt varalähteet eivät käytä mitään",
   "m_153b591c96b759": "Reitittimessäsi ohjattu portti. 0 käyttää palvelimen porttia.",
   "m_153b7806dcbd8a": "Tallenna näkyvyys",
@@ -2824,6 +2847,7 @@
   "m_1542ffb4446264": "Toistettu",
   "m_15435288ba1090": "Lähde tuotu",
   "m_1549705b6eb2a1": "Aikalohkoilla on oltava kelvolliset alku- ja päättymisajat, jotka eivät mene päällekkäin.",
+  "m_154a22a8b1bba6": "Rekisteröi oma Simkl AUTH V2 -sovelluksesi. Laitesovellus tarvitsee asiakastunnuksen (client ID). Palvelinsovellukset tarvitsevat myös asiakkaan salaisuuden (client secret).",
   "m_154b7942a282ca": "suosii: {sources}",
   "m_154c9d7a784dda": "Alkaen",
   "m_154e5b21a86344": "Palauta etusivun päällekkäisyyksien poisto",
@@ -3017,6 +3041,7 @@
   "m_16ac3b3a51af4e": "Uusi",
   "m_16af1c381e0a96": "Vikasiirto",
   "m_16b5e03d146667": "{list} (elokuvat)",
+  "m_16b609ee054878": "Ota Simkl käyttöön",
   "m_16b78968cf1c10": "Estä…",
   "m_16ba1e30f4556a": "Miksi nämä nimikkeet?",
   "m_16bb42c944043e": "Julkinen portti",
@@ -3065,6 +3090,7 @@
   "m_1714b1066bdca4": "Säilytä toistettu",
   "m_17152fb08bc875": "{day} {time}",
   "m_1715f6c892adb8": "Tallennustilan tai sen kansion vaihtaminen vaatii solmun uudelleenkäynnistyksen. Olemassa olevat välimuistitavut pysyvät alkuperäisessä kansiossaan.",
+  "m_17167efa86027e": "Simkl ei voinut tunnistaa yhtä historiakohdetta.",
   "m_171b382894bddd": "Asiakastunniste",
   "m_171c8f732a9d67": "Malleja ei voitu ladata: {error}",
   "m_171cc315f1d2f0": "Seurantalistan asetukset tallennettu",
@@ -3160,6 +3186,7 @@
   "m_17d092a4b6fbef": "Käyttää enintään kuutta saatavilla olevaa jäsenjulistetta. Valitaksesi elokuvat ja niiden järjestyksen käytä Rakenna-kohdassa käsin valittuja nimikkeitä ja lajittele lähteen järjestyksen mukaan. Kuvitus palaa yhteen kuvaan, jos julisteita on saatavilla alle neljä.",
   "m_17d18603d1b603": "Livenä",
   "m_17d70445db7cd8": "Kaikki, joilla on Live-TV-oikeus",
+  "m_17dd578a313a44": "Simklin valtuutus on vanhentunut tai peruttu. Yhdistä uudelleen jatkaaksesi.",
   "m_17e1ea676b52a8": "Luvut ja ohitusmerkinnät",
   "m_17e280c82d8638": "Odotetaan toistolähdettä · {date}",
   "m_17e4ab8ca11d3d": "Vakaa sekoitus; opas ei koskaan hypi.",
@@ -3396,6 +3423,7 @@
   "m_197383d90f0087": "Tallenna korjaus",
   "m_19746b0c3cb06c": "Testaa OpenSubtitles",
   "m_197478dba70ea3": "Muokkaa järjestystä: {viewer}",
+  "m_19759626500d10": "Synkronointi säilyttää nykyisen historian eikä poista katsottuja kohteita. Anime-jaksot, joilla ei ole vahvistettua vastaavuutta, ohitetaan.",
   "m_197805698e6a5b": "Asennuksen viimeistely lukitsee tämän hallintasivun Plex-tilillesi. Voit avata asennuksen uudelleen myöhemmin kohdasta Yhteydet.",
   "m_197f395ae133e3": "Tuoreet ohjelmatiedot ovat oppaassa.",
   "m_1982dc436baac0": "Sivuston asetukset",
@@ -4081,6 +4109,7 @@
   "m_1eb24748a2dfb4": "Ladataan kieliominaisuuksia",
   "m_1eb2eb9aa60cf2": "Tarkistetaan asennettuja määrityksiä…",
   "m_1eb329e25cc73e": "Torrent-julkaisut toistetaan debrid-tilisi kautta.",
+  "m_1eb4e5a0839480": "Tallenna Simkl-asetukset",
   "m_1ebc587c4a89d4": "Suodata nimen, indeksoijan tai syyn mukaan…",
   "m_1ec00fba6be639": "Laatu",
   "m_1ec3617d2cde86": "Mikä tahansa",
@@ -4178,6 +4207,7 @@
   "m_1f63847755c543": "Ankkuroi {title} vetämällä",
   "m_1f63dd73d695c0": "Esikatsele tallennettua järjestystä",
   "m_1f6459b6d96d5b": "Etäprofiili",
+  "m_1f664f6b9eec3b": "Yhdistä katsojan Simkl-tili tuodaksesi katseluhistorian ja lähettääksesi valmiiksi katsotut toistot.",
   "m_1f69767390b86a": "Vuosi",
   "m_1f6c206c676272": "Ei isäntää",
   "m_1f7223c74bf3d9": "Valitse katselija",
@@ -4256,6 +4286,7 @@
   "m_1fe8763c7edbf2": "Näytä salaisuus",
   "m_1fe9a3548a3056": "Formaattipisteiden vähimmäismäärä",
   "m_1feb91f603617e": "TV",
+  "m_1fed1cfe1ca4fc": "Avaa Simkl-hyväksyntä",
   "m_1ff30d480cdeec": "Tietyt katselijat",
   "m_1ff744c021f99f": {
     "one": "Plexin etusivu, jonka kaikki {count} katselija saa",
