@@ -22,6 +22,7 @@ import { localized, t, tn } from "../../i18n";
 import { api, apiFetch, ApiError, type TestFn } from "../../lib/api";
 import { useAsync } from "../../lib/hooks";
 import type { EtherConfig } from "../../lib/types";
+import { SimklIntegration } from "./SimklIntegration";
 import { LanguageFeatures } from "./LanguageFeatures";
 import { LanguageModelSettings } from "./LanguageModel";
 import { asObj, GenericFields, SchemaField, type FieldGroup } from "./SchemaForm";
@@ -168,7 +169,12 @@ export function ConnectedServices({ tab }: { tab: ServiceTab }) {
 
   return (
     <>
-      {tab === "overview" ? <ServiceOverview cfg={cfg} /> : null}
+      {tab === "overview" ? (
+        <>
+          <ServiceOverview cfg={cfg} />
+          <SimklIntegration />
+        </>
+      ) : null}
       {SERVICES.filter((s) => s.tab === tab).map((s) => {
         const value = draft[s.configKey] ?? {};
         const set = (next: Obj) => setDraft({ ...draft, [s.configKey]: next });
