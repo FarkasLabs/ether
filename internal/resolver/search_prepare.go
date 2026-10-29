@@ -34,6 +34,7 @@ type searchPreparation struct {
 	seen       map[string]bool
 	ranked     []candidate
 	first      time.Time
+	partial    bool // written by the owning search goroutine before it returns
 }
 
 func newSearchPreparation(ctx context.Context, s *Service, req core.ResolveRequest, search core.SearchRequest, profile core.QualityProfile, pin string) *searchPreparation {
@@ -195,6 +196,7 @@ func (p *searchPreparation) searchLive(ctx context.Context, indexer core.Streami
 					return nil, false, ctx.Err()
 				}
 				p.svc.log.Info("source discovery finished on playable candidate", "candidates", len(ready), "elapsed", time.Since(p.first))
+				p.partial = true
 				return ready, true, nil
 			}
 		case <-ctx.Done():

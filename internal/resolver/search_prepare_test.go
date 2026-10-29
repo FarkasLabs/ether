@@ -46,6 +46,9 @@ func TestPlayableCandidateDoesNotWaitForSlowIndexer(t *testing.T) {
 	if len(s.searchCache) != 0 {
 		t.Fatal("partial fleet answer cached as complete")
 	}
+	if got := s.Traces()[0]; len(got.Discovery) != 1 || got.Discovery[0].Path != "live-early" || got.Discovery[0].Count != 1 || got.Limits == nil || got.Limits.ClientMaxHeight != 1080 {
+		t.Fatalf("discovery trace: %+v", got)
+	}
 	t.Logf("playable source selected in %s while the remaining search was blocked", time.Since(start))
 }
 
@@ -90,6 +93,9 @@ func TestSearchPreparationOverlapsAndReusesHealth(t *testing.T) {
 	}
 	if result.Release.ID != "a" || idx.grabs.Load() != 1 || health.calls.Load() != 1 {
 		t.Fatalf("preparation was repeated: result=%v grabs=%d health=%d", result, idx.grabs.Load(), health.calls.Load())
+	}
+	if got := s.Traces()[0].Discovery; len(got) != 1 || got[0].Path != "live-complete" || got[0].Count != 1 {
+		t.Fatalf("complete trace: %+v", got)
 	}
 }
 

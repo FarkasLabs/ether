@@ -95,6 +95,8 @@ type CandidateTrace struct {
 
 // Trace is one recorded resolution attempt, for the admin UI.
 type Trace struct {
+	Discovery                 []DiscoveryTrace `json:"discovery,omitempty"`
+	Limits                    *TraceLimits     `json:"limits,omitempty"`
 	TitleKey                  core.RatingKey   `json:"titleKey"`
 	TitleName                 string           `json:"titleName"`
 	Profile                   string           `json:"profile"`
@@ -115,6 +117,19 @@ type Trace struct {
 	Omitted int `json:"omitted,omitempty"`
 	// Routing summarises the source-routing decision (routing.go).
 	Routing string `json:"routing,omitempty"`
+}
+
+// DiscoveryTrace records only the origin and number of returned releases.
+type DiscoveryTrace struct {
+	Path   string `json:"path"`
+	Count  int    `json:"count"`
+	Rescue bool   `json:"rescue,omitempty"`
+}
+type TraceLimits struct {
+	ProfileMinHeight     int `json:"profileMinHeight"`
+	ProfileMaxHeight     int `json:"profileMaxHeight"`
+	ClientMaxHeight      int `json:"clientMaxHeight"`
+	ClientMaxBitrateKbps int `json:"clientMaxBitrateKbps"`
 }
 
 type searchCacheEntry struct {
@@ -497,6 +512,7 @@ func (s *Service) resolve(ctx context.Context, req core.ResolveRequest, profile 
 	started := time.Now()
 	t := req.Title
 	trace := Trace{TitleKey: t.Key, TitleName: consoleTitleName(t), Profile: profile.Name, At: s.now(), Failover: len(req.Exclude) > 0}
+	trace.Limits = &TraceLimits{profile.MinHeight, profile.MaxHeight, req.Client.MaxHeight, req.Client.MaxBitrateKbps}
 	defer func() {
 		trace.TotalDuration = time.Since(started)
 		s.addTrace(trace)
@@ -520,6 +536,9 @@ func (s *Service) resolve(ctx context.Context, req core.ResolveRequest, profile 
 	var discovered []core.Release
 	if s.discovered != nil && pin == nil && req.Prefer == "" && len(req.Exclude) == 0 {
 		discovered = s.discovered(ctx, t)
+		if len(discovered) > 0 {
+			trace.Discovery = append(trace.Discovery, DiscoveryTrace{Path: "feed", Count: len(discovered)})
+		}
 		early.arrived(discovered)
 		// A locally verified feed answer can avoid a search. A slow feed
 		// gets only 100ms head start, then keeps checking alongside search.
@@ -604,7 +623,16 @@ func (s *Service) resolve(ctx context.Context, req core.ResolveRequest, profile 
 	}
 
 	searchStart := time.Now()
-	results, _, searchErr := s.searchCached(ctx, sreq, forceFresh)
+	results, cached, searchErr := s.searchCached(ctx, sreq, forceFresh)
+	path := "live-complete"
+	if cached {
+		path = "cache"
+	} else if early.partial {
+		path = "live-early"
+	}
+	if searchErr == nil {
+		trace.Discovery = append(trace.Discovery, DiscoveryTrace{Path: path, Count: len(results)})
+	}
 	trace.SearchDuration = time.Since(searchStart)
 	if searchErr != nil {
 		if pin == nil && len(discovered) == 0 {
@@ -787,21 +815,21 @@ type rescueSearcher interface {
 	SearchRescue(ctx context.Context, req core.SearchRequest) ([]core.Release, error)
 }
 
-func (s *Service) searchRescue(ctx context.Context, req core.SearchRequest) []core.Release {
+func (s *Service) searchRescue(ctx context.Context, req core.SearchRequest) ([]core.Release, string) {
 	rs, ok := s.indexer.(rescueSearcher)
 	if !ok {
-		return nil
+		return nil, ""
 	}
 	key := searchCacheKey(req) + "|rescue"
 	s.mu.RLock()
 	e, ok := s.searchCache[key]
 	s.mu.RUnlock()
 	if ok && s.now().Before(e.expires) {
-		return append([]core.Release(nil), e.results...)
+		return append([]core.Release(nil), e.results...), "cache"
 	}
 	results, err := rs.SearchRescue(ctx, req)
 	if err != nil {
-		return nil
+		return nil, ""
 	}
 	for i := range results {
 		if results[i].Info.Title == "" && results[i].Info.Height == 0 && results[i].Info.Source == core.SourceUnknown {
@@ -826,7 +854,7 @@ func (s *Service) searchRescue(ctx context.Context, req core.SearchRequest) []co
 		}
 	}
 	s.mu.Unlock()
-	return results
+	return results, "live-complete"
 }
 
 func novelReleases(existing, incoming []core.Release) []core.Release {

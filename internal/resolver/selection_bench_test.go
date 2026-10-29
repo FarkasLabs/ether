@@ -92,6 +92,9 @@ func TestObscureTitlesResolveAgainstAllOddsInMilliseconds(t *testing.T) {
 	if err != nil || res.Release.ID != "aka-criterion" {
 		t.Fatalf("classic AKA rescue failed: res=%+v err=%v", res, err)
 	}
+	if got := svc.Traces()[0].Discovery; len(got) != 2 || got[0].Path != "live-complete" || got[0].Count != 1 || got[1].Path != "live-complete" || !got[1].Rescue || got[1].Count != 1 {
+		t.Fatalf("rescue provenance: %+v", got)
+	}
 	if elapsed > 25*time.Millisecond {
 		t.Fatalf("expected sub-25ms resolution, took %s", elapsed)
 	}

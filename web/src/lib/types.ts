@@ -543,6 +543,13 @@ export interface CandidateTrace {
   route?: string;
 }
 export interface ResolverTrace {
+  discovery?: { path: string; count: number; rescue?: boolean }[];
+  limits?: {
+    profileMinHeight: number;
+    profileMaxHeight: number;
+    clientMaxHeight: number;
+    clientMaxBitrateKbps: number;
+  };
   titleKey: string;
   titleName: string;
   profile: string;
