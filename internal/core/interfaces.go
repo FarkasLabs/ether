@@ -496,3 +496,9 @@ type HWAccel struct {
 type DelegationAuth interface {
 	IssueDelegation(context.Context, int64) (string, error)
 }
+
+// AuthoritativeTitleRefresher fetches current movie or show details and optionally persists them.
+// It never falls back to cached data on failure and does not apply release visibility.
+type AuthoritativeTitleRefresher interface {
+	RefreshTitle(ctx context.Context, key RatingKey, persist bool) (*Title, error)
+}

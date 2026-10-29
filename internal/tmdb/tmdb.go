@@ -99,6 +99,7 @@ type Client struct {
 	cache      *respCache
 	flights    flight.Group[string, []byte]
 	generation uint64
+	cacheEpoch uint64 // advances when an authoritative fetch updates the cache
 
 	cfgMu sync.RWMutex
 	img   *Configuration

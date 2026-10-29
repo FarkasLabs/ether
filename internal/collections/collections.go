@@ -395,7 +395,11 @@ func (s *Service) build(ctx context.Context, row *specRow) (*memberSet, error) {
 
 func (s *Service) buildNow(ctx context.Context, row *specRow) (*memberSet, error) {
 	started := time.Now()
-	res, err := s.evaluate(ctx, row.spec, evalOptions{seed: row.spec.Name, persist: true})
+	prior, _, err := s.loadMembers(ctx, row.id)
+	if err != nil {
+		return nil, err
+	}
+	res, err := s.evaluate(ctx, row.spec, evalOptions{seed: row.spec.Name, persist: true, prior: prior})
 	if err != nil {
 		return nil, err
 	}

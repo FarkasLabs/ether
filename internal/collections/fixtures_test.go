@@ -545,9 +545,12 @@ type env struct {
 type envOpt func(*envOptions)
 
 type envOptions struct {
-	opts   []collections.Option
-	noTMDB bool
+	opts          []collections.Option
+	noTMDB        bool
+	catalogClient catalog.TMDB
 }
+
+func withCatalogClient(c catalog.TMDB) envOpt { return func(e *envOptions) { e.catalogClient = c } }
 
 func withOpts(o ...collections.Option) envOpt {
 	return func(e *envOptions) { e.opts = append(e.opts, o...) }
@@ -574,6 +577,9 @@ func newEnv(t *testing.T, eo ...envOpt) *env {
 		client = tmdb.New("test-key", log, tmdb.WithBaseURL(ft.srv.URL), tmdb.WithRateLimit(100000, 100000), tmdb.WithMaxRetries(0))
 		t.Cleanup(client.Close)
 		catClient = client
+	}
+	if o.catalogClient != nil {
+		catClient = o.catalogClient
 	}
 	cat, err := catalog.New(db, catClient, cfg, log)
 	if err != nil {

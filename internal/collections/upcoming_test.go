@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -54,6 +55,8 @@ func TestUpcomingCancellation(t *testing.T) {
 
 func TestUpcomingPreviewPublishedAndScopedMembership(t *testing.T) {
 	now := time.Date(2030, 10, 1, 12, 0, 0, 0, time.UTC)
+	var date atomic.Value
+	date.Store("2030-10-15")
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == "/discover/movie" {
 			if r.URL.Query().Get("primary_release_date.gte") != "2030-10-01" || r.URL.Query().Get("primary_release_date.lte") != "2030-10-31" {
@@ -62,12 +65,20 @@ func TestUpcomingPreviewPublishedAndScopedMembership(t *testing.T) {
 			fmt.Fprint(w, `{"page":1,"total_pages":1,"total_results":3,"results":[{"id":9001,"title":"Next","release_date":"2030-10-15"},{"id":9002,"title":"Too late","release_date":"2030-11-01"},{"id":9003,"title":"Undated"}]}`)
 			return
 		}
+		if r.URL.Path == "/movie/9001" {
+			fmt.Fprintf(w, `{"id":9001,"title":"Next","release_date":%q}`, date.Load().(string))
+			return
+		}
+		if r.URL.Path == "/movie/9002" {
+			fmt.Fprint(w, `{"id":9002,"title":"Too late","release_date":"2030-11-01"}`)
+			return
+		}
 		fmt.Fprint(w, `{"genres":[]}`)
 	}))
 	defer server.Close()
 	client := tmdb.New("fixture", slog.Default(), tmdb.WithBaseURL(server.URL), tmdb.WithRateLimit(100000, 100000), tmdb.WithMaxRetries(0))
 	defer client.Close()
-	e := newEnv(t, withOpts(collections.WithTMDB(client), collections.WithNow(func() time.Time { return now })))
+	e := newEnv(t, withCatalogClient(client), withOpts(collections.WithTMDB(client), collections.WithNow(func() time.Time { return now })))
 	sp := spec("Look Ahead", "movie", []core.CollectionSource{{Kind: "catalog"}})
 	sp.ReleaseMode, sp.LookaheadDays = "upcoming", 30
 	sp.Targets.Users = core.UserTargets{IDs: []int64{owner.ID}}
@@ -97,16 +108,15 @@ func TestUpcomingPreviewPublishedAndScopedMembership(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	originalDate := stored.Released
-	stored.Released = now.AddDate(0, 0, 45)
-	if err := e.cat.UpsertTitle(e.ctx, *stored, false); err != nil {
+	date.Store("2030-11-15")
+	if _, err := e.cat.RefreshTitle(e.ctx, stored.Key, true); err != nil {
 		t.Fatal(err)
 	}
 	if _, _, err := e.svc.FindPlaceholder(e.ctx, owner, stored.Key, "web"); err == nil {
 		t.Fatal("changed date outside the window admitted")
 	}
-	stored.Released = originalDate
-	if err := e.cat.UpsertTitle(e.ctx, *stored, false); err != nil {
+	date.Store("2030-10-15")
+	if _, err := e.cat.RefreshTitle(e.ctx, stored.Key, true); err != nil {
 		t.Fatal(err)
 	}
 	if _, _, err := e.svc.FindPlaceholder(e.ctx, &core.User{ID: 99}, core.MovieKey(9001), "web"); err == nil {
