@@ -598,12 +598,12 @@ export const SORTS: { value: CollectionSort; label: string; hint: string }[] = [
   {
     value: "latestEpisode",
     label: "Latest aired episode",
-    hint: "Latest regular episode in the local catalog; unknown dates last",
+    hint: "Latest regular episode from available metadata; unknown dates last",
   },
   {
     value: "latestSeasonPremiere",
     label: "Latest season premiere",
-    hint: "First episode of the latest aired regular season; unknown dates last",
+    hint: "Premiere of the latest aired regular season; unknown dates last",
   },
   { value: "added", label: "Date added", hint: "When titles entered Ether" },
   { value: "title", label: "Title", hint: "Alphabetical" },

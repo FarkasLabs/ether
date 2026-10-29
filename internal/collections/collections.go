@@ -82,6 +82,7 @@ type Service struct {
 	buildBudget time.Duration
 
 	mu       sync.Mutex
+	airMu    sync.Mutex // serialize bounded air-date refreshes across evaluations
 	members  map[int64]*memberSet
 	flights  flight.Group[int64, *memberSet]
 	personal map[string]personalEntry

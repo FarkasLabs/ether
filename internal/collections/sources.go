@@ -103,12 +103,15 @@ func (s *Service) discoverInto(ctx context.Context, sp *core.CollectionSpec, kin
 	if q.Get("sort_by") == "" {
 		q.Set("sort_by", discoverSort(sp.Sort, kind))
 	}
-	items, _, err := s.api.discover(ctx, kind, q, want, pagesFor(want))
+	items, total, err := s.api.discover(ctx, kind, q, want, pagesFor(want))
 	if err != nil {
 		res.warnings = append(res.warnings, fmt.Sprintf("TMDB %s: %v", what, err))
 		return
 	}
 	res.titles = append(res.titles, items...)
+	if (sp.Sort == "latestEpisode" || sp.Sort == "latestSeasonPremiere") && total > len(items) {
+		res.warnings = append(res.warnings, fmt.Sprintf("%s: showing results sorted from %d of %d matching titles", what, len(items), total))
+	}
 	if len(covered) == 0 {
 		return
 	}

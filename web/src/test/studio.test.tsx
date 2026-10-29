@@ -97,6 +97,31 @@ describe("Collection Studio editor", () => {
     ).toBeInTheDocument();
   });
 
+  it("sends each air-date sort and direction to the live preview", async () => {
+    const { fake } = renderApp("/collections/new?draft=air-sort");
+    await screen.findByLabelText("Collection name", {}, WAIT);
+    for (const [label, sort] of [
+      ["Latest aired episode", "latestEpisode"],
+      ["Latest season premiere", "latestSeasonPremiere"],
+    ] as const) {
+      fireEvent.click(screen.getByRole("button", { name: /Sort by/ }));
+      fireEvent.click(await screen.findByRole("option", { name: new RegExp(label) }));
+      for (const [direction, desc] of [
+        ["Highest", true],
+        ["Lowest", false],
+      ] as const) {
+        fireEvent.click(screen.getByRole("radio", { name: direction }));
+        await waitFor(
+          () =>
+            expect(previewBodies(fake).some((s) => s.sort === sort && s.sortDesc === desc)).toBe(
+              true,
+            ),
+          WAIT,
+        );
+      }
+    }
+  });
+
   it("refuses to save an incomplete collection and says why", async () => {
     const { fake } = renderApp("/collections/new?draft=test-2");
     await screen.findByLabelText("Collection name", {}, WAIT);

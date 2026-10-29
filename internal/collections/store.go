@@ -61,6 +61,7 @@ CREATE TABLE collections_meta (k TEXT PRIMARY KEY, v TEXT NOT NULL DEFAULT '');
 	// Builds stored before v3 mark every member shared; rebuild them all so
 	// match-"any" collections with per-viewer rules serve correctly.
 	store.Register("collections", 4, `UPDATE collections_specs SET build_hash='';`)
+	store.Register("collections", 6, `CREATE TABLE collections_air_dates (show_key INTEGER PRIMARY KEY, episode_ts INTEGER NOT NULL, premiere_ts INTEGER NOT NULL, fetched_at INTEGER NOT NULL, attempted_at INTEGER NOT NULL, failed INTEGER NOT NULL);`)
 }
 
 // builtinBase keeps shipped collections' ids far above owner ids.

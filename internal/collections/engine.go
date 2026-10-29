@@ -275,8 +275,15 @@ func (s *Service) evaluate(ctx context.Context, spIn core.CollectionSpec, opt ev
 	}
 
 	if sp.Sort == "latestEpisode" || sp.Sort == "latestSeasonPremiere" {
-		if err := s.loadAirDates(ctx, kept, sp.Sort, ec.now); err != nil {
+		unknown, stale, err := s.hydrateAirDates(ctx, kept, sp.Sort, ec.now, !sp.LocalOnly)
+		if err != nil {
 			return nil, fmt.Errorf("collections: air dates: %w", err)
+		}
+		if stale > 0 {
+			warn("Air dates may be out of date for %d shows; they will refresh as the collection updates", stale)
+		}
+		if unknown > 0 {
+			warn("Air dates are still loading or unavailable for %d shows; shows without dates appear last", unknown)
 		}
 	}
 	sortCands(kept, sp.Sort, sp.SortDesc, randomSeed(opt.seed, sp, ec.now))
