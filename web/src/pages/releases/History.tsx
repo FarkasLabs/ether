@@ -72,6 +72,23 @@ function normalizeTrace(t: Record<string, unknown>, i: number): ResolverTrace {
     pinStatus: typeof t.pinStatus === "string" ? t.pinStatus : undefined,
     omitted: Number(t.omitted ?? 0) || undefined,
     routing: typeof t.routing === "string" ? t.routing : undefined,
+    discovery: Array.isArray(t.discovery)
+      ? t.discovery
+          .filter(isPlainObject)
+          .map((d) => ({
+            path: String(d.path ?? "unknown"),
+            count: Number(d.count ?? 0),
+            rescue: Boolean(d.rescue),
+          }))
+      : undefined,
+    limits: isPlainObject(t.limits)
+      ? {
+          profileMinHeight: Number(t.limits.profileMinHeight ?? 0),
+          profileMaxHeight: Number(t.limits.profileMaxHeight ?? 0),
+          clientMaxHeight: Number(t.limits.clientMaxHeight ?? 0),
+          clientMaxBitrateKbps: Number(t.limits.clientMaxBitrateKbps ?? 0),
+        }
+      : undefined,
   };
 }
 
@@ -302,6 +319,22 @@ export function TraceDetail({ trace, titleKey }: { trace: ResolverTrace; titleKe
       {trace.routing ? (
         <p className="text-sm text-fg-muted">Source routing: {trace.routing}</p>
       ) : null}
+      <div className="text-sm text-fg-muted">
+        <p>
+          Discovery:{" "}
+          {trace.discovery?.length
+            ? trace.discovery
+                .map((d) => `${d.rescue ? "rescue " : ""}${d.path} (${d.count})`)
+                .join(" · ")
+            : "unknown"}
+        </p>
+        <p>
+          Limits:{" "}
+          {trace.limits
+            ? `profile ${trace.limits.profileMinHeight || "unset"}–${trace.limits.profileMaxHeight || "unlimited"}p · client height ${trace.limits.clientMaxHeight ? `${trace.limits.clientMaxHeight}p` : "unlimited"} · bitrate ${trace.limits.clientMaxBitrateKbps ? `${trace.limits.clientMaxBitrateKbps} kbps` : "unlimited"}`
+            : "unknown"}
+        </p>
+      </div>
       {trace.pinStatus && trace.pinStatus !== "used" ? (
         <p className="text-sm text-fg-muted">
           <PinIcon size={13} className="mr-1 inline" aria-hidden />

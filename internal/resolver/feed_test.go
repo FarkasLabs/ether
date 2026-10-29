@@ -54,4 +54,9 @@ func TestDiscoveredDescriptorAvoidsSearchAndCachedHealthDoesNotRenewObservation(
 	if idx.searches.Load() != 0 || observed.Load() != 1 {
 		t.Fatalf("searches %d observations %d", idx.searches.Load(), observed.Load())
 	}
+	for _, trace := range s.Traces() {
+		if len(trace.Discovery) != 1 || trace.Discovery[0].Path != "feed" || trace.Discovery[0].Count != 1 {
+			t.Fatalf("feed trace: %+v", trace.Discovery)
+		}
+	}
 }

@@ -465,6 +465,9 @@ func TestHistoryWrittenAndBounded(t *testing.T) {
 			if err != nil || full.Trace == nil || len(full.Trace.Candidates) != 3 || full.Trace.Winner != "sd720" {
 				t.Fatalf("entry %+v err=%v", full, err)
 			}
+			if len(full.Trace.Discovery) != 1 || full.Trace.Discovery[0].Path != "cache" || full.Trace.Discovery[0].Count != 3 || full.Trace.Limits == nil || full.Trace.Limits.ClientMaxHeight != 1080 {
+				t.Fatalf("stored discovery: %+v", full.Trace)
+			}
 			if _, err := svc.HistoryEntry(ctx, 99999); !errors.Is(err, core.ErrNotFound) {
 				t.Fatalf("missing entry err=%v", err)
 			}

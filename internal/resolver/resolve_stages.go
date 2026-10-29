@@ -10,7 +10,11 @@ import (
 // rescueCandidates is the single discovery/ranking path for both empty-search
 // and failed-health rescues. It never reconsiders already observed releases.
 func (s *Service) rescueCandidates(ctx context.Context, req core.ResolveRequest, search core.SearchRequest, profile core.QualityProfile, seen []core.Release, trace *Trace, pinID string) ([]candidate, []core.Release, bool, error) {
-	extra := novelReleases(seen, s.searchRescue(ctx, search))
+	rescued, path := s.searchRescue(ctx, search)
+	if path != "" {
+		trace.Discovery = append(trace.Discovery, DiscoveryTrace{Path: path, Count: len(rescued), Rescue: true})
+	}
+	extra := novelReleases(seen, rescued)
 	if len(extra) == 0 {
 		return nil, seen, false, nil
 	}

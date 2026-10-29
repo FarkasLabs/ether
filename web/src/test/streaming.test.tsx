@@ -1,7 +1,7 @@
-import { fireEvent, screen, waitFor, within } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 import type { EtherConfig, UsenetProvider } from "../lib/types";
-import { normalizeTraces } from "../pages/releases/History";
+import { normalizeTraces, TraceDetail } from "../pages/releases/History";
 import { calls, renderApp } from "./harness";
 
 const WAIT = { timeout: 4000 };
@@ -190,6 +190,30 @@ describe("Source routing", () => {
 });
 
 describe("Release traces", () => {
+  it("shows discovery and limits, preserving unknown for older history", () => {
+    const [oldTrace, newTrace] = normalizeTraces([
+      { titleName: "Old" },
+      {
+        titleName: "New",
+        discovery: [
+          { path: "live-early", count: 2 },
+          { path: "cache", count: 1, rescue: true },
+        ],
+        limits: {
+          profileMinHeight: 720,
+          profileMaxHeight: 1080,
+          clientMaxHeight: 2160,
+          clientMaxBitrateKbps: 5000,
+        },
+      },
+    ]);
+    const view = render(<TraceDetail trace={oldTrace!} />);
+    expect(screen.getByText("Discovery: unknown")).toBeInTheDocument();
+    expect(screen.getByText("Limits: unknown")).toBeInTheDocument();
+    view.rerender(<TraceDetail trace={newTrace!} />);
+    expect(screen.getByText(/live-early \(2\).*rescue cache \(1\)/)).toBeInTheDocument();
+    expect(screen.getByText(/profile 720–1080p.*2160p.*5000 kbps/)).toBeInTheDocument();
+  });
   it("normalizes typed and loosely shaped traces", () => {
     const t = normalizeTraces([
       {
