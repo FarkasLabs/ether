@@ -163,30 +163,19 @@ func sdh(t core.StreamInfo) bool {
 	return strings.Contains(v, "sdh") || strings.Contains(v, "hearing impaired") || strings.Contains(v, "[cc]") || v == "cc"
 }
 
-// rankLanguage scores a track against the wanted languages via
-// langtag.MatchTier. The tier penalties (40/80) exceed every
-// non-language bonus in pick (default 5 + style 10 + forced-style 10),
-// so for the same want a weak tier-1 track can never beat a tier-2 or
-// exact tier-3 track on those bonuses alone.
+// rankLanguage orders configured language preferences first, match tier
+// second, and leaves space for pick's style/default bonuses last. With at
+// most 20 configured languages plus the original language, the score stays
+// below the 10000-point explicit-choice bonus.
 func rankLanguage(code string, want []string) int {
-	best := 0
 	for i, v := range want {
-		score := 1000 - i*20
-		switch langtag.MatchTier(v, code) {
-		case 3:
-		case 2:
-			score -= 40
-		case 1:
-			score -= 80
-		default:
-			continue
-		}
-		if score > best {
-			best = score
+		if tier := langtag.MatchTier(v, code); tier > 0 {
+			return (len(want)-i)*300 + tier*50
 		}
 	}
-	return best
+	return 0
 }
+
 func pick(streams []core.StreamInfo, kind string, want []string, style string, forcedOnly bool, memory *Choice) int {
 	best, score := -1, -100000
 	for i, t := range streams {
