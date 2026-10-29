@@ -78,14 +78,26 @@ type Options struct {
 	// stores it as given.
 	Sealer config.FieldSealer
 }
+
+// refreshCall is one in-flight Refresh fetch for a title (singleflight,
+// same pattern as resolver.inflight). done is closed after badges/err are
+// set, so waiters reading them after <-done are race-free.
+type refreshCall struct {
+	done      chan struct{}
+	badges    []Badge
+	err       error
+	abandoned bool // the leader's own context ended the fetch
+}
+
 type Service struct {
-	db      *sql.DB
-	o       Options
-	mu      sync.Mutex
-	queue   chan core.Title
-	qmu     sync.Mutex
-	queued  map[core.RatingKey]bool
-	retryAt map[core.RatingKey]time.Time
+	db       *sql.DB
+	o        Options
+	flightMu sync.Mutex
+	flights  map[core.RatingKey]*refreshCall
+	queue    chan core.Title
+	qmu      sync.Mutex
+	queued   map[core.RatingKey]bool
+	retryAt  map[core.RatingKey]time.Time
 }
 
 func New(db *sql.DB, o Options) *Service {
@@ -101,7 +113,7 @@ func New(db *sql.DB, o Options) *Service {
 	if o.MDBListBaseURL == "" {
 		o.MDBListBaseURL = "https://api.mdblist.com"
 	}
-	return &Service{db: db, o: o, queue: make(chan core.Title, 128), queued: map[core.RatingKey]bool{}, retryAt: map[core.RatingKey]time.Time{}}
+	return &Service{db: db, o: o, flights: map[core.RatingKey]*refreshCall{}, queue: make(chan core.Title, 128), queued: map[core.RatingKey]bool{}, retryAt: map[core.RatingKey]time.Time{}}
 }
 func (s *Service) settings(ctx context.Context) (Settings, error) {
 	if snap, ok := ctx.Value(settingsSnapshotKey{s}).(settingsSnapshot); ok {
@@ -242,9 +254,57 @@ func (s *Service) Cached(ctx context.Context, t *core.Title) ([]Badge, error) {
 	e = json.Unmarshal([]byte(raw), &out)
 	return out, e
 }
+
+// Refresh returns fresh-or-cached badges for t.
+//
+// Semântica de concorrência: nenhum lock é segurado durante o HTTP —
+// flightMu só protege o map flights (leitura/escrita curta), e cache/DB
+// são acessados sem lock global. Chamadas concorrentes para a MESMA key
+// compartilham um único fetch em voo (singleflight): quem espera recebe
+// o resultado (badges/err) do líder, sem disparar outro request. Se o
+// contexto do líder encerrou o fetch (abandoned) e o contexto de quem
+// espera ainda está vivo, quem espera NÃO herda esse erro de cancelamento:
+// ele refaz — vira o próximo líder ou entra no fetch seguinte. Se o
+// contexto de quem espera é cancelado enquanto aguarda, ele retorna
+// ctx.Err() sem cancelar o fetch do líder. Keys diferentes fazem fetch
+// em paralelo.
 func (s *Service) Refresh(ctx context.Context, t *core.Title) ([]Badge, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
+	if t == nil {
+		return s.refresh(ctx, t)
+	}
+	for {
+		s.flightMu.Lock()
+		if f, ok := s.flights[t.Key]; ok {
+			s.flightMu.Unlock()
+			select {
+			case <-f.done:
+				if f.abandoned && ctx.Err() == nil {
+					continue
+				}
+				return f.badges, f.err
+			case <-ctx.Done():
+				return nil, ctx.Err()
+			}
+		}
+		if s.flights == nil {
+			s.flights = map[core.RatingKey]*refreshCall{}
+		}
+		f := &refreshCall{done: make(chan struct{})}
+		s.flights[t.Key] = f
+		s.flightMu.Unlock()
+
+		badges, err := s.refresh(ctx, t)
+		f.badges, f.err, f.abandoned = badges, err, err != nil && ctx.Err() != nil
+		s.flightMu.Lock()
+		delete(s.flights, t.Key)
+		s.flightMu.Unlock()
+		close(f.done)
+		return badges, err
+	}
+}
+
+// refresh faz cache-check + HTTP + grava cache, sem segurar lock algum.
+func (s *Service) refresh(ctx context.Context, t *core.Title) ([]Badge, error) {
 	if cached, e := s.Cached(ctx, t); e != nil || cached != nil {
 		return cached, e
 	}
