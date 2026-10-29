@@ -35,12 +35,7 @@ func (a *App) configureCache(c config.Cache) {
 
 // This extension is mounted behind the owner API's authentication and CSRF guard.
 func (a *App) cacheHandler() http.Handler {
-	a.cache.SetBlockCheck(func(id string) bool {
-		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-		defer cancel()
-		blocked, err := a.resolver.ReleaseBlocked(ctx, id)
-		return blocked || err != nil
-	})
+	a.cache.SetBlockCheck(a.resolver.LocalReleaseBlocked)
 	mux := http.NewServeMux()
 	mux.HandleFunc("POST /clear-block", a.clearBlockCache)
 	mux.HandleFunc("GET /", func(w http.ResponseWriter, r *http.Request) {

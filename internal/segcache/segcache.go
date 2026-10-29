@@ -333,6 +333,8 @@ func (c *Cache) Put(releaseID string, segment int, data []byte) error {
 // least one pin reason. Pins are persisted to pins.json. If persisting fails
 // the pin still applies in memory and the error is returned.
 func (c *Cache) Pin(releaseID string, reason string) error {
+	c.ownerMu.RLock()
+	defer c.ownerMu.RUnlock()
 	if c.shared != nil {
 		return c.shared.pin(releaseID, reason, true)
 	}

@@ -335,3 +335,7 @@ func (s *Service) ReleaseBlocked(ctx context.Context, id string) (bool, error) {
 	}
 	return e.Manual || s.now().Sub(e.UpdatedAt) < badRetention, nil
 }
+
+// LocalReleaseBlocked reads the in-memory snapshot without database access.
+// Selection boundaries must use ReleaseBlocked for authoritative cluster checks.
+func (s *Service) LocalReleaseBlocked(id string) bool { return s.isBad(id) }

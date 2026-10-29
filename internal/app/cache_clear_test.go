@@ -2,7 +2,11 @@ package app
 
 import (
 	"context"
+	"github.com/braedonsaunders/ether/internal/config"
 	"github.com/braedonsaunders/ether/internal/plextv"
+	"github.com/braedonsaunders/ether/internal/resolver"
+	"github.com/braedonsaunders/ether/internal/segcache"
+	"github.com/braedonsaunders/ether/internal/store"
 	"net/http/httptest"
 	"strings"
 	"testing"
@@ -52,5 +56,38 @@ func TestOwnerCacheClearBlock(t *testing.T) {
 	}
 	if a.cache.Has("release", 0) {
 		t.Fatal("bytes remain")
+	}
+}
+
+func TestCacheBlockCheckDoesNotQueryDatabase(t *testing.T) {
+	db, err := store.OpenMemory(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	svc := resolver.New(nil, nil, db, config.Defaults(t.TempDir()), resolver.Options{})
+	defer svc.Close()
+	if _, err := svc.Block(context.Background(), resolver.BlockRequest{ReleaseID: "blocked"}, "owner"); err != nil {
+		t.Fatal(err)
+	}
+	cache, err := segcache.Open(t.TempDir(), 1<<20, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer cache.Close()
+	a := &App{cache: cache, resolver: svc}
+	_ = a.cacheHandler()
+	if err := db.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := svc.ReleaseBlocked(context.Background(), "ordinary"); err == nil {
+		t.Fatal("database close did not affect authoritative check")
+	}
+	for i := 0; i < 10; i++ {
+		if err := cache.Put("ordinary", i, []byte("segment")); err != nil || !cache.Has("ordinary", i) {
+			t.Fatalf("write %d: %v", i, err)
+		}
+	}
+	if err := cache.Put("blocked", 0, []byte("segment")); err != nil || cache.Has("blocked", 0) {
+		t.Fatalf("blocked write: %v", err)
 	}
 }
