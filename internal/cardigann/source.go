@@ -98,9 +98,10 @@ func (s *Service) sourceTrustedURL() string {
 // LAN host; everything the remote listing hands back is untrusted data
 // — absolute download_url entries, and relative ones too, since a
 // network-path reference ("//host/...") or a redirect can still leave
-// the source origin. The guard therefore validates every destination at
-// dial time: only the trusted origin may resolve privately, every other
-// host (and every redirect hop away from the origin) must be public.
+// the source origin. The guard therefore resolves+validates every
+// destination once per request and rewrites it to the validated IP
+// before fetching: only the trusted origin may resolve privately, every
+// other host (and every redirect hop away from the origin) must be public.
 // A relative download_url that stays on the source origin inherits only
 // that already owner-chosen destination, never a new one.
 func (s *Service) fetchSource(ctx context.Context, rawURL string, limit int64, trusted string) ([]byte, error) {

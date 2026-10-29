@@ -1,7 +1,9 @@
 package safefetch
 
 import (
+	"bufio"
 	"context"
+	"crypto/tls"
 	"errors"
 	"fmt"
 	"io"
@@ -177,18 +179,32 @@ func TestGuardedTransportsPreserveProxyAndSeparatePools(t *testing.T) {
 		if pool.direct.Proxy != nil {
 			t.Errorf("%s direct Proxy != nil; variante direta não usa proxy", name)
 		}
-		if pool.direct.DialContext == nil || pool.direct.DialTLSContext != nil || pool.direct.Dial != nil || pool.direct.DialTLS != nil {
+		// Direto: DialContext guardado E DialTLSContext próprio (IP +
+		// ServerName original da decisão); Dial/DialTLS legados fora.
+		if pool.direct.DialContext == nil || pool.direct.DialTLSContext == nil || pool.direct.Dial != nil || pool.direct.DialTLS != nil {
 			t.Errorf("%s direct dial hooks not fully guarded (DialContext=%v DialTLSContext=%v Dial=%v DialTLS=%v)",
 				name, pool.direct.DialContext != nil, pool.direct.DialTLSContext != nil, pool.direct.Dial != nil, pool.direct.DialTLS != nil)
 		}
-		if pool.proxy == nil || pool.proxied.Proxy == nil {
-			t.Errorf("%s proxied: Proxy do dono não preservado", name)
+		// O seletor do dono fica guardado à parte (chamado uma vez em
+		// policyTransport.RoundTrip); a Proxy func interna só consome a
+		// decisão do contexto, sem re-selecionar.
+		if pool.selector == nil || pool.proxied.Proxy == nil {
+			t.Errorf("%s proxied: seletor do dono não preservado", name)
 			continue
 		}
-		req, _ := http.NewRequest(http.MethodGet, "http://public.test/ok", nil)
-		got, err := pool.proxied.Proxy(req)
+		selReq, _ := http.NewRequest(http.MethodGet, "http://public.test/ok", nil)
+		if got, err := pool.selector(selReq); err != nil || got == nil || got.String() != proxyURL.String() {
+			t.Errorf("%s selector = %v, %v; want %v", name, got, err, proxyURL)
+		}
+		decReq, _ := http.NewRequest(http.MethodGet, "http://93.184.216.34/ok", nil)
+		decReq = decReq.WithContext(context.WithValue(decReq.Context(), routeDecisionKey{}, &routeDecision{proxy: proxyURL}))
+		got, err := pool.proxied.Proxy(decReq)
 		if err != nil || got == nil || got.String() != proxyURL.String() {
-			t.Errorf("%s proxied.Proxy = %v, %v; want %v", name, got, err, proxyURL)
+			t.Errorf("%s proxied.Proxy(decisão) = %v, %v; want %v", name, got, err, proxyURL)
+		}
+		bareReq, _ := http.NewRequest(http.MethodGet, "http://public.test/ok", nil)
+		if _, err := pool.proxied.Proxy(bareReq); !errors.Is(err, ErrUnsupportedTransport) {
+			t.Errorf("%s proxied.Proxy(sem decisão) err = %v, want ErrUnsupportedTransport (sem re-selecionar)", name, err)
 		}
 	}
 }
@@ -270,6 +286,307 @@ func TestGuardedClientWithConfiguredProxy(t *testing.T) {
 	}
 	if got := targetHits.Load(); got != 0 {
 		t.Fatalf("target hit %d times, want 0", got)
+	}
+}
+
+// Caso do dono (v4-a): o proxy fake resolveria "public.test" para um
+// servidor PRIVADO se recebesse o hostname. Com o rewrite para o IP
+// validado, o proxy recebe o IP público literal (CONNECT/forma absoluta
+// com IP), o privado nunca é alcançado e o caminho público via proxy
+// funciona. Mutação: remover o rewrite faz este teste falhar (o proxy
+// recebe o hostname, "resolve" para o privado e devolve o segredo).
+func TestGuardedClientViaProxyGetsValidatedIPNotHostname(t *testing.T) {
+	var privateHits, proxyHits, directDials atomic.Int32
+	var requestLine, hostLine atomic.Value // string
+	targetSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		fmt.Fprint(w, "public-ok")
+	}))
+	defer targetSrv.Close()
+	_, targetPort, _ := net.SplitHostPort(strings.TrimPrefix(targetSrv.URL, "http://"))
+
+	// Proxy cru (TCP): captura a request-line e o header Host como vão
+	// na wire — um servidor Go (httptest) descartaria o Host em favor
+	// do host da forma absoluta, e é justamente essa dupla que importa.
+	// Se recebesse o hostname, este proxy o "resolveria" para um
+	// servidor privado e devolveria o segredo; com o IP validado,
+	// devolve o conteúdo público.
+	proxyLn, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("proxy listen: %v", err)
+	}
+	defer proxyLn.Close()
+	go func() {
+		for {
+			conn, err := proxyLn.Accept()
+			if err != nil {
+				return
+			}
+			go func(conn net.Conn) {
+				defer conn.Close()
+				proxyHits.Add(1)
+				br := bufio.NewReader(conn)
+				line, err := br.ReadString('\n')
+				if err != nil {
+					return
+				}
+				requestLine.Store(strings.TrimSpace(line))
+				for {
+					h, err := br.ReadString('\n')
+					if err != nil || h == "\r\n" {
+						break
+					}
+					if strings.HasPrefix(strings.ToLower(h), "host:") {
+						hostLine.Store(strings.TrimSpace(h))
+					}
+				}
+				body := "public-ok"
+				if strings.Contains(line, "public.test") {
+					// A resolução (hostil) do proxy: hostname -> privado.
+					privateHits.Add(1)
+					body = "metadata-secret"
+				}
+				fmt.Fprintf(conn, "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nContent-Length: %d\r\nConnection: close\r\n\r\n%s", len(body), body)
+			}(conn)
+		}
+	}()
+
+	guard := &Guard{
+		LookupIP: func(_ context.Context, host string) ([]netip.Addr, error) {
+			if host == "public.test" {
+				return []netip.Addr{netip.MustParseAddr("93.184.216.34")}, nil
+			}
+			return nil, fmt.Errorf("unknown host %q", host)
+		},
+		Dial: func(ctx context.Context, network, addr string) (net.Conn, error) {
+			directDials.Add(1)
+			var d net.Dialer
+			return d.DialContext(ctx, network, targetSrv.Listener.Addr().String())
+		},
+	}
+	proxyURL, _ := url.Parse("http://" + proxyLn.Addr().String())
+	client := guard.Client(&http.Client{Transport: &http.Transport{Proxy: http.ProxyURL(proxyURL)}})
+
+	resp, err := client.Get("http://public.test:" + targetPort + "/ok")
+	if err != nil {
+		t.Fatalf("public fetch via proxy: %v", err)
+	}
+	body, _ := io.ReadAll(resp.Body)
+	resp.Body.Close()
+	if string(body) != "public-ok" {
+		t.Fatalf("body = %q, want public-ok (não o segredo do privado)", body)
+	}
+	if got := proxyHits.Load(); got != 1 {
+		t.Fatalf("proxy hits = %d, want 1", got)
+	}
+	if got, want := requestLine.Load(), "GET http://93.184.216.34:"+targetPort+"/ok HTTP/1.1"; got != want {
+		t.Fatalf("request-line no proxy = %v, want forma absoluta com IP validado %q (não o hostname)", got, want)
+	}
+	if got, want := hostLine.Load(), "Host: public.test:"+targetPort; got != want {
+		t.Fatalf("Host na wire = %v, want Host original %q", got, want)
+	}
+	if got := privateHits.Load(); got != 0 {
+		t.Fatalf("servidor privado alcançado %d vezes, want 0", got)
+	}
+	if got := directDials.Load(); got != 0 {
+		t.Fatalf("direct dials = %d, want 0", got)
+	}
+}
+
+// Caso do dono (v4-b): seletor stateful — 1ª chamada devolve proxy, 2ª
+// devolveria direto. A rota decidida uma vez (proxy) é a usada: o
+// seletor roda exatamente 1 vez. Mutação: re-selecionar no transporte
+// interno faz este teste falhar (2ª seleção = direto, proxy hits=0).
+func TestGuardedClientSelectsProxyRouteOnce(t *testing.T) {
+	var selectorCalls, proxyHits, directDials atomic.Int32
+	proxySrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		proxyHits.Add(1)
+		fmt.Fprint(w, "proxied")
+	}))
+	defer proxySrv.Close()
+	proxyURL, _ := url.Parse(proxySrv.URL)
+	targetSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		fmt.Fprint(w, "public-ok")
+	}))
+	defer targetSrv.Close()
+	_, targetPort, _ := net.SplitHostPort(strings.TrimPrefix(targetSrv.URL, "http://"))
+
+	guard := &Guard{
+		LookupIP: func(_ context.Context, host string) ([]netip.Addr, error) {
+			return []netip.Addr{netip.MustParseAddr("93.184.216.34")}, nil
+		},
+		Dial: func(ctx context.Context, network, addr string) (net.Conn, error) {
+			directDials.Add(1)
+			var d net.Dialer
+			return d.DialContext(ctx, network, targetSrv.Listener.Addr().String())
+		},
+	}
+	selector := func(*http.Request) (*url.URL, error) {
+		if selectorCalls.Add(1) == 1 {
+			return proxyURL, nil
+		}
+		return nil, nil // 2ª seleção mudaria a rota para direto
+	}
+	client := guard.Client(&http.Client{Transport: &http.Transport{Proxy: selector}})
+
+	resp, err := client.Get("http://public.test:" + targetPort + "/ok")
+	if err != nil {
+		t.Fatalf("fetch com seletor stateful: %v", err)
+	}
+	body, _ := io.ReadAll(resp.Body)
+	resp.Body.Close()
+	if string(body) != "proxied" {
+		t.Fatalf("body = %q, want proxied (rota da 1ª decisão)", body)
+	}
+	if got := selectorCalls.Load(); got != 1 {
+		t.Fatalf("seletor chamado %d vezes, want 1 (decisão única por request)", got)
+	}
+	if got := proxyHits.Load(); got != 1 {
+		t.Fatalf("proxy hits = %d, want 1", got)
+	}
+	if got := directDials.Load(); got != 0 {
+		t.Fatalf("direct dials = %d, want 0", got)
+	}
+}
+
+// Proxy não-http (socks5) não pode ser amarrado ao IP validado neste
+// desenho: erro claro ErrUnsupportedTransport, sem tocar em destino.
+func TestGuardedClientRejectsNonHTTPProxy(t *testing.T) {
+	var directDials atomic.Int32
+	guard := &Guard{
+		LookupIP: func(_ context.Context, host string) ([]netip.Addr, error) {
+			return []netip.Addr{netip.MustParseAddr("93.184.216.34")}, nil
+		},
+		Dial: func(ctx context.Context, network, addr string) (net.Conn, error) {
+			directDials.Add(1)
+			return nil, errors.New("must not dial")
+		},
+	}
+	socks, _ := url.Parse("socks5://127.0.0.1:1080")
+	client := guard.Client(&http.Client{Transport: &http.Transport{Proxy: http.ProxyURL(socks)}})
+	if _, err := client.Get("http://public.test/ok"); !errors.Is(err, ErrUnsupportedTransport) {
+		t.Fatalf("socks5 proxy err = %v, want ErrUnsupportedTransport", err)
+	}
+	if got := directDials.Load(); got != 0 {
+		t.Fatalf("direct dials = %d, want 0", got)
+	}
+}
+
+// HTTPS direto: o dial vai ao IP validado, mas o SNI/ServerName é o
+// hostname original (DialTLSContext próprio lendo a decisão).
+func TestGuardedClientDirectHTTPSUsesOriginalServerName(t *testing.T) {
+	var sni atomic.Value // string
+	tlsSrv := httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		fmt.Fprint(w, "tls-ok")
+	}))
+	tlsSrv.TLS = &tls.Config{GetConfigForClient: func(hello *tls.ClientHelloInfo) (*tls.Config, error) {
+		sni.Store(hello.ServerName)
+		return nil, nil
+	}}
+	tlsSrv.StartTLS()
+	defer tlsSrv.Close()
+	_, tlsPort, _ := net.SplitHostPort(strings.TrimPrefix(tlsSrv.URL, "https://"))
+
+	guard := &Guard{
+		LookupIP: func(_ context.Context, host string) ([]netip.Addr, error) {
+			return []netip.Addr{netip.MustParseAddr("93.184.216.34")}, nil
+		},
+		Dial: func(ctx context.Context, network, addr string) (net.Conn, error) {
+			host, _, err := net.SplitHostPort(addr)
+			if err != nil || host != "93.184.216.34" {
+				return nil, fmt.Errorf("guard dialed unvalidated address %q", addr)
+			}
+			var d net.Dialer
+			return d.DialContext(ctx, network, tlsSrv.Listener.Addr().String())
+		},
+	}
+	client := guard.Client(&http.Client{Transport: &http.Transport{
+		Proxy:           nil,
+		TLSClientConfig: &tls.Config{InsecureSkipVerify: true}, //nolint:gosec // test fixture; SNI é o que importa
+	}})
+	resp, err := client.Get("https://public.test:" + tlsPort + "/ok")
+	if err != nil {
+		t.Fatalf("direct https fetch: %v", err)
+	}
+	body, _ := io.ReadAll(resp.Body)
+	resp.Body.Close()
+	if string(body) != "tls-ok" {
+		t.Fatalf("body = %q, want tls-ok", body)
+	}
+	if got := sni.Load(); got != "public.test" {
+		t.Fatalf("SNI = %v, want public.test (hostname original, não o IP)", got)
+	}
+}
+
+// HTTPS via proxy: o CONNECT vai ao IP validado (o proxy não resolve o
+// hostname) e o TLS dentro do túnel usa o hostname original como SNI
+// (clone de transporte por requisição com ServerName original).
+func TestGuardedClientHTTPSViaProxyConnectsToValidatedIP(t *testing.T) {
+	var sni, connectDest atomic.Value // string
+	var proxyHits atomic.Int32
+	tlsSrv := httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		fmt.Fprint(w, "tls-proxied-ok")
+	}))
+	tlsSrv.TLS = &tls.Config{GetConfigForClient: func(hello *tls.ClientHelloInfo) (*tls.Config, error) {
+		sni.Store(hello.ServerName)
+		return nil, nil
+	}}
+	tlsSrv.StartTLS()
+	defer tlsSrv.Close()
+	_, tlsPort, _ := net.SplitHostPort(strings.TrimPrefix(tlsSrv.URL, "https://"))
+
+	proxySrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodConnect {
+			http.Error(w, "want CONNECT", http.StatusMethodNotAllowed)
+			return
+		}
+		proxyHits.Add(1)
+		connectDest.Store(r.Host)
+		hj, ok := w.(http.Hijacker)
+		if !ok {
+			http.Error(w, "no hijack", http.StatusInternalServerError)
+			return
+		}
+		clientConn, bufrw, err := hj.Hijack()
+		if err != nil {
+			return
+		}
+		upstream, err := net.Dial("tcp", tlsSrv.Listener.Addr().String())
+		if err != nil {
+			clientConn.Close()
+			return
+		}
+		_, _ = bufrw.WriteString("HTTP/1.1 200 Connection Established\r\n\r\n")
+		_ = bufrw.Flush()
+		go func() { _, _ = io.Copy(upstream, clientConn) }()
+		go func() { _, _ = io.Copy(clientConn, upstream) }()
+	}))
+	defer proxySrv.Close()
+	proxyURL, _ := url.Parse(proxySrv.URL)
+
+	guard := &Guard{LookupIP: func(_ context.Context, host string) ([]netip.Addr, error) {
+		return []netip.Addr{netip.MustParseAddr("93.184.216.34")}, nil
+	}}
+	client := guard.Client(&http.Client{Transport: &http.Transport{
+		Proxy:           http.ProxyURL(proxyURL),
+		TLSClientConfig: &tls.Config{InsecureSkipVerify: true}, //nolint:gosec // test fixture; SNI/CONNECT são o que importa
+	}})
+	resp, err := client.Get("https://public.test:" + tlsPort + "/ok")
+	if err != nil {
+		t.Fatalf("https via proxy fetch: %v", err)
+	}
+	body, _ := io.ReadAll(resp.Body)
+	resp.Body.Close()
+	if string(body) != "tls-proxied-ok" {
+		t.Fatalf("body = %q, want tls-proxied-ok", body)
+	}
+	if got := proxyHits.Load(); got != 1 {
+		t.Fatalf("proxy CONNECT hits = %d, want 1", got)
+	}
+	if got, want := connectDest.Load(), "93.184.216.34:"+tlsPort; got != want {
+		t.Fatalf("CONNECT destino = %v, want IP validado %v (não o hostname)", got, want)
+	}
+	if got := sni.Load(); got != "public.test" {
+		t.Fatalf("SNI = %v, want public.test (hostname original, não o IP)", got)
 	}
 }
 

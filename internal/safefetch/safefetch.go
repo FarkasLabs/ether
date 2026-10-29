@@ -3,13 +3,30 @@
 // URLs that arrive in remote data (an indexer's feed, a definitions
 // listing) can point at cloud metadata endpoints, loopback services or
 // LAN hosts that the remote peer has no business reaching through Ether.
-// A Guard client therefore validates the destination at dial time: the
-// host is resolved, every candidate address must be a public unicast
-// address, and the connection is opened to the validated address itself,
-// so a DNS answer that flips between validation and dialling (rebinding)
-// cannot smuggle the request to a private target. TLS still uses the
-// original host name (the transport derives the ServerName and Host
-// header from the URL, not from the dialed address).
+// A Guard client therefore binds every request to the destination it
+// validated, before any transport sees it:
+//
+//   - O destino é resolvido e validado UMA vez por RoundTrip (cada hop
+//     de redirect é um novo RoundTrip e decide de novo): todo endereço
+//     candidato precisa ser público — qualquer um não-público recusa a
+//     requisição — e UM IP validado é escolhido.
+//   - O host da requisição é REESCRITO para esse IP literal (host:port)
+//     antes de entregar ao transporte interno. Direto, o DialContext
+//     recebe o IP (sem nova resolução do nome); via proxy, o CONNECT /
+//     a forma absoluta já levam o IP literal — o proxy NÃO resolve o
+//     hostname, portanto a resolução do proxy não pode divergir para um
+//     endereço privado (fecha o rebinding atrás do proxy).
+//   - req.Host preserva o Host original. No TLS, o ServerName continua
+//     sendo o hostname original: direto, via DialTLSContext próprio que
+//     lê a decisão do contexto; via proxy HTTPS, via clone do transporte
+//     por requisição com TLSClientConfig.ServerName = hostname original
+//     (o transporte compartilhado nunca tem ServerName mutado). O clone
+//     por requisição de HTTPS-via-proxy não compartilha pool — é o custo
+//     declarado desse modo. HTTP claro via proxy é escrito pela própria
+//     guarda numa conexão dedicada (sem pool): net/http montaria a
+//     forma absoluta a partir de req.Host, então só escrevendo a
+//     requisição dá para mandar IP literal na request-line E o Host
+//     original ao mesmo tempo.
 //
 // The one exception is the owner-configured origin: an indexer or a
 // definitions source the owner deliberately pointed at a LAN host must
@@ -22,21 +39,22 @@
 // Proxy handling is explicit, never a silent bypass of the owner's
 // network setup:
 //
-//   - Sem proxy (nem configurado no transporte base, nem resolvido do
-//     ambiente para aquela requisição): o dial é direto, no IP já
-//     validado (pinado), como descrito acima.
-//   - Com proxy: a rota do dono é PRESERVADA — a requisição vai ao
-//     proxy —, mas o DESTINO é validado antes de o proxy ser chamado:
-//     o host do destino é resolvido localmente e, se qualquer endereço
-//     não for público (e o destino não for exatamente a origem
-//     confiável), a requisição é recusada sem tocar no proxy nem no
-//     destino. O host do proxy em si pode ser privado: é a origem de
-//     rede que o dono escolheu, portanto alcançá-lo é permitido. Para
-//     HTTPS/CONNECT quem resolve o nome do destino é o proxy; a
-//     validação prévia por resolução local é a política adotada, e o
-//     rebinding residual atrás do proxy (a resolução do proxy divergir
-//     da local) é uma limitação declarada desta política, não um
-//     comportamento silencioso.
+//   - A rota é selecionada UMA vez por requisição: a função Proxy do
+//     transporte base (configurada ou do ambiente) é chamada uma única
+//     vez, a decisão (proxy ou direto, IP validado, hostname original)
+//     é guardada no contexto do clone da requisição, e a Proxy func do
+//     transporte interno apenas CONSOME essa decisão — nunca chama o
+//     seletor de novo. Um seletor stateful não pode mudar a rota entre
+//     a validação e o uso.
+//   - Sem proxy: o dial é direto, no IP já validado (pinado).
+//   - Com proxy: a rota do dono é PRESERVADA, mas o destino já vai
+//     reescrito para o IP validado (acima), e destino não-público é
+//     recusado antes de o proxy ser chamado. O host do proxy em si pode
+//     ser privado: é a origem de rede que o dono escolheu.
+//   - Modo não amarrável não é bypass silencioso: proxy com scheme
+//     diferente de http (https, socks5, …) ou sem host retorna
+//     ErrUnsupportedTransport. Só proxy HTTP (CONNECT / forma absoluta)
+//     é suportado por este desenho.
 //
 // Two further invariants keep the check from being bypassed:
 //
@@ -53,18 +71,23 @@
 //     origin can never be reused by a later untrusted request to the
 //     same host — reuse would skip the dial (and its check) entirely.
 //     As variantes direta e via-proxy de cada política também têm pools
-//     próprios.
+//     próprios (exceto os modos por-requisição declarados acima).
 package safefetch
 
 import (
+	"bufio"
 	"context"
+	"crypto/tls"
+	"encoding/base64"
 	"errors"
 	"fmt"
+	"io"
 	"net"
 	"net/http"
 	"net/netip"
 	"net/url"
 	"strings"
+	"time"
 )
 
 // ErrBlocked reports a destination the guard refused: a non-http(s)
@@ -176,16 +199,96 @@ func (g *Guard) ValidatePublicURL(ctx context.Context, rawURL string) error {
 // proxy the request still goes to the proxy afterwards, but a
 // non-public destination never reaches it.
 func (g *Guard) validatePublicDestination(ctx context.Context, u *url.URL) error {
-	ips, err := g.resolve(ctx, u.Hostname())
+	_, err := g.resolveValidatedIP(ctx, u.Hostname(), false)
+	return err
+}
+
+// resolveValidatedIP resolves host and returns ONE address the request
+// will be bound to. Unless trusted (exactly the owner-configured
+// origin, where a private LAN address is legitimate), EVERY candidate
+// must be public: a mixed answer is refused rather than picking the
+// public-looking one, so a rebinding answer cannot hide a private
+// candidate behind a public one.
+func (g *Guard) resolveValidatedIP(ctx context.Context, host string, trusted bool) (netip.Addr, error) {
+	ips, err := g.resolve(ctx, host)
 	if err != nil {
-		return err
+		return netip.Addr{}, err
 	}
 	for _, ip := range ips {
-		if !IsPublicIP(ip) {
-			return fmt.Errorf("%w: %s resolves to %s", ErrBlocked, u.Hostname(), ip)
+		if !trusted && !IsPublicIP(ip) {
+			return netip.Addr{}, fmt.Errorf("%w: %s resolves to %s", ErrBlocked, host, ip)
 		}
 	}
-	return nil
+	return ips[0], nil
+}
+
+// routeDecision is the route chosen ONCE for one request: which proxy
+// (nil = direct), the validated IP the request is rewritten to, and
+// the original host name (Host header / TLS ServerName). It travels in
+// the cloned request's context; the inner transports' Proxy and TLS
+// dial hooks only consume it and never re-run the owner's selector.
+type routeDecision struct {
+	trusted    bool
+	proxy      *url.URL
+	ip         netip.Addr
+	host       string // original hostname (no port)
+	targetAddr string // validated "IP:port" the URL is rewritten to
+}
+
+type routeDecisionKey struct{}
+
+func decisionFromContext(ctx context.Context) (*routeDecision, bool) {
+	dec, ok := ctx.Value(routeDecisionKey{}).(*routeDecision)
+	return dec, ok && dec != nil
+}
+
+// proxyFromDecision is the Proxy func of the inner proxied transports.
+// It returns the proxy decided once for this request (stored in its
+// context) and never calls the owner's selector again — a stateful
+// selector cannot change the route between validation and use. A
+// proxied transport reached without a decision has no route to
+// consume, so it fails instead of selecting one silently.
+func proxyFromDecision(req *http.Request) (*url.URL, error) {
+	dec, ok := decisionFromContext(req.Context())
+	if !ok {
+		return nil, fmt.Errorf("%w: proxy route without a prior route decision", ErrUnsupportedTransport)
+	}
+	return dec.proxy, nil
+}
+
+func cloneTLSConfig(cfg *tls.Config) *tls.Config {
+	if cfg == nil {
+		return &tls.Config{MinVersion: tls.VersionTLS12}
+	}
+	return cfg.Clone()
+}
+
+// dialTLSContext builds the direct pool's DialTLSContext: it dials the
+// validated IP through the guarded dialer (addr is already an IP
+// literal after the rewrite, so no name is re-resolved) and wraps it
+// in TLS whose ServerName is the ORIGINAL hostname from the request's
+// route decision — never the shared transport's mutable config, which
+// is only cloned here, per connection.
+func (g *Guard) dialTLSContext(dial func(ctx context.Context, network, addr string) (net.Conn, error), base *tls.Config) func(ctx context.Context, network, addr string) (net.Conn, error) {
+	return func(ctx context.Context, network, addr string) (net.Conn, error) {
+		plain, err := dial(ctx, network, addr)
+		if err != nil {
+			return nil, err
+		}
+		cfg := cloneTLSConfig(base)
+		if cfg.ServerName == "" {
+			name := addr
+			if host, _, err := net.SplitHostPort(addr); err == nil {
+				name = host
+			}
+			if dec, ok := decisionFromContext(ctx); ok && dec.host != "" {
+				name = dec.host
+			}
+			cfg.ServerName = name
+		}
+		// The transport handshakes a returned *tls.Conn itself.
+		return tls.Client(plain, cfg), nil
+	}
 }
 
 // ValidatePublicURL validates rawURL with a zero Guard.
@@ -305,6 +408,15 @@ func (g *Guard) dialChecked(ctx context.Context, network, addr string, trustedPo
 		return nil, err
 	}
 	trusted := trustedOrigin(ctx) == hostPortKey(host, port)
+	if dec, ok := decisionFromContext(ctx); ok {
+		// After the rewrite addr is the validated IP:port, not the
+		// original hostname the trusted origin names. Trust then comes
+		// from the decision made for exactly this target address.
+		if decHost, decPort, err := net.SplitHostPort(dec.targetAddr); err == nil &&
+			hostPortKey(decHost, decPort) == hostPortKey(host, port) {
+			trusted = dec.trusted
+		}
+	}
 	if trustedPool && !trusted {
 		return nil, fmt.Errorf("%w: %s is not the trusted origin", ErrBlocked, addr)
 	}
@@ -386,16 +498,25 @@ func (t transport) RoundTrip(req *http.Request) (*http.Response, error) {
 // Clone gives each clone its own connection pool — into two variants:
 //
 //   - direct: Proxy forced to nil and the dial hooks replaced by the
-//     pool's guarded dialer, so the destination is resolved, validated
-//     and dialed at the validated (pinned) address. Dial/DialTLS/
-//     DialTLSContext, when set, would bypass DialContext, so they are
-//     dropped (the transport then performs any TLS handshake over the
-//     guarded dial).
-//   - proxied: the base's Proxy function (configured, or resolved from
-//     the environment per request) and its dial hooks are preserved as
-//     the owner set them — the dial target there is the proxy, the
-//     owner's own network origin, which may legitimately be private.
-//     RoundTrip validates the destination before this variant is used.
+//     pool's guarded dialer, so the destination is dialed at the
+//     validated (pinned) IP the request was rewritten to. Dial/DialTLS,
+//     when set, would bypass DialContext, so they are dropped;
+//     DialTLSContext is replaced by the guard's own, which dials the
+//     IP and uses the original hostname as TLS ServerName (from the
+//     request's route decision in context).
+//   - proxied: the base's dial hooks (to the PROXY, the owner's own
+//     network origin, which may legitimately be private) are preserved,
+//     but Proxy is replaced by proxyFromDecision: it only returns the
+//     proxy selected ONCE by policyTransport.RoundTrip for this
+//     request, stored in the request context. The owner's selector
+//     (ht.Proxy) is kept separately in the selector field and is never
+//     wired into a transport. DialTLS/DialTLSContext are dropped: they
+//     would create TLS straight to the destination, outside the proxy
+//     tunnel (TLS to the destination over CONNECT is done by the
+//     transport; for HTTPS it runs on a per-request clone, see
+//     RoundTrip). HTTP claro via proxy nem usa esta variante: é escrito
+//     pela guarda (roundTripViaHTTPProxy), porque net/http montaria a
+//     forma absoluta a partir de req.Host.
 //
 // Any other RoundTripper has no dialer or pool the guard can split or
 // reconfigure, so it yields unsupportedTransport: requests fail with
@@ -416,21 +537,36 @@ func (g *Guard) policyTransport(base http.RoundTripper, trusted bool) http.Round
 	direct.Proxy = nil
 	direct.DialContext = dial
 	direct.Dial = nil
-	direct.DialTLSContext = nil
+	direct.DialTLSContext = g.dialTLSContext(dial, ht.TLSClientConfig)
 	direct.DialTLS = nil
 	direct.OnProxyConnectResponse = nil
 	proxied := ht.Clone()
+	proxied.Proxy = proxyFromDecision
 	// DialTLS/DialTLSContext criariam TLS direto no destino, fora do
 	// túnel do proxy; descartados também aqui (o TLS com o destino via
 	// CONNECT é feito pelo transporte sobre o dial do proxy).
 	proxied.DialTLSContext = nil
 	proxied.DialTLS = nil
+	// Dial para o proxy em si (HTTP claro via proxy, escrito à mão).
+	proxyDial := func(ctx context.Context, network, addr string) (net.Conn, error) {
+		var d net.Dialer
+		return d.DialContext(ctx, network, addr)
+	}
+	if ht.DialContext != nil {
+		proxyDial = ht.DialContext
+	} else if ht.Dial != nil {
+		proxyDial = func(_ context.Context, network, addr string) (net.Conn, error) {
+			return ht.Dial(network, addr)
+		}
+	}
 	return policyTransport{
-		guard:   g,
-		trusted: trusted,
-		proxy:   ht.Proxy,
-		direct:  direct,
-		proxied: proxied,
+		guard:     g,
+		trusted:   trusted,
+		selector:  ht.Proxy,
+		tlsConfig: ht.TLSClientConfig,
+		proxyDial: proxyDial,
+		direct:    direct,
+		proxied:   proxied,
 	}
 }
 
@@ -445,54 +581,263 @@ func (u unsupportedTransport) RoundTrip(*http.Request) (*http.Response, error) {
 	return nil, fmt.Errorf("%w: %T, want *http.Transport", ErrUnsupportedTransport, u.base)
 }
 
-// policyTransport is one policy's pool pair. Per request it resolves
-// whether a proxy applies (the base transport's Proxy function, which
-// for http.DefaultTransport is ProxyFromEnvironment): sem proxy, usa a
-// variante direta com IP pinado validado; com proxy, preserva a rota
-// do dono, mas valida o destino antes de chamar o proxy (público, ou
-// exatamente a origem confiável nesta pool de confiança). O proxy em
-// si pode ser privado — é escolha do dono. Para HTTPS/CONNECT o proxy
-// resolve o nome do destino; a validação prévia usa a resolução local
-// e o rebinding residual atrás do proxy é a limitação declarada no
-// pacote.
+// policyTransport is one policy's pool pair. Per request (per
+// RoundTrip, so per redirect hop) it decides the route ONCE, in this
+// order:
+//
+//  1. Resolve e valida o destino e escolhe UM IP: público (qualquer
+//     candidato não-público recusa), ou — só nesta pool confiável e só
+//     para exatamente a origem do dono — o IP que for, mesmo privado.
+//     Destino recusado aqui nunca toca seletor, proxy nem destino.
+//  2. Chama o seletor do dono (selector: a Proxy func do transporte
+//     base, que em http.DefaultTransport é ProxyFromEnvironment) UMA
+//     vez, com a requisição original. Proxy com scheme não-http ou sem
+//     host não pode ser amarrado ao IP validado: ErrUnsupportedTransport.
+//  3. Guarda a decisão no contexto de um clone da requisição, reescreve
+//     o host do clone para o IP validado (IP:port literal) preservando
+//     req.Host, e entrega o clone à variante da rota decidida. A Proxy
+//     func da variante via-proxy (proxyFromDecision) só devolve o proxy
+//     já decidido do contexto — o seletor não roda de novo — e, direto,
+//     o DialContext/DialTLSContext recebem o IP literal, sem nova
+//     resolução. Via proxy, CONNECT/forma absoluta levam o IP literal:
+//     o proxy não resolve o hostname.
 type policyTransport struct {
 	guard   *Guard
 	trusted bool
-	proxy   func(*http.Request) (*url.URL, error)
-	direct  *http.Transport
-	proxied *http.Transport
+	// selector is the owner's Proxy function from the base transport.
+	// It is called exactly once per RoundTrip (here), never by the
+	// inner transports.
+	selector  func(*http.Request) (*url.URL, error)
+	tlsConfig *tls.Config // base template; cloned, never mutated
+	proxyDial func(ctx context.Context, network, addr string) (net.Conn, error)
+	direct    *http.Transport
+	proxied   *http.Transport
 }
 
 func (p policyTransport) RoundTrip(req *http.Request) (*http.Response, error) {
+	if (req.URL.Scheme != "http" && req.URL.Scheme != "https") || req.URL.Hostname() == "" {
+		return nil, fmt.Errorf("%w: %q is not an http(s) URL with a host", ErrBlocked, req.URL.Redacted())
+	}
+	if p.trusted && !isTrustedRequest(req) {
+		return nil, fmt.Errorf("%w: %q is not the trusted origin", ErrBlocked, req.URL.Redacted())
+	}
+	ctx := req.Context()
+	// 1) Resolver+validar o destino ANTES de seletor/proxy/dial.
+	ip, err := p.guard.resolveValidatedIP(ctx, req.URL.Hostname(), p.trusted)
+	if err != nil {
+		return nil, err
+	}
+	// 2) Selecionar a rota UMA vez, sobre a requisição original.
 	var proxyURL *url.URL
-	if p.proxy != nil {
-		u, err := p.proxy(req)
+	if p.selector != nil {
+		u, err := p.selector(req)
 		if err != nil {
 			return nil, err
 		}
 		proxyURL = u
 	}
-	if proxyURL == nil {
-		return p.direct.RoundTrip(req)
+	if proxyURL != nil && (proxyURL.Scheme != "http" || proxyURL.Hostname() == "") {
+		// Só proxy HTTP pode receber o destino como IP literal
+		// (CONNECT/forma absoluta) neste desenho. Outro modo (proxy
+		// https, socks5, …) é recusado com erro claro — nunca um
+		// bypass silencioso sem amarração ao IP validado.
+		return nil, fmt.Errorf("%w: proxy scheme %q is not supported, only http proxies can be bound to the validated IP", ErrUnsupportedTransport, proxyURL.Scheme)
 	}
-	// Via proxy: validar o destino ANTES de o proxy ser chamado.
-	if p.trusted {
-		if !isTrustedRequest(req) {
-			return nil, fmt.Errorf("%w: %q is not the trusted origin", ErrBlocked, req.URL.Redacted())
+	// 3) Decisão no contexto + rewrite do host para o IP validado.
+	port := req.URL.Port()
+	if port == "" {
+		port = "80"
+		if req.URL.Scheme == "https" {
+			port = "443"
 		}
-		// Origem confiável exata: privada é legítima (LAN do dono).
-	} else if err := p.guard.validatePublicDestination(req.Context(), req.URL); err != nil {
-		return nil, err
 	}
-	return p.proxied.RoundTrip(req)
+	dec := &routeDecision{
+		trusted:    p.trusted,
+		proxy:      proxyURL,
+		ip:         ip,
+		host:       req.URL.Hostname(),
+		targetAddr: net.JoinHostPort(ip.String(), port),
+	}
+	bound := req.Clone(context.WithValue(ctx, routeDecisionKey{}, dec))
+	bound.URL.Host = dec.targetAddr
+	if bound.Host == "" {
+		// Preserve the original Host header: with the URL rewritten to
+		// an IP, the transport would otherwise send the IP as Host.
+		bound.Host = req.URL.Host
+	}
+	switch {
+	case proxyURL == nil:
+		return p.direct.RoundTrip(bound)
+	case bound.URL.Scheme == "https":
+		// TLS ao destino sobre o CONNECT: o ServerName precisa ser o
+		// hostname original, e o TLSClientConfig do transporte
+		// compartilhado não pode ser mutado por requisição. Clone por
+		// requisição (pool próprio só neste modo); a Proxy func do
+		// clone continua sendo proxyFromDecision, que consome a
+		// decisão do contexto sem re-selecionar. O CONNECT em si sai
+		// do URL reescrito: IP literal, o proxy não resolve o nome.
+		cloned := p.proxied.Clone()
+		cfg := cloneTLSConfig(p.tlsConfig)
+		if cfg.ServerName == "" {
+			cfg.ServerName = dec.host
+		}
+		cloned.TLSClientConfig = cfg
+		return cloned.RoundTrip(bound)
+	default:
+		// HTTP claro via proxy, escrito pela guarda (abaixo).
+		return p.roundTripViaHTTPProxy(bound, dec)
+	}
 }
 
-// Transport returns a RoundTripper that validates destinations (at
-// dial time sem proxy; antes de chamar o proxy, com proxy), with
+// roundTripViaHTTPProxy sends one plain-HTTP request through the
+// decided http proxy on a dedicated connection. It exists because
+// net/http's WriteProxy builds the absolute-form URI from req.Host:
+// delegating to http.Transport would either send the hostname to the
+// proxy (which would resolve it — the v4 hole) or lose the original
+// Host header. Writing the request here sends BOTH: request-line with
+// the validated IP literal, Host header with the original host. The
+// connection is not pooled (closed with the response body); that is
+// the declared cost of this mode. Proxy auth comes from the proxy
+// URL's userinfo, as http.Transport would do.
+func (p policyTransport) roundTripViaHTTPProxy(bound *http.Request, dec *routeDecision) (*http.Response, error) {
+	proxy := dec.proxy
+	proxyPort := proxy.Port()
+	if proxyPort == "" {
+		proxyPort = "80"
+	}
+	conn, err := p.proxyDial(bound.Context(), "tcp", net.JoinHostPort(proxy.Hostname(), proxyPort))
+	if err != nil {
+		return nil, err
+	}
+	stop := context.AfterFunc(bound.Context(), func() { conn.Close() })
+
+	bw := bufio.NewWriter(conn)
+	fail := func(err error) (*http.Response, error) {
+		stop()
+		conn.Close()
+		if bound.Body != nil {
+			bound.Body.Close()
+		}
+		return nil, err
+	}
+	method := bound.Method
+	if method == "" {
+		method = http.MethodGet
+	}
+	// bound.URL.Host já é o IP validado (rewrite em RoundTrip): a forma
+	// absoluta sai dele — sem o rewrite, sairia o hostname.
+	if _, err := fmt.Fprintf(bw, "%s http://%s%s HTTP/1.1\r\n", method, bound.URL.Host, bound.URL.RequestURI()); err != nil {
+		return fail(err)
+	}
+	if _, err := fmt.Fprintf(bw, "Host: %s\r\n", bound.Host); err != nil {
+		return fail(err)
+	}
+	header := bound.Header.Clone()
+	if header == nil {
+		header = make(http.Header)
+	}
+	for _, k := range []string{"Host", "Content-Length", "Transfer-Encoding", "Connection", "Proxy-Connection", "Proxy-Authorization", "Trailer"} {
+		header.Del(k)
+	}
+	if _, hasUA := header["User-Agent"]; !hasUA {
+		header.Set("User-Agent", "Go-http-client/1.1")
+	}
+	if proxy.User != nil {
+		cred := base64.StdEncoding.EncodeToString([]byte(proxy.User.String()))
+		header.Set("Proxy-Authorization", "Basic "+cred)
+	} else if pa := bound.Header.Get("Proxy-Authorization"); pa != "" {
+		header.Set("Proxy-Authorization", pa)
+	}
+	if err := header.Write(bw); err != nil {
+		return fail(err)
+	}
+	hasBody := bound.Body != nil && bound.Body != http.NoBody
+	chunked := hasBody && bound.ContentLength < 0
+	switch {
+	case chunked:
+		if _, err := io.WriteString(bw, "Transfer-Encoding: chunked\r\n"); err != nil {
+			return fail(err)
+		}
+	case hasBody || bound.ContentLength > 0:
+		if _, err := fmt.Fprintf(bw, "Content-Length: %d\r\n", bound.ContentLength); err != nil {
+			return fail(err)
+		}
+	}
+	if _, err := io.WriteString(bw, "Connection: close\r\n\r\n"); err != nil {
+		return fail(err)
+	}
+	if hasBody {
+		if chunked {
+			buf := make([]byte, 32<<10)
+			for {
+				n, rerr := bound.Body.Read(buf)
+				if n > 0 {
+					if _, err := fmt.Fprintf(bw, "%x\r\n", n); err != nil {
+						return fail(err)
+					}
+					if _, err := bw.Write(buf[:n]); err != nil {
+						return fail(err)
+					}
+					if _, err := io.WriteString(bw, "\r\n"); err != nil {
+						return fail(err)
+					}
+					if err := bw.Flush(); err != nil {
+						return fail(err)
+					}
+				}
+				if rerr == io.EOF {
+					break
+				}
+				if rerr != nil {
+					return fail(rerr)
+				}
+			}
+			if _, err := io.WriteString(bw, "0\r\n\r\n"); err != nil {
+				return fail(err)
+			}
+		} else if _, err := io.Copy(bw, bound.Body); err != nil {
+			return fail(err)
+		}
+		bound.Body.Close()
+	}
+	if err := bw.Flush(); err != nil {
+		return fail(err)
+	}
+	if timeout := p.proxied.ResponseHeaderTimeout; timeout > 0 {
+		_ = conn.SetReadDeadline(time.Now().Add(timeout))
+	}
+	resp, err := http.ReadResponse(bufio.NewReader(conn), bound)
+	if err != nil {
+		return fail(err)
+	}
+	_ = conn.SetReadDeadline(time.Time{})
+	resp.Request = bound
+	resp.Body = &proxyConnBody{ReadCloser: resp.Body, conn: conn, stop: stop}
+	return resp, nil
+}
+
+// proxyConnBody ties the dedicated proxy connection's lifetime to the
+// response body: closing the body closes the connection (no pooling
+// for plain-HTTP-via-proxy, see roundTripViaHTTPProxy).
+type proxyConnBody struct {
+	io.ReadCloser
+	conn net.Conn
+	stop func() bool
+}
+
+func (b *proxyConnBody) Close() error {
+	err := b.ReadCloser.Close()
+	b.stop()
+	return errors.Join(err, b.conn.Close())
+}
+
+// Transport returns a RoundTripper that resolves+validates each
+// destination once per request and rewrites it to the validated IP
+// before any inner transport runs (direct or via an http proxy), with
 // separate trusted-origin and public connection pools (see the package
 // documentation). A nil base means http.DefaultTransport. A base that
 // is not a *http.Transport yields a RoundTripper whose requests all
-// fail with ErrUnsupportedTransport.
+// fail with ErrUnsupportedTransport, as does a non-http proxy route.
 func (g *Guard) Transport(base http.RoundTripper) http.RoundTripper {
 	if g == nil {
 		g = &Guard{}

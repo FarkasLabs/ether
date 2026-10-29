@@ -79,9 +79,9 @@ type Client struct {
 	cfg  config.Indexer
 	db   *sql.DB
 	http *http.Client
-	// guarded fetches through safefetch: destinations are validated at
-	// dial time, ou antes de chamar o proxy do dono quando há um (see
-	// trustedCtx for the owner-origin exception).
+	// guarded fetches through safefetch: destinations are resolved,
+	// validated and rewritten to the validated IP once per request,
+	// direto ou via proxy do dono (see trustedCtx for the exception).
 	guarded  *http.Client
 	log      *slog.Logger
 	cacheTTL time.Duration
