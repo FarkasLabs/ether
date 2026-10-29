@@ -112,6 +112,9 @@ func (s *Service) discoverInto(ctx context.Context, sp *core.CollectionSpec, kin
 		}
 	}
 	res.titles = append(res.titles, items...)
+	if what == "upcoming discovery" && total > len(items) {
+		res.warnings = append(res.warnings, fmt.Sprintf("Upcoming discovery is limited to %d of %d TMDB results", len(items), total))
+	}
 	if (sp.Sort == "latestEpisode" || sp.Sort == "latestSeasonPremiere") && total > len(items) {
 		res.warnings = append(res.warnings, fmt.Sprintf("%s: showing results sorted from %d of %d matching titles", what, len(items), total))
 	}
@@ -201,6 +204,20 @@ func (s *Service) gather(ctx context.Context, sp *core.CollectionSpec, src core.
 	switch src.Kind {
 	case "catalog":
 		res.all = true
+		if sp.ReleaseMode == "upcoming" || sp.ReleaseMode == "mixed" {
+			if !needTMDB() {
+				break
+			}
+			now := s.now().UTC()
+			for _, kind := range kinds {
+				prefix := "primary_release_date"
+				if kind == "tv" {
+					prefix = "first_air_date"
+				}
+				q := url.Values{prefix + ".gte": {now.Format("2006-01-02")}, prefix + ".lte": {now.AddDate(0, 0, sp.LookaheadDays).Format("2006-01-02")}}
+				s.discoverInto(ctx, sp, kind, q, rules, want, &res, "upcoming discovery")
+			}
+		}
 	case "titles":
 		for _, k := range src.Keys {
 			if rk, err := core.ParseRatingKey(k); err == nil {

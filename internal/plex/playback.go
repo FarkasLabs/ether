@@ -51,6 +51,8 @@ const (
 
 func playbackMessage(err error) string {
 	switch {
+	case errors.Is(err, core.ErrUnreleased):
+		return "This title has not been released yet. Playback is unavailable."
 	case errors.Is(err, core.ErrDebridAuth):
 		return msgDebridAuth
 	case errors.Is(err, core.ErrNoTorrentSources):
@@ -105,15 +107,16 @@ func onlyNotCached(err error) bool {
 
 // playRequest is a parsed decision/start request.
 type playRequest struct {
-	key       core.RatingKey
-	caps      core.ClientCaps
-	opts      core.DecideOptions
-	sessionID string // client transcode session id
-	offset    time.Duration
-	protocol  string
-	audioSel  int // stream position, -1 = default
-	subSel    int // stream position, -1 = none/default
-	subSet    bool
+	key        core.RatingKey
+	collection string
+	caps       core.ClientCaps
+	opts       core.DecideOptions
+	sessionID  string // client transcode session id
+	offset     time.Duration
+	protocol   string
+	audioSel   int // stream position, -1 = default
+	subSel     int // stream position, -1 = none/default
+	subSet     bool
 	// subStream is the subtitle picked by id (request or stored), to be
 	// found again in the session's MediaInfo (resolvePlaySubtitle).
 	subStream *core.StreamInfo
@@ -170,6 +173,14 @@ func (s *Server) parsePlayRequest(r *http.Request) (playRequest, error) {
 		caps.MaxBitrateKbps = limit
 	}
 	p := playRequest{key: key, caps: caps, audioSel: -1, subSel: -1, protocol: q.Get("protocol"), mde: q.Get("hasMDE") == "1", partReleaseID: partReleaseID}
+	for _, raw := range []string{q.Get("path"), q.Get("key")} {
+		if u, err := url.Parse(raw); err == nil {
+			if c := u.Query().Get("collection"); c != "" {
+				p.collection = c
+				break
+			}
+		}
+	}
 	// "Play Version" selection: position in the rendered Media list.
 	// partIndex is always 0 (one Part per Media) and ignored.
 	if n, err := strconv.Atoi(q.Get("mediaIndex")); err == nil && n > 0 {
@@ -285,6 +296,14 @@ func (s *Server) prepare(ctx context.Context, pr *Request, p *playRequest) (*cor
 		return nil, nil, core.Decision{}, errors.New("playback not configured")
 	}
 	t, err := s.d.Catalog.Get(ctx, p.key)
+	if err != nil || (t != nil && !t.Released.IsZero() && t.Released.After(s.now())) {
+		if title, _, e := s.lookupPlaceholder(ctx, pr, p.key, p.collection); e == nil {
+			return title, nil, core.Decision{}, core.ErrUnreleased
+		}
+		if err == nil {
+			err = core.ErrNotFound
+		}
+	}
 	if err != nil {
 		return nil, nil, core.Decision{}, err
 	}

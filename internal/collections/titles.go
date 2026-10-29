@@ -11,3 +11,7 @@ import (
 func loadTitles(ctx context.Context, db *sql.DB, keys []core.RatingKey) ([]core.Title, error) {
 	return catalog.NewMirror(db, time.Now).Titles(ctx, keys)
 }
+
+func loadCollectionTitles(ctx context.Context, db *sql.DB, keys []core.RatingKey) ([]core.Title, error) {
+	return catalog.NewMirror(db, time.Now).TitlesIncludingFuture(ctx, keys)
+}

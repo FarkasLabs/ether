@@ -113,6 +113,7 @@ func (t *Title) IsReleased(now time.Time) bool {
 var (
 	ErrNotFound          = errors.New("not found")
 	ErrNotAvailable      = errors.New("not available yet") // no acceptable release exists
+	ErrUnreleased        = errors.New("title has not been released")
 	ErrArticleMissing    = errors.New("article missing on all providers")
 	ErrArticleCorrupt    = errors.New("corrupt article or media data")
 	ErrReleaseRejected   = errors.New("release cannot be streamed")

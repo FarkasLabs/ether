@@ -117,8 +117,16 @@ func (s *Server) handleMetadata(w http.ResponseWriter, r *http.Request) {
 			}
 		default:
 			t, err := s.metadataTitle(ctx, pr, k)
-			if err == nil && !s.visibleTitle(ctx, pr.User, t) {
+			if err == nil && ((!t.Released.IsZero() && t.Released.After(s.now())) || !s.visibleTitle(ctx, pr.User, t)) {
 				err = core.ErrNotFound
+			}
+			if err != nil && len(keys) == 1 {
+				if t, ck, e := s.lookupPlaceholder(ctx, pr, k, q.Get("collection")); e == nil {
+					md = s.placeholderMetadata(ctx, pr, t, ck)
+					mc = s.itemContainer(t.Type)
+					mc.Metadata = append(mc.Metadata, md)
+					continue
+				}
 			}
 			if err != nil {
 				if len(keys) == 1 {
@@ -518,6 +526,21 @@ func (s *Server) handleItemOnDeck(w http.ResponseWriter, r *http.Request) {
 // Collections
 
 func (s *Server) collection(ctx context.Context, u *core.User, k core.RatingKey) (*core.Collection, error) {
+	c, err := s.collectionRaw(ctx, u, k)
+	if err != nil {
+		return nil, err
+	}
+	if c.Upcoming {
+		items, err := s.scopedCollectionItems(ctx, u, k)
+		if err != nil {
+			return nil, err
+		}
+		c.ChildCount = len(items)
+	}
+	return c, nil
+}
+
+func (s *Server) collectionRaw(ctx context.Context, u *core.User, k core.RatingKey) (*core.Collection, error) {
 	if s.d.Collections == nil {
 		return nil, core.ErrNotFound
 	}
@@ -529,6 +552,74 @@ func (s *Server) collection(ctx context.Context, u *core.User, k core.RatingKey)
 		return nil, core.ErrNotFound
 	}
 	return c, nil
+}
+
+func (s *Server) scopedCollectionItems(ctx context.Context, u *core.User, k core.RatingKey) ([]core.Title, error) {
+	pr := FromContext(ctx)
+	p, ok := s.d.Collections.(core.CollectionPlaceholder)
+	if !ok || !p.AllowsPlaceholders(ctx, u, k, core.ClassifyDevice(pr.Product, pr.Platform, pr.Device)) {
+		return nil, core.ErrNotFound
+	}
+	page, err := s.d.Collections.Items(ctx, u, k, 0, 5000)
+	if err != nil {
+		return nil, err
+	}
+	allowed := make([]core.Title, 0, len(page.Items))
+	for _, t := range page.Items {
+		if !s.titleVisible(u, &t) || t.Released.IsZero() {
+			continue
+		}
+		if t.Released.After(s.now()) {
+			if _, ok := s.d.Collections.(core.CollectionPlaceholder); !ok {
+				continue
+			}
+		} else if len(s.availableForViewer(ctx, u, []core.Title{t})) == 0 {
+			continue
+		}
+		allowed = append(allowed, t)
+	}
+	return allowed, nil
+}
+
+func (s *Server) lookupPlaceholder(ctx context.Context, pr *Request, key core.RatingKey, raw string) (*core.Title, core.RatingKey, error) {
+	p, ok := s.d.Collections.(core.CollectionPlaceholder)
+	if !ok {
+		return nil, 0, core.ErrNotFound
+	}
+	device := core.ClassifyDevice(pr.Product, pr.Platform, pr.Device)
+	var title *core.Title
+	var ck core.RatingKey
+	var err error
+	if raw != "" {
+		ck, err = core.ParseRatingKey(raw)
+		if err == nil {
+			title, err = p.Placeholder(ctx, pr.User, ck, key, device)
+		}
+	} else {
+		title, ck, err = p.FindPlaceholder(ctx, pr.User, key, device)
+	}
+	if err != nil || title == nil || !s.titleVisible(pr.User, title) {
+		return nil, 0, core.ErrNotFound
+	}
+	if _, err = s.collectionRaw(ctx, pr.User, ck); err != nil {
+		return nil, 0, core.ErrNotFound
+	}
+	return title, ck, nil
+}
+
+func (s *Server) scopedCollectionCounts(ctx context.Context, u *core.User, cs []core.Collection) []core.Collection {
+	out := make([]core.Collection, 0, len(cs))
+	for _, c := range cs {
+		if c.Upcoming {
+			items, err := s.scopedCollectionItems(ctx, u, c.Key)
+			if err != nil || len(items) == 0 {
+				continue
+			}
+			c.ChildCount = len(items)
+		}
+		out = append(out, c)
+	}
+	return out
 }
 
 // collectionVisible reports whether u may see the section a movie or show
@@ -594,6 +685,7 @@ func (s *Server) sectionCollections(w http.ResponseWriter, r *http.Request, sec 
 		}
 		all = cs
 	}
+	all = s.scopedCollectionCounts(ctx, pr.User, all)
 	lo, hi := pr.window(len(all))
 	for i := lo; i < hi; i++ {
 		mc.Metadata = append(mc.Metadata, s.collectionMetadata(&all[i]))
@@ -615,6 +707,7 @@ func (s *Server) handleCollections(w http.ResponseWriter, r *http.Request) {
 				s.writeErr(w, r, err)
 				return
 			}
+			cs = s.scopedCollectionCounts(ctx, pr.User, cs)
 			for i := range cs {
 				mc.Metadata = append(mc.Metadata, s.collectionMetadata(&cs[i]))
 			}
@@ -654,13 +747,25 @@ func (s *Server) handleCollectionItems(w http.ResponseWriter, r *http.Request) {
 func (s *Server) collectionItems(w http.ResponseWriter, r *http.Request, k core.RatingKey) {
 	ctx := r.Context()
 	pr := FromContext(ctx)
-	c, err := s.collection(ctx, pr.User, k)
+	c, err := s.collectionRaw(ctx, pr.User, k)
 	if err != nil {
 		s.writeErr(w, r, err)
 		return
 	}
 	offset, size := pr.pageOf(0)
-	page, err := s.d.Collections.Items(ctx, pr.User, k, offset, size)
+	var page core.Page
+	if c.Upcoming {
+		items, e := s.scopedCollectionItems(ctx, pr.User, k)
+		if e != nil {
+			s.writeErr(w, r, e)
+			return
+		}
+		start := min(offset, len(items))
+		end := min(start+size, len(items))
+		page = core.Page{Items: items[start:end], Total: len(items)}
+	} else {
+		page, err = s.d.Collections.Items(ctx, pr.User, k, offset, size)
+	}
 	if err != nil {
 		s.writeErr(w, r, err)
 		return
@@ -673,8 +778,33 @@ func (s *Server) collectionItems(w http.ResponseWriter, r *http.Request, k core.
 	mc.Thumb = "/library/metadata/" + k.String() + "/thumb/" + collectionStamp(c)
 	mc.ViewGroup = string(c.Type)
 	mc.ViewMode = viewModeList
-	mc.Metadata = s.renderTitles(ctx, pr, s.filterAllowed(pr.User, page.Items), renderOpts{media: true})
+	if !c.Upcoming {
+		mc.Metadata = s.renderTitles(ctx, pr, s.filterAllowed(pr.User, page.Items), renderOpts{media: true})
+	} else {
+		for i := range page.Items {
+			t := &page.Items[i]
+			if !t.Released.IsZero() && t.Released.After(s.now()) {
+				mc.Metadata = append(mc.Metadata, s.placeholderMetadata(ctx, pr, t, k))
+			} else {
+				mc.Metadata = append(mc.Metadata, s.renderTitles(ctx, pr, []core.Title{*t}, renderOpts{media: true})...)
+			}
+		}
+	}
 	mc.Size = len(mc.Metadata)
 	mc.SetPage(offset, page.Total)
 	s.write(w, r, mc)
+}
+
+func (s *Server) placeholderMetadata(ctx context.Context, pr *Request, t *core.Title, collection core.RatingKey) model.Metadata {
+	md := s.metadata(ctx, pr, t, renderOpts{})
+	md.Key = "/library/metadata/" + t.Key.String() + "?collection=" + collection.String()
+	if md.Thumb != "" {
+		md.Thumb += "?collection=" + collection.String()
+	}
+	if md.Art != "" {
+		md.Art += "?collection=" + collection.String()
+	}
+	md.Image = nil
+	md.Summary = "Scheduled release: " + t.Released.Format("2006-01-02") + ". " + md.Summary
+	return md
 }

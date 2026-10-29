@@ -674,6 +674,20 @@ export function previewableSpec(spec: CollectionSpec): CollectionSpec {
 /** Problems that block saving. */
 export function specProblems(spec: CollectionSpec): string[] {
   const out: string[] = [];
+  if (spec.releaseMode === "upcoming" || spec.releaseMode === "mixed") {
+    if (!spec.targets.collectionsTab || spec.targets.homeRow || spec.targets.sectionRow)
+      out.push(
+        "Upcoming collections require the Collections tab and cannot use Home or library rows.",
+      );
+    if (spec.localOnly || spec.sources.length !== 1 || spec.sources[0]?.kind !== "catalog")
+      out.push("Upcoming titles require the whole catalogue source and remote TMDB discovery.");
+    if (
+      !Number.isInteger(spec.lookaheadDays) ||
+      (spec.lookaheadDays ?? 0) < 1 ||
+      (spec.lookaheadDays ?? 0) > 366
+    )
+      out.push("Look ahead must be between 1 and 366 days.");
+  }
   if (!spec.name.trim()) out.push("Give the collection a name.");
   if (spec.sources.length === 0) out.push("Add at least one source.");
   const badSources = spec.sources.filter((s) => !isSourceComplete(s));
