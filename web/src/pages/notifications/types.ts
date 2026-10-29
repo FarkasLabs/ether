@@ -1,3 +1,5 @@
+import { newId } from "../../lib/api";
+
 export type Channel = {
   smtpMode?: string;
   subscription?: PushSubscriptionJSON;
@@ -109,7 +111,7 @@ export const transportLabel = (kind: string) => TRANSPORT_LABELS[kind] ?? kind;
 export const channelName = (c: Channel) => c.name || transportLabel(c.kind);
 
 export const blankChannel = (): Channel => ({
-  id: crypto.randomUUID(),
+  id: newId("notify"),
   name: "",
   kind: "webhook",
   smtpMode: "starttls",
