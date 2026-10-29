@@ -553,7 +553,10 @@ func (s *Service) join(ctx context.Context, snap *snapshot, titles []core.Title,
 		s.notify("index")
 	}
 	if cur := s.idx.current(); cur != nil {
-		snap = cur
+		// Keep evaluation-only entries while preferring the latest index values.
+		// The index excludes future titles, which may have been overlaid by
+		// an earlier join in this same evaluation.
+		snap = mergeEntries(snap, cur.order)
 	}
 	in := newInterner()
 	entries := make([]*entry, 0, len(future))
