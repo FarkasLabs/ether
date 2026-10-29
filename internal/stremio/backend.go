@@ -142,10 +142,11 @@ func (s *Service) Test(ctx context.Context, cfg config.Indexer) error {
 	return err
 }
 
-// Search implements newznab.Backend. Movies are looked up by IMDb id and
-// episodes by IMDb id, season and episode; a season-level request (Episode
-// 0) asks for the season's first episode and keeps whole-season packs.
-// Titles without an IMDb id, and show-level requests, have no answer.
+// Search implements newznab.Backend. Movies are looked up by id and
+// episodes by id, season and episode (lookupID: IMDb, else TMDB, else a
+// mapped anime database id); a season-level request (Episode 0) asks for
+// the season's first episode and keeps whole-season packs. Titles the
+// addon cannot be asked about, and show-level requests, have no answer.
 func (b *Backend) Search(ctx context.Context, req core.SearchRequest, reserve func(context.Context, string) error) ([]core.Release, error) {
 	switch req.Type {
 	case core.TypeMovie:
@@ -204,16 +205,9 @@ func (b *Backend) logSkipped(skippedNoHash, skippedAmbiguous int) {
 	slog.Default().Warn("stremio: streams skipped without a usable torrent, NZB or HTTP link", "host", b.base.Host, "skippedNoHash", skippedNoHash, "skippedAmbiguous", skippedAmbiguous)
 }
 
-// serves reports whether the addon answers kind, from a manifest fetched
-// at most hourly. An unreadable manifest does not block the search: the
-// stream request itself is the authority.
-func (b *Backend) serves(ctx context.Context, kind string) bool {
-	m := b.currentManifest(ctx)
-	return m == nil || m.serves(kind)
-}
-
 // currentManifest is the addon's manifest, fetched at most hourly; nil
-// when it cannot be read.
+// when it cannot be read (the stream request itself is then the
+// authority, asked by IMDb id).
 func (b *Backend) currentManifest(ctx context.Context) *Manifest {
 	b.mu.Lock()
 	m, at := b.manifest, b.manifestAt
