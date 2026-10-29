@@ -27,6 +27,7 @@ import (
 	"github.com/go-chi/chi/v5"
 
 	"github.com/braedonsaunders/ether/internal/core"
+	"github.com/braedonsaunders/ether/internal/langtag"
 	"github.com/braedonsaunders/ether/internal/plex/model"
 )
 
@@ -155,10 +156,12 @@ func resolveAudio(want *core.StreamInfo, pos int, info core.MediaInfo) int {
 			}
 			continue
 		}
-		if !sameLanguage(st.Language, want.Language) {
+		tier := langtag.MatchTier(want.Language, st.Language)
+		if tier == 0 {
 			continue
 		}
-		score := 0
+		// Exact language/script/region outranks every codec/layout hint.
+		score := tier * 32
 		if st.Codec == want.Codec {
 			score += 8
 		}

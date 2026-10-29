@@ -140,3 +140,15 @@ func TestStreamIDsKeepIssuedAudioAndSubtitleIdentity(t *testing.T) {
 		}
 	}
 }
+
+func TestAudioIdentityPrefersExplicitRegionBeforeCodec(t *testing.T) {
+	want := core.StreamInfo{Type: "audio", Language: "pt-BR", Codec: "ac3", Channels: 6}
+	info := core.MediaInfo{Streams: []core.StreamInfo{
+		{Type: "audio", Language: "por", Codec: "ac3", Channels: 6},
+		{Type: "audio", Language: "pt-BR", Codec: "aac", Channels: 2},
+		{Type: "audio", Language: "pt-PT", Codec: "ac3", Channels: 6},
+	}}
+	if got := resolveAudio(&want, 0, info); got != 1 {
+		t.Fatalf("explicit Brazilian track lost to position %d", got)
+	}
+}
