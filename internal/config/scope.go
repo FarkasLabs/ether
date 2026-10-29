@@ -32,6 +32,7 @@ func (s Scope) String() string {
 // sectionScopes classifies every top-level key of Config whose whole value
 // shares one scope.
 var sectionScopes = map[string]Scope{
+	"posters":       Shared,
 	"sharedCache":   Shared,
 	"availability":  Shared,
 	"usenet":        Shared,

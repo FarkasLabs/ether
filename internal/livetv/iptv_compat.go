@@ -1,6 +1,7 @@
 package livetv
 
 import (
+	"context"
 	"net/http"
 	"strings"
 
@@ -36,7 +37,7 @@ func (w *relayReadinessWriter) Write(b []byte) (int, error) {
 
 // The live relay exposes MPEG-TS segments. Constrain its decision to codecs
 // that transport supports, instead of putting HEVC/fMP4 or Matroska in .ts URLs.
-func (s *Service) startIPTVRelay(ss *session, info core.MediaInfo) error {
+func (s *Service) startIPTVRelay(ctx context.Context, ss *session, info core.MediaInfo) error {
 	caps := ss.caps
 	caps.VideoCodecs = []string{"h264"}
 	caps.HDR10, caps.DolbyVision = false, false
@@ -57,11 +58,12 @@ func (s *Service) startIPTVRelay(ss *session, info core.MediaInfo) error {
 	if err != nil {
 		return err
 	}
-	relay, err := s.o.Transcoder.StartHLS(s.ctx, core.HLSRequest{SessionID: "livetv-" + ss.info.ID, InputURL: input, LiveInput: true, Info: info, Decision: dec, SegmentDuration: segmentDuration})
+	relay, cancel, err := s.startOwnedHLS(ctx, ss, core.HLSRequest{SessionID: "livetv-" + ss.info.ID, InputURL: input, LiveInput: true, Info: info, Decision: dec, SegmentDuration: segmentDuration})
 	if err != nil {
 		return err
 	}
 	ss.relay = relay
+	ss.relayCancel = cancel
 	output := liveRelayInfo(info, dec)
 	ss.relayInfo = &output
 	return nil

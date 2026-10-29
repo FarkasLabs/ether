@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/braedonsaunders/ether/internal/core"
+	"github.com/braedonsaunders/ether/internal/langtag"
 	"github.com/braedonsaunders/ether/internal/store"
 )
 
@@ -129,7 +130,7 @@ func (s *Service) Remember(ctx context.Context, user int64, key core.RatingKey, 
 		if track.Type != kind {
 			return errors.New("stream type does not match")
 		}
-		c.Language = lang(track.Language)
+		c.Language = langtag.Normalize(track.Language)
 		c.Forced = track.Forced
 		c.SDH = sdh(*track)
 	}
@@ -157,45 +158,24 @@ func (s *Service) choice(ctx context.Context, user int64, key core.RatingKey, ki
 	err = json.Unmarshal([]byte(raw), &c)
 	return c, err == nil, err
 }
-func lang(s string) string {
-	s = strings.ToLower(strings.TrimSpace(s))
-	s = strings.Split(s, "-")[0]
-	switch s {
-	case "eng":
-		return "en"
-	case "fre", "fra":
-		return "fr"
-	case "ger", "deu":
-		return "de"
-	case "spa":
-		return "es"
-	case "jpn":
-		return "ja"
-	case "ita":
-		return "it"
-	case "por":
-		return "pt"
-	case "chi", "zho":
-		return "zh"
-	case "kor":
-		return "ko"
-	case "rus":
-		return "ru"
-	}
-	return s
-}
 func sdh(t core.StreamInfo) bool {
 	v := strings.ToLower(t.Title)
 	return strings.Contains(v, "sdh") || strings.Contains(v, "hearing impaired") || strings.Contains(v, "[cc]") || v == "cc"
 }
+
+// rankLanguage orders configured language preferences first, match tier
+// second, and leaves space for pick's style/default bonuses last. With at
+// most 20 configured languages plus the original language, the score stays
+// below the 10000-point explicit-choice bonus.
 func rankLanguage(code string, want []string) int {
 	for i, v := range want {
-		if lang(code) != "" && lang(code) == lang(v) {
-			return 1000 - i*20
+		if tier := langtag.MatchTier(v, code); tier > 0 {
+			return (len(want)-i)*300 + tier*50
 		}
 	}
 	return 0
 }
+
 func pick(streams []core.StreamInfo, kind string, want []string, style string, forcedOnly bool, memory *Choice) int {
 	best, score := -1, -100000
 	for i, t := range streams {
@@ -214,7 +194,7 @@ func pick(streams []core.StreamInfo, kind string, want []string, style string, f
 				n += 10
 			}
 		}
-		if memory != nil && lang(t.Language) == memory.Language && t.Forced == memory.Forced && sdh(t) == memory.SDH {
+		if memory != nil && langtag.Normalize(t.Language) == langtag.Normalize(memory.Language) && t.Forced == memory.Forced && sdh(t) == memory.SDH {
 			n += 10000
 		}
 		if n > score {

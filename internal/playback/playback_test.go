@@ -1030,6 +1030,13 @@ func TestPausedPlaybackSurvivesPhoneCall(t *testing.T) {
 		func(h *harness, o *Options) { o.IdleTimeout = 2 * time.Minute })
 	ps := h.prepare(owner, movieKey, "c1")
 	h.m.PlaybackProgress(owner.ID, "c1", movieKey, time.Minute, "paused")
+	if !h.cache.pinned("A", PinReasonLive) {
+		t.Fatal("paused session lost live cache protection")
+	}
+	sessions := h.m.Sessions()
+	if len(sessions) != 1 || sessions[0].Resolution == nil || sessions[0].Resolution.Release.ID != "A" {
+		t.Fatalf("paused session missing from owner protection: %+v", sessions)
+	}
 	h.clock.Advance(5 * time.Minute)
 	h.m.expire()
 	if _, ok := h.m.Session(ps.ID); !ok {

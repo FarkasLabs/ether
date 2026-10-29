@@ -28,16 +28,18 @@ type SyncProgress struct {
 
 // Stats is the admin-UI snapshot of the mirror.
 type Stats struct {
-	Trending        []TrendStatus `json:"trending"`
-	Movies          int           `json:"movies"`
-	Shows           int           `json:"shows"`
-	Seasons         int           `json:"seasons"`
-	Episodes        int           `json:"episodes"`
-	BrowsableMovies int           `json:"browsableMovies"`
-	BrowsableShows  int           `json:"browsableShows"`
-	Collections     int           `json:"collections"`
-	LastSync        time.Time     `json:"lastSync,omitempty"`
-	Sync            SyncProgress  `json:"sync"`
+	Trending           []TrendStatus `json:"trending"`
+	Movies             int           `json:"movies"`
+	Shows              int           `json:"shows"`
+	Seasons            int           `json:"seasons"`
+	Episodes           int           `json:"episodes"`
+	HomeReleaseChecked int           `json:"homeReleaseChecked"`
+	HomeReleasePending int           `json:"homeReleasePending"`
+	BrowsableMovies    int           `json:"browsableMovies"`
+	BrowsableShows     int           `json:"browsableShows"`
+	Collections        int           `json:"collections"`
+	LastSync           time.Time     `json:"lastSync,omitempty"`
+	Sync               SyncProgress  `json:"sync"`
 }
 
 // Stats returns mirror counts, last sync time and current sync progress.
@@ -66,6 +68,12 @@ func (c *Catalog) Stats(ctx context.Context) (Stats, error) {
 		return s, err
 	}
 	if err := count(`SELECT COUNT(*) FROM catalog_collections`, &s.Collections); err != nil {
+		return s, err
+	}
+	if err := count(`SELECT COUNT(*) FROM catalog_titles t JOIN catalog_home_release h ON h.key=t.key WHERE t.type='movie' AND t.adult=0 AND t.released_ts<>0 AND t.released_ts<=? AND h.checked=1`, &s.HomeReleaseChecked, c.now().Unix()); err != nil {
+		return s, err
+	}
+	if err := count(`SELECT COUNT(*) FROM catalog_titles t LEFT JOIN catalog_home_release h ON h.key=t.key WHERE t.type='movie' AND t.adult=0 AND t.released_ts<>0 AND t.released_ts<=? AND (h.checked IS NULL OR h.checked=0)`, &s.HomeReleasePending, c.now().Unix()); err != nil {
 		return s, err
 	}
 	if v := c.getMeta(ctx, "last_sync"); v != "" {
@@ -100,13 +108,14 @@ func (c *Catalog) SyncProgress() SyncProgress {
 // WithResumeSchedule the initial sync waits until the interval has passed
 // since the last recorded sync.
 func (c *Catalog) Run(ctx context.Context) {
-	if wait := c.untilDue(ctx); wait > 0 {
-		c.log.Info("catalog: resuming the sync schedule", "next_sync_in", wait.Round(time.Second))
-		if !schedule.Wait(ctx, c.now, wait) {
+	full := schedule.New(c.now(), c.untilDue(ctx))
+	// Preserve the existing resume behavior while the gate is off. If the
+	// owner enables it during the wait, start background backfill promptly.
+	for !c.config().GateMoviesByHomeRelease && full.Remaining(c.now()) > 0 {
+		if !schedule.Wait(ctx, c.now, min(schedule.MaxWait, full.Remaining(c.now()))) {
 			return
 		}
 	}
-	full := schedule.New(c.now(), 0)
 	warm := schedule.New(c.now(), 90*time.Second)
 	recent := schedule.New(c.now(), 4*time.Hour)
 	for ctx.Err() == nil {
@@ -139,7 +148,12 @@ func (c *Catalog) Run(ctx context.Context) {
 		}
 		if warm.Remaining(c.now()) == 0 {
 			if !c.syncing.Load() {
-				_, _ = c.WarmDetails(ctx, 25)
+				if c.config().GateMoviesByHomeRelease {
+					_, _ = c.BackfillHomeReleases(ctx, 15)
+					_, _ = c.WarmDetails(ctx, 10)
+				} else {
+					_, _ = c.WarmDetails(ctx, 25)
+				}
 			}
 			warm = schedule.New(c.now(), 90*time.Second)
 		}

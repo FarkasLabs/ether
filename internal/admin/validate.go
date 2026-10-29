@@ -69,6 +69,9 @@ func (v *validator) clock(field, s string) {
 // strict about structurally broken values.
 func ValidateConfig(cfg config.Config) []FieldError {
 	v := &validator{}
+	if err := cfg.Posters.Validate(); err != nil {
+		v.add("posters", "%s", err.Error())
+	}
 	a := cfg.Availability
 	if a.PollMinutes < 5 || a.PollMinutes > 1440 {
 		v.add("availability.pollMinutes", "must be between 5 and 1440 minutes")

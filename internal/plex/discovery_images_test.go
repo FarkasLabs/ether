@@ -1,8 +1,14 @@
 package plex
 
 import (
+	"bytes"
 	"context"
+	"github.com/braedonsaunders/ether/internal/artwork"
+	"github.com/braedonsaunders/ether/internal/config"
+	"image"
+	"image/jpeg"
 	"net/http"
+	"net/http/httptest"
 	"net/url"
 	"strings"
 	"testing"
@@ -79,5 +85,50 @@ func TestPhotoTranscodeDiscoveryArtwork(t *testing.T) {
 	r := f.request(t, http.MethodGet, "/photo/:/transcode?url="+url.QueryEscape("https://untrusted.invalid"+md.Thumb), nil)
 	if r.Code != http.StatusForbidden {
 		t.Fatalf("foreign host: %d", r.Code)
+	}
+}
+
+func TestPhotoTranscodePosterProvider(t *testing.T) {
+	var buf bytes.Buffer
+	_ = jpeg.Encode(&buf, image.NewRGBA(image.Rect(0, 0, 400, 600)), nil)
+	hits := 0
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		hits++
+		if r.URL.Query().Get("type") != "movie" {
+			t.Error("wrong type")
+		}
+		w.Write(buf.Bytes())
+	}))
+	defer upstream.Close()
+	cfg := config.Posters{Enabled: true, Source: "postersplus", BaseURL: upstream.URL, APIKey: "never-visible"}
+	images := artwork.NewImages(artwork.ImagesOptions{Posters: func() config.Posters { return cfg }})
+	f := newFixture()
+	defer f.srv.Close()
+	ov := overlays.New(discoveryDB(t), overlays.Options{Images: images})
+	f.srv.d.Discovery = &DiscoveryFeatures{Overlays: ov}
+	pr := &Request{User: &ownerUser}
+	md := f.srv.metadata(context.Background(), pr, &fightClub, renderOpts{})
+	if !strings.Contains(md.Thumb, "discoveryPoster") || strings.Contains(md.Thumb, "never-visible") {
+		t.Fatal(md.Thumb)
+	}
+	target := "/photo/:/transcode?width=200&url=" + url.QueryEscape(md.Thumb)
+	r := f.request(t, http.MethodGet, target, nil)
+	if r.Code != 200 || hits != 1 {
+		t.Fatalf("status %d hits %d", r.Code, hits)
+	}
+	decoded, _, err := image.DecodeConfig(bytes.NewReader(r.Body.Bytes()))
+	if err != nil || decoded.Width != 200 {
+		t.Fatal(decoded, err)
+	}
+	old := md.Thumb
+	cfg.APIKey = "changed"
+	md = f.srv.metadata(context.Background(), pr, &fightClub, renderOpts{})
+	if md.Thumb == old {
+		t.Fatal("client cache version unchanged")
+	}
+	cfg.Enabled = false
+	md = f.srv.metadata(context.Background(), pr, &fightClub, renderOpts{})
+	if strings.Contains(md.Thumb, "discoveryPoster") {
+		t.Fatal("default not restored")
 	}
 }

@@ -158,6 +158,8 @@ Compose your server's Home screen with global rules and per-viewer overrides, pr
 ### Live Poster Studio & 24/7 Live TV Guide
 Design versioned poster overlays (`Cinema`, `Spotlight`, `Essential`) with IMDb, Rotten Tomatoes, Letterboxd, and TMDB scores. Quality badges (`4K`, `HDR`, `Dolby Vision`, `Atmos`) are **strictly truthful**—rendered only when backed by observed media facts. In **Live TV**, combine M3U/XMLTV and Xtream feeds with 24/7 virtual channels generated from your own collections.
 
+Under **Metadata → Artwork**, choose self-hosted PostersPlus, BetterPosters, Rating Poster Database, or a custom URL template for movie and show posters. Supply your own provider settings; unavailable posters fall back to TMDB. Provider keys and template URLs stay on the server. Ether overlays can be added on top. See [provider setup and limits](internal/artwork/PROVIDERS.md).
+
 <table>
   <tr>
     <td width="50%" valign="top">
@@ -317,3 +319,7 @@ Ether is an independent, clean-room implementation of the HTTP protocol used by 
 "Plex" is a trademark of Plex, Inc. Ether is **not affiliated with, sponsored by, or endorsed by Plex, Inc.** This product uses the TMDB API but is not endorsed or certified by TMDB.
 
 [**GPL-3.0 License**](LICENSE) · [**Legal**](LEGAL.md) · [**Third-Party Notices**](THIRD_PARTY_NOTICES.md)
+
+### Movie release window
+
+In Catalog settings, **Wait for digital or physical release** optionally hides movies until the earliest TMDB digital or physical release date anywhere in the world. It is off by default. Movies whose completed TMDB release-date details have no digital or physical date become visible 90 days after their theatrical release; once admitted by that fallback, they remain admitted if TMDB later changes its dates. Movies awaiting details stay hidden while bounded background batches check the catalog. Missing and future dates are rechecked, and older dates are periodically refreshed. The original theatrical date and year remain unchanged, and a date does not verify release quality.

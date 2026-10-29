@@ -168,6 +168,7 @@ type App struct {
 	updates           *updateState
 	plexServer        *plex.Server
 	handler           http.Handler
+	instanceLock      *instanceLock
 	closers           []func()
 	closeOnce         sync.Once
 }
@@ -187,11 +188,21 @@ func New(ctx context.Context, opts Options) (*App, error) {
 	}
 	a.log = slog.New(admin.TeeHandler(base.Handler(), a.logs))
 	slog.SetDefault(a.log)
+	var err error
+	if a.instanceLock, err = acquireInstanceLock(opts.DataDir); err != nil {
+		return nil, err
+	}
+	a.closers = append(a.closers, a.instanceLock.Release)
+	started := false
+	defer func() {
+		if !started {
+			a.Close()
+		}
+	}()
 	if err := a.confirmUpdateStartup(); err != nil {
 		return nil, err
 	}
 
-	var err error
 	if a.cfg, err = config.Open(opts.DataDir); err != nil {
 		return nil, fmt.Errorf("config: %w", err)
 	}
@@ -265,6 +276,7 @@ func New(ctx context.Context, opts Options) (*App, error) {
 				"url", dbCfg.Redacted().URL, "attempt", attempt, "retry", wait, "err", err)
 		},
 	}); err != nil {
+		a.Close() // libera o instance lock (o db não foi aberto)
 		return nil, fmt.Errorf("database: %w", err)
 	}
 	if dialect == store.Postgres {
@@ -300,6 +312,7 @@ func New(ctx context.Context, opts Options) (*App, error) {
 	}
 	a.connectClusterHooks()
 	a.initUpdates()
+	started = true
 	return a, nil
 }
 

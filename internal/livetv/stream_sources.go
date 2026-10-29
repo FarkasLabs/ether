@@ -257,6 +257,10 @@ func (s *Service) startIPTV(ctx context.Context, ss *session) error {
 			ss.relay.Close()
 			ss.relay = nil
 		}
+		if ss.relayCancel != nil {
+			ss.relayCancel()
+			ss.relayCancel = nil
+		}
 		s.revokeInput(ss)
 		last = err
 		if !errors.Is(ctx.Err(), context.Canceled) {

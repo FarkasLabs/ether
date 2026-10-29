@@ -24,6 +24,7 @@ import (
 	"time"
 
 	"github.com/braedonsaunders/ether/internal/core"
+	"github.com/braedonsaunders/ether/internal/langtag"
 )
 
 // manualSig is the index-file signature of a viewer-picked track. Release
@@ -53,9 +54,17 @@ type offer struct {
 }
 
 func sidecarStream(index int, lang string, sel selection) core.StreamInfo {
+	title := sidecarTitle(lang, sel.Release)
+	if sel.SDH {
+		// trackprefs detects SDH from the track title; without this marker
+		// an SDH sidecar could never match an sdh style/memory choice.
+		// The marker is delimited (" (SDH)") so it cannot be confused with
+		// an "SDH" token inside a release name.
+		title += " (SDH)"
+	}
 	return core.StreamInfo{
 		Index: index, Type: "subtitle", Codec: "srt", Language: lang, Forced: sel.Forced,
-		Title: sidecarTitle(lang, sel.Release), External: true, ExternalURL: URLPrefix + sel.ID,
+		Title: title, External: true, ExternalURL: URLPrefix + sel.ID,
 	}
 }
 
@@ -125,10 +134,11 @@ func (s *Service) manualPath(key core.RatingKey, lang string) string {
 // track (whichever release it was matched to). Streams whose ExternalURL
 // is already in embedded are skipped, so it can top up a session's
 // enriched MediaInfo too. Nil when the service is disabled.
-func (s *Service) CachedSidecars(title *core.Title, user *core.User, embedded []core.StreamInfo) []core.StreamInfo {
+func (s *Service) CachedSidecars(title *core.Title, user *core.User, embedded []core.StreamInfo, prefs ...Preferences) []core.StreamInfo {
 	if title == nil || !s.Enabled() {
 		return nil
 	}
+	pref := firstPrefs(prefs)
 	all := s.titleSelections(title.Key)
 	if len(all) == 0 {
 		return nil
@@ -138,6 +148,9 @@ func (s *Service) CachedSidecars(title *core.Title, user *core.User, embedded []
 	for _, e := range all {
 		if e.sig == manualSig {
 			manual[e.lang] = e.sel
+			continue
+		}
+		if e.sel.Preference != prefSig(pref) && !((e.sel.Preference == "" || e.sel.Preference == prefSig(Preferences{})) && selectionSatisfies(e.sel, pref)) {
 			continue
 		}
 		if cur, ok := newest[e.lang]; !ok || e.sel.At.After(cur.At) {
@@ -163,7 +176,7 @@ func (s *Service) CachedSidecars(title *core.Title, user *core.User, embedded []
 		out = append(out, sidecarStream(nextIndex, lang, sel))
 		nextIndex++
 	}
-	for _, lang := range MissingLanguages(user, embedded) {
+	for _, lang := range missingForPreferences(user, embedded, pref) {
 		if sel, ok := manual[lang]; ok {
 			add(lang, sel)
 			delete(manual, lang)
@@ -185,7 +198,7 @@ func (s *Service) SearchOnDemand(ctx context.Context, title *core.Title, lang, r
 	if title == nil || !s.Enabled() {
 		return nil, nil
 	}
-	lang = normLang(lang)
+	lang = langtag.Normalize(lang)
 	if lang == "" {
 		return nil, fmt.Errorf("subtitle search needs a language")
 	}
@@ -226,14 +239,14 @@ func (s *Service) DownloadOnDemand(ctx context.Context, title *core.Title, fileI
 		return core.StreamInfo{}, core.ErrNotFound
 	}
 	id := cacheID(title, o.lang, fileID)
-	if _, err := s.fetchAndCache(ctx, id, o.cand); err != nil {
+	if _, err := s.fetchAndCache(ctx, id, o.cand, title.Key); err != nil {
 		return core.StreamInfo{}, err
 	}
 	release := o.cand.Release
 	if release == "" {
 		release = o.cand.FileName
 	}
-	sel := selection{ID: id, FileID: fileID, Language: o.lang, Release: release, At: s.now().UTC(), Forced: o.cand.Forced}
+	sel := selection{ID: id, FileID: fileID, Language: o.lang, Release: release, At: s.now().UTC(), Forced: o.cand.Forced, SDH: o.cand.HearingImp}
 	p := s.manualPath(title.Key, o.lang)
 	if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
 		return core.StreamInfo{}, err
@@ -288,7 +301,7 @@ func (s *Service) OpenFormatAt(id, format string, offset time.Duration) (io.Read
 // Downloads count against the OpenSubtitles daily quota, so prefetches
 // are budgeted: one per title at a time, two server-wide, twenty an hour,
 // none while the quota is exhausted. False means nothing was started.
-func (s *Service) PrefetchSidecars(title *core.Title, user *core.User) bool {
+func (s *Service) PrefetchSidecars(title *core.Title, user *core.User, prefs ...Preferences) bool {
 	if title == nil || user == nil || !s.Enabled() {
 		return false
 	}
@@ -302,7 +315,7 @@ func (s *Service) PrefetchSidecars(title *core.Title, user *core.User) bool {
 		return false
 	}
 	have := map[string]bool{}
-	for _, st := range s.CachedSidecars(title, user, nil) {
+	for _, st := range s.CachedSidecars(title, user, nil, prefs...) {
 		have[st.Language] = true
 	}
 	need := false
@@ -352,7 +365,7 @@ func (s *Service) PrefetchSidecars(title *core.Title, user *core.User) bool {
 		}()
 		ctx, cancel := context.WithTimeout(context.Background(), prefetchTimeout)
 		defer cancel()
-		if _, err := s.SidecarsForRelease(ctx, &t, &u, nil, ""); err != nil {
+		if _, err := s.SidecarsForRelease(ctx, &t, &u, nil, "", prefs...); err != nil {
 			s.log.Debug("subtitle prefetch", "key", t.Key, "err", err)
 		}
 	}()

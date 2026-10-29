@@ -48,8 +48,11 @@ func (c *Catalog) fresh(st *storedTitle) bool {
 
 // Get returns a title from the mirror, fetching on demand when missing/stale.
 func (c *Catalog) Get(ctx context.Context, key core.RatingKey) (*core.Title, error) {
+	if err := c.admitFallbacks(ctx); err != nil {
+		return nil, err
+	}
 	t, err := c.get(ctx, key)
-	if err == nil && (t.Adult || !t.IsReleased(c.now())) {
+	if err == nil && (t.Adult || !t.IsReleased(c.now()) || (c.config().GateMoviesByHomeRelease && !c.homeVisible(t))) {
 		return nil, core.ErrNotFound
 	}
 	// A season none of whose episodes has aired is not listed (seasonsOfShow)
@@ -90,7 +93,7 @@ func (c *Catalog) getMovie(ctx context.Context, id int64) (*core.Title, error) {
 			return nil, ferr
 		}
 		t := c.movieDetailsToTitle(ctx, d)
-		if uerr := c.upsert(ctx, t, upsertOpts{browsable: c.meetsThreshold(t), detail: true}); uerr != nil {
+		if uerr := c.upsert(ctx, t, upsertOpts{browsable: c.meetsThreshold(t), detail: true, releaseDates: d.ReleaseDates, gateEnabled: c.config().GateMoviesByHomeRelease}); uerr != nil {
 			return nil, uerr
 		}
 		c.harvestMovieCrowd(ctx, key, d.Recommendations)

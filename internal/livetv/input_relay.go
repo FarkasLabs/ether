@@ -139,6 +139,24 @@ func (s *Service) grantInput(ss *session, src StreamSource, headers http.Header)
 	return nil
 }
 
+// transferInput re-keys a grant created for a staged session copy to the
+// real session once the staged tune is published. The token (and therefore
+// the URL ffmpeg/ffprobe already received) is unchanged.
+func (s *Service) transferInput(from, to *session) {
+	r := &s.inputRelay
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	g := r.bySess[from]
+	if g == nil {
+		return
+	}
+	delete(r.bySess, from)
+	if old := r.bySess[to]; old != nil && old != g {
+		r.dropLocked(to, old)
+	}
+	r.bySess[to] = g
+}
+
 // revokeInput ends the session's grant and any relay request using it.
 func (s *Service) revokeInput(ss *session) {
 	r := &s.inputRelay

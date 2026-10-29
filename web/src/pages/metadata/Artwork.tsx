@@ -22,6 +22,7 @@ import {
   type ArtworkExplanation,
   type Overlays,
 } from "./model";
+import { PosterProviders } from "./PosterProviders";
 import { PosterCanvas } from "./PosterCanvas";
 
 type Variant = { path: string; language?: string; tags?: string[] };
@@ -167,6 +168,7 @@ export function ArtworkSettings() {
         }
         aside={
           <>
+            <PosterProviders onSaved={() => setNonce((n) => n + 1)} />
             <div className="metadata-enable">
               <div>
                 <label htmlFor="overlay-enabled">Ether posters</label>

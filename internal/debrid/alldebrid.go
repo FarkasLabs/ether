@@ -304,7 +304,7 @@ func (p *allDebrid) Link(ctx context.Context, h Handle) (DirectLink, error) {
 	}
 	if out.Link == "" {
 		// Delayed links need a second polling API; treat as temporarily unavailable.
-		return DirectLink{}, errors.New("alldebrid: link generation delayed")
+		return DirectLink{}, fmt.Errorf("alldebrid: link generation delayed: %w", core.ErrSourceUnavailable)
 	}
 	return DirectLink{URL: out.Link, Size: out.Filesize, Expires: p.opts.Now().Add(allDebridLinkTTL)}, nil
 }

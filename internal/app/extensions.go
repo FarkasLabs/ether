@@ -27,7 +27,7 @@ func (a *App) extensionHandlers() map[string]http.Handler {
 	})
 	m["stream-preferences"] = a.trackprefs.Handler()
 	m["markers"] = a.markers.Handler()
-	m["subtitle-sync"] = a.subtitles.SyncHandler()
+	m["subtitle-sync"] = a.subtitleSyncHandler()
 	m["metadata"] = a.episodeorder.Router()
 	m["updates"] = a.updatesHandler()
 	m["cluster"] = a.clusterHandler()

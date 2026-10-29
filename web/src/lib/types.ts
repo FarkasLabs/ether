@@ -201,7 +201,16 @@ export interface DebridProviderStatus {
   accountSlots?: number;
 }
 
+export interface PosterProviderConfig {
+  enabled: boolean;
+  source: string;
+  baseUrl: string;
+  apiKey: string;
+  urlTemplate: string;
+}
+
 export interface EtherConfig {
+  posters?: PosterProviderConfig;
   availability?: AvailabilityConfig;
   server: {
     port: number;

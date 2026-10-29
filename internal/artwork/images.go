@@ -22,6 +22,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/braedonsaunders/ether/internal/config"
 	"github.com/braedonsaunders/ether/internal/core"
 	"github.com/braedonsaunders/ether/internal/flight"
 	"github.com/braedonsaunders/ether/internal/lru"
@@ -61,6 +62,9 @@ func Size(w int) string {
 
 // ImagesOptions configure an image store.
 type ImagesOptions struct {
+	// Posters returns the current owner settings; nil preserves TMDB.
+	Posters func() config.Posters
+
 	// Dir is the disk cache directory ("" = memory only).
 	Dir string
 	// MemoryBytes bounds the in-memory LRU (default 64 MiB).
@@ -84,9 +88,10 @@ type Images struct {
 	items    *lru.Cache[string, *memImage]
 	inflight flight.Group[string, *memImage]
 
-	diskMu    sync.Mutex
-	diskUsed  int64
-	diskKnown bool
+	posterSlots chan struct{}
+	diskMu      sync.Mutex
+	diskUsed    int64
+	diskKnown   bool
 }
 
 type memImage struct {
@@ -115,7 +120,7 @@ func NewImages(o ImagesOptions) *Images {
 	if o.Dir != "" {
 		_ = os.MkdirAll(o.Dir, 0o755)
 	}
-	return &Images{o: o, log: o.Logger, items: lru.New(lru.Options[string, *memImage]{MaxCost: o.MemoryBytes, Cost: func(_ string, img *memImage) int64 {
+	return &Images{posterSlots: make(chan struct{}, 2), o: o, log: o.Logger, items: lru.New(lru.Options[string, *memImage]{MaxCost: o.MemoryBytes, Cost: func(_ string, img *memImage) int64 {
 		return int64(len(img.data))
 	}})}
 }

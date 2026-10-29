@@ -97,6 +97,11 @@ CREATE INDEX catalog_keywords_keyword ON catalog_keywords(keyword, key);
 	// decide when details are stale.
 	store.Register("catalog", 5, `ALTER TABLE catalog_titles ADD COLUMN detail_at INTEGER NOT NULL DEFAULT 0;`)
 	store.Register("catalog", 6, dropUnkeyableEpisodes)
+	store.Register("catalog", 9, `
+CREATE TABLE catalog_home_release (key INTEGER PRIMARY KEY, checked INTEGER NOT NULL DEFAULT 0, earliest_ts INTEGER NOT NULL DEFAULT 0, fallback_admitted INTEGER NOT NULL DEFAULT 0, attempted_at INTEGER NOT NULL DEFAULT 0);
+CREATE INDEX catalog_home_release_pending ON catalog_home_release(checked,earliest_ts,fallback_admitted);
+CREATE TABLE catalog_home_release_dates (key INTEGER NOT NULL, country TEXT NOT NULL, kind INTEGER NOT NULL, released_ts INTEGER NOT NULL, PRIMARY KEY(key,country,kind,released_ts));
+`)
 	store.Register("catalog", 7, `
 CREATE INDEX catalog_titles_type_browse_sort ON catalog_titles(type, browsable, adult, sort_title ASC, key ASC);
 CREATE INDEX catalog_titles_browse_warm ON catalog_titles(browsable, detail, adult, popularity DESC, vote_count DESC);
@@ -182,6 +187,11 @@ type Catalog struct {
 	countCache  map[string]cachedCount
 	browseCache map[string]cachedBrowse
 	facetCache  map[string]cachedFacet
+
+	admitMu     sync.Mutex
+	admitGen    uint64
+	admitMinute int64
+	admitReady  bool
 
 	personMu       sync.Mutex
 	personHydrated map[int64]time.Time
@@ -277,6 +287,13 @@ func (c *Catalog) UpdateConfig(cfg config.Catalog) {
 		return
 	}
 	c.cfgMu.Lock()
+	if c.cfg.GateMoviesByHomeRelease && !cfg.GateMoviesByHomeRelease {
+		if _, err := c.db.Exec(`UPDATE catalog_home_release SET fallback_admitted=1 WHERE checked=1 AND earliest_ts=0 AND EXISTS (SELECT 1 FROM catalog_titles t WHERE t.key=catalog_home_release.key AND t.released_ts<>0 AND t.released_ts<=?)`, c.now().Unix()-int64(homeReleaseGrace.Seconds())); err != nil {
+			c.log.Error("catalog: preserve fallback admissions", "err", err)
+			c.cfgMu.Unlock()
+			return
+		}
+	}
 	c.cfg = cfg
 	c.visibility = f
 	c.writeGen.Add(1)

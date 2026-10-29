@@ -630,3 +630,19 @@ func TestCompactTraceRetainsFailedAttemptsAheadOfUntriedCandidates(t *testing.T)
 		t.Fatal("compaction mutated source trace")
 	}
 }
+
+func TestReleaseBlockPersistsWithoutTitleKey(t *testing.T) {
+	ctx := context.Background()
+	db := openTestDB(t)
+	s := New(&fakeIndexer{}, fakeHealth{}, db, testCfg(), Options{})
+	if _, err := s.Block(ctx, BlockRequest{ReleaseID: "unknown-title"}, "owner"); err != nil {
+		t.Fatal(err)
+	}
+	s.Close()
+	s = New(&fakeIndexer{}, fakeHealth{}, db, testCfg(), Options{})
+	defer s.Close()
+	blocked, err := s.ReleaseBlocked(ctx, "unknown-title")
+	if err != nil || !blocked {
+		t.Fatalf("persisted block: %v %v", blocked, err)
+	}
+}

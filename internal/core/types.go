@@ -51,15 +51,18 @@ type Title struct {
 	Season            int       `json:"season,omitempty"`
 	Episode           int       `json:"episode,omitempty"`
 
-	Title         string        `json:"title"`
-	OriginalTitle string        `json:"originalTitle,omitempty"`
-	SortTitle     string        `json:"sortTitle,omitempty"`
-	Tagline       string        `json:"tagline,omitempty"`
-	Summary       string        `json:"summary,omitempty"`
-	Year          int           `json:"year,omitempty"`
-	Released      time.Time     `json:"released,omitempty"` // first air / release date
-	Runtime       time.Duration `json:"runtime,omitempty"`
-	Status        string        `json:"status,omitempty"` // TMDB status: Released, In Production, Ended...
+	Title                       string        `json:"title"`
+	OriginalTitle               string        `json:"originalTitle,omitempty"`
+	SortTitle                   string        `json:"sortTitle,omitempty"`
+	Tagline                     string        `json:"tagline,omitempty"`
+	Summary                     string        `json:"summary,omitempty"`
+	Year                        int           `json:"year,omitempty"`
+	Released                    time.Time     `json:"released,omitempty"` // first air / release date
+	HomeReleaseChecked          bool          `json:"homeReleaseChecked,omitempty"`
+	HomeReleased                time.Time     `json:"homeReleased,omitempty"`
+	HomeReleaseFallbackAdmitted bool          `json:"homeReleaseFallbackAdmitted,omitempty"`
+	Runtime                     time.Duration `json:"runtime,omitempty"`
+	Status                      string        `json:"status,omitempty"` // TMDB status: Released, In Production, Ended...
 
 	Genres        []string `json:"genres,omitempty"`
 	Keywords      []string `json:"keywords,omitempty"` // TMDB keywords (lower-case), for content-based recommendations

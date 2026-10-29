@@ -246,6 +246,9 @@ func keyList(titles []core.Title) []core.RatingKey {
 // titlesByKeys loads mirrored titles in the given order (released, not
 // adult), in batches, consulting the in-memory movie cache first.
 func (c *Catalog) titlesByKeys(ctx context.Context, keys []core.RatingKey) ([]core.Title, error) {
+	if err := c.admitFallbacks(ctx); err != nil {
+		return nil, err
+	}
 	out := make([]core.Title, 0, len(keys))
 	if len(keys) == 0 {
 		return out, nil
@@ -262,7 +265,7 @@ func (c *Catalog) titlesByKeys(ctx context.Context, keys []core.RatingKey) ([]co
 		}
 		if k.Kind() == core.KindMovie {
 			if ent, ok := c.titleCache[k]; ok && ent.gen == gen && ent.minute == minBucket {
-				if !ent.st.t.Adult && ent.st.t.IsReleased(c.now()) {
+				if !ent.st.t.Adult && ent.st.t.IsReleased(c.now()) && (!c.config().GateMoviesByHomeRelease || homeReleaseVisible(&ent.st.t, c.now())) {
 					byKey[k] = cloneTitle(ent.st.t)
 				}
 				continue
