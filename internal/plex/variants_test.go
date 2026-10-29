@@ -2,6 +2,8 @@ package plex
 
 import (
 	"context"
+	"encoding/json"
+	"encoding/xml"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -361,5 +363,126 @@ func TestVariantIDCollisionProbeAndPartTitle(t *testing.T) {
 	}
 	if _, _, ok := srv.partTitle(12345); ok {
 		t.Error("garbage part id resolved")
+	}
+}
+
+func assertVIDAAXMLIdentity(t *testing.T, body string) {
+	t.Helper()
+	var doc struct {
+		Videos []struct {
+			Media []struct {
+				ID    string `xml:"id,attr"`
+				Parts []struct {
+					ID string `xml:"id,attr"`
+				} `xml:"Part"`
+			} `xml:"Media"`
+		} `xml:"Video"`
+	}
+	if err := xml.Unmarshal([]byte(body), &doc); err != nil {
+		t.Fatal(err)
+	}
+	if len(doc.Videos) != 1 || len(doc.Videos[0].Media) != 1 {
+		t.Fatalf("unexpected media: %s", body)
+	}
+	m := doc.Videos[0].Media[0]
+	if m.ID != fightClub.Key.String() || len(m.Parts) != 1 || m.Parts[0].ID != fightClub.Key.String() {
+		t.Fatalf("media/part identity: %s", body)
+	}
+}
+
+func TestVIDAAMetadataStaysSingleMediaAfterVariantsResolve(t *testing.T) {
+	f, _ := newVariantPlaybackFixture(t)
+	variants := f.resolver.byKey[fightClub.Key]
+	f.resolver.byKey[fightClub.Key] = nil
+	path := "/library/metadata/" + fightClub.Key.String()
+	headers := []string{"X-Plex-Product", "Plex for VIDAA"}
+	cold := f.get(t, path, headers...)
+	if cold.Code != http.StatusOK || strings.Count(cold.Body.String(), "<Media ") != 1 {
+		t.Fatalf("cold metadata: %d %s", cold.Code, cold.Body.String())
+	}
+	assertVIDAAXMLIdentity(t, cold.Body.String())
+	f.resolver.byKey[fightClub.Key] = variants
+	warm := f.get(t, path, headers...)
+	if warm.Code != http.StatusOK || strings.Count(warm.Body.String(), "<Media ") != 1 {
+		t.Fatalf("warm VIDAA metadata should retain one media: %d %s", warm.Code, warm.Body.String())
+	}
+	assertVIDAAXMLIdentity(t, warm.Body.String())
+	for _, product := range []string{"plex for vidaa", "  Plex for VIDAA  "} {
+		r := f.get(t, path, "X-Plex-Product", product)
+		assertVIDAAXMLIdentity(t, r.Body.String())
+	}
+	jr := f.get(t, path, "X-Plex-Product", "Plex for VIDAA", "Accept", "application/json")
+	var j map[string]any
+	if err := json.Unmarshal(jr.Body.Bytes(), &j); err != nil {
+		t.Fatal(err)
+	}
+	mc := j["MediaContainer"].(map[string]any)
+	v := mc["Metadata"].([]any)[0].(map[string]any)
+	media := v["Media"].([]any)
+	if len(media) != 1 {
+		t.Fatalf("JSON media: %s", jr.Body.String())
+	}
+	jm := media[0].(map[string]any)
+	parts := jm["Part"].([]any)
+	if jm["id"] != float64(fightClub.Key) || len(parts) != 1 || parts[0].(map[string]any)["id"] != float64(fightClub.Key) {
+		t.Fatalf("JSON media/part identity: %s", jr.Body.String())
+	}
+	other := f.get(t, path, "X-Plex-Product", "Plex Web")
+	if n := strings.Count(other.Body.String(), "<Media "); other.Code != http.StatusOK || n != 3 {
+		t.Fatalf("other client should retain all variants: %d media=%d", other.Code, n)
+	}
+}
+
+func TestVIDAAPlaybackMetadataLifecycle(t *testing.T) {
+	f, pb := newVariantPlaybackFixture(t)
+	path := "/library/metadata/" + fightClub.Key.String()
+	headers := []string{"X-Plex-Product", "Plex for VIDAA"}
+	check := func(stage string) {
+		t.Helper()
+		r := f.get(t, path, headers...)
+		if r.Code != 200 {
+			t.Fatalf("%s metadata: %d %s", stage, r.Code, r.Body.String())
+		}
+		assertVIDAAXMLIdentity(t, r.Body.String())
+	}
+	check("warm")
+	q := httptest.NewRequest(http.MethodPost, "/playQueues?type=video&uri="+urlEsc(path), nil)
+	q.Header.Set("X-Plex-Token", ownerToken)
+	q.Header.Set("X-Plex-Client-Identifier", "client-1")
+	q.Header.Set("X-Plex-Product", "Plex for VIDAA")
+	qr := httptest.NewRecorder()
+	f.srv.ServeHTTP(qr, q)
+	if qr.Code != 200 {
+		t.Fatalf("queue: %d %s", qr.Code, qr.Body.String())
+	}
+	assertVIDAAXMLIdentity(t, qr.Body.String())
+	query := "path=" + urlEsc(path) + "&session=vidaa&mediaIndex=0&directPlay=0&protocol=hls"
+	for _, endpoint := range []string{"decision?", "start.m3u8?"} {
+		r := f.get(t, "/video/:/transcode/universal/"+endpoint+query, headers...)
+		if r.Code != 200 {
+			t.Fatalf("%s: %d %s", endpoint, r.Code, r.Body.String())
+		}
+		if endpoint == "decision?" {
+			assertVIDAAXMLIdentity(t, r.Body.String())
+		}
+	}
+	if pb.prepared == 0 || len(pb.variantCalls) != 0 {
+		t.Fatalf("auto preparation: prepared=%d variants=%v", pb.prepared, pb.variantCalls)
+	}
+	ps, ok := pb.SessionFor(ownerUser.ID, "client-1", fightClub.Key)
+	if !ok || len(ps.Info.Streams) == 0 || ps.Info.Streams[0].Width != sampleInfo.Streams[0].Width || ps.Info.Streams[0].Height != sampleInfo.Streams[0].Height || ps.Info.Streams[0].Codec != sampleInfo.Streams[0].Codec {
+		t.Fatalf("prepared source: %+v", ps)
+	}
+	check("active")
+	r := f.get(t, "/video/:/transcode/universal/start.m3u8?"+query+"&videoBitrate=2000&videoResolution=1280x720", headers...)
+	if r.Code != 200 {
+		t.Fatalf("quality switch: %d %s", r.Code, r.Body.String())
+	}
+	if r = f.get(t, "/video/:/transcode/universal/stop?session=vidaa", headers...); r.Code != 200 {
+		t.Fatalf("stop: %d", r.Code)
+	}
+	check("stopped")
+	if r = f.get(t, path, "X-Plex-Token", "invalid", "X-Plex-Product", "Plex for VIDAA"); r.Code != http.StatusUnauthorized {
+		t.Fatalf("unauthorized metadata: %d", r.Code)
 	}
 }
