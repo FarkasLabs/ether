@@ -825,8 +825,11 @@ func (s *Service) startIPTVSource(ctx context.Context, ss *session) error {
 	return s.startIPTVRelay(ss, copy)
 }
 func (s *Service) serveRelayPlaylist(w http.ResponseWriter, r *http.Request, ss *session) {
+	ss.mu.Lock()
+	relay := ss.relay
+	ss.mu.Unlock()
 	rec := httptest.NewRecorder()
-	ss.relay.ServePlaylist(rec, r)
+	relay.ServePlaylist(rec, r)
 	if rec.Code != 200 {
 		http.Error(w, "IPTV playout unavailable", rec.Code)
 		return
@@ -836,13 +839,13 @@ func (s *Service) serveRelayPlaylist(w http.ResponseWriter, r *http.Request, ss 
 	// the session's bounded segment wait before returning the first playlist.
 	if !relayPlaylistHasMedia(rec.Body.String()) {
 		ready := &relayReadinessWriter{header: make(http.Header)}
-		ss.relay.ServeSegment(ready, r, 0)
+		relay.ServeSegment(ready, r, 0)
 		if ready.status >= 400 {
 			http.Error(w, "IPTV playout unavailable", ready.status)
 			return
 		}
 		rec = httptest.NewRecorder()
-		ss.relay.ServePlaylist(rec, r)
+		relay.ServePlaylist(rec, r)
 		if rec.Code != 200 || !relayPlaylistHasMedia(rec.Body.String()) {
 			http.Error(w, "IPTV playout unavailable", http.StatusBadGateway)
 			return
@@ -872,12 +875,15 @@ func (s *Service) ServeRelaySegment(w http.ResponseWriter, r *http.Request, id s
 		writeStreamError(w, err)
 		return
 	}
-	if ss.relay == nil || n < 0 {
+	ss.mu.Lock()
+	relay := ss.relay
+	ss.mu.Unlock()
+	if relay == nil || n < 0 {
 		writeStreamError(w, core.ErrNotFound)
 		return
 	}
 	s.touchMedia(ss)
-	ss.relay.ServeSegment(w, r, n)
+	relay.ServeSegment(w, r, n)
 }
 
 // TranscodeFor lets the playback manager's existing release failover locate
