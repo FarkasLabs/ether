@@ -152,13 +152,17 @@ var _ core.Catalog = (*Catalog)(nil)
 
 // Catalog implements core.Catalog.
 type Catalog struct {
-	visibility *libraryfilter.Filter
-	db         *sql.DB
-	client     TMDB
-	cfgMu      sync.RWMutex
-	cfg        config.Catalog
-	log        *slog.Logger
-	now        func() time.Time
+	visibility     *libraryfilter.Filter
+	db             *sql.DB
+	client         TMDB
+	configUpdateMu sync.Mutex // serializes transitions without blocking config readers
+	// Retry a failed preservation on the next config transition. The saved
+	// settings still take effect immediately, even when the database fails.
+	admissionsPending bool
+	cfgMu             sync.RWMutex
+	cfg               config.Catalog
+	log               *slog.Logger
+	now               func() time.Time
 
 	staleAfter time.Duration
 	listTTL    time.Duration
@@ -286,14 +290,18 @@ func (c *Catalog) UpdateConfig(cfg config.Catalog) {
 		c.log.Error("catalog: invalid visibility rules")
 		return
 	}
-	c.cfgMu.Lock()
-	if c.cfg.GateMoviesByHomeRelease && !cfg.GateMoviesByHomeRelease {
+	c.configUpdateMu.Lock()
+	defer c.configUpdateMu.Unlock()
+	previous := c.config()
+	if c.admissionsPending || (previous.GateMoviesByHomeRelease && !cfg.GateMoviesByHomeRelease) {
 		if _, err := c.db.Exec(`UPDATE catalog_home_release SET fallback_admitted=1 WHERE checked=1 AND earliest_ts=0 AND EXISTS (SELECT 1 FROM catalog_titles t WHERE t.key=catalog_home_release.key AND t.released_ts<>0 AND t.released_ts<=?)`, c.now().Unix()-int64(homeReleaseGrace.Seconds())); err != nil {
 			c.log.Error("catalog: preserve fallback admissions", "err", err)
-			c.cfgMu.Unlock()
-			return
+			c.admissionsPending = true
+		} else {
+			c.admissionsPending = false
 		}
 	}
+	c.cfgMu.Lock()
 	c.cfg = cfg
 	c.visibility = f
 	c.writeGen.Add(1)

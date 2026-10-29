@@ -281,6 +281,10 @@ export function plexDirectHealth(v: unknown, now = new Date()): HealthItem {
   const expires = parseTime(cert.notAfter);
   const details = [str(cert.subject)].filter(Boolean);
   if (cert.custom === true) details.push("Custom certificate");
+  if (cert.selfSigned === true) {
+    details.push("Plex apps do not normally trust a self-signed certificate.");
+    return { ...base, level: "warn", summary: "Self-signed certificate", details };
+  }
   if (!expires) return { ...base, level: "ok", summary: "Certificate installed", details };
   const days = (expires.getTime() - now.getTime()) / 86400000;
   details.push(`Expires ${formatDate(expires)}`);
@@ -292,7 +296,7 @@ export function plexDirectHealth(v: unknown, now = new Date()): HealthItem {
       summary: `Certificate renews ${relativeTime(expires, now)}`,
       details,
     };
-  return { ...base, level: "ok", summary: `Valid until ${formatDate(expires)}`, details };
+  return { ...base, level: "ok", summary: `Expires ${formatDate(expires)}`, details };
 }
 
 export function computeHealth(

@@ -142,6 +142,8 @@ Inspect what the personalization engine has learned for each viewer—their top 
 ### Home Designer & Conversational Collections
 Compose your server's Home screen with global rules and per-viewer overrides, previewing any viewer's exact live rows before saving. Build smart collections visually—or let viewers type natural descriptions like **`"80s sci-fi under 2 hours"`** straight into the Plex search bar to generate an instant browsable collection (with zero AI required, and optional local/API LLM refinement when enabled).
 
+Collection sorts include **Latest aired episode** and **Latest season premiere**. These use locally mirrored regular-episode dates, exclude future episodes and specials, and put shows with unknown dates last; they do not trigger provider searches.
+
 <table>
   <tr>
     <td width="50%" valign="top">

@@ -569,6 +569,8 @@ export const SORTS: { value: CollectionSort; label: string; hint: string }[] = [
   { value: "popularity", label: "Popularity", hint: "Most popular on TMDB right now" },
   { value: "rating", label: "Rating", hint: "TMDB vote average" },
   { value: "released", label: "Release date", hint: "Newest or oldest first" },
+  { value: "latestEpisode", label: "Latest aired episode", hint: "Latest regular episode in the local catalog; unknown dates last" },
+  { value: "latestSeasonPremiere", label: "Latest season premiere", hint: "First episode of the latest aired regular season; unknown dates last" },
   { value: "added", label: "Date added", hint: "When titles entered Ether" },
   { value: "title", label: "Title", hint: "Alphabetical" },
   { value: "personal", label: "Personal fit", hint: "Ordered for each viewer by their taste" },
