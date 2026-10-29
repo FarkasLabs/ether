@@ -200,8 +200,9 @@ func specMatch(s compiledSpec, r core.Release, original string) (bool, error) {
 		}
 		var except bool
 		_ = json.Unmarshal(s.def.Fields["exceptLanguage"], &except)
+		name = formatLanguageName(name)
 		for _, l := range r.Info.Languages {
-			same := name != "" && strings.EqualFold(l, name)
+			same := name != "" && strings.EqualFold(formatLanguageName(l), name)
 			if same != except {
 				return true, nil
 			}
@@ -209,6 +210,21 @@ func specMatch(s compiledSpec, r core.Release, original string) (bool, error) {
 		return false, nil
 	}
 	return false, nil
+}
+
+// Starr uses Spanish/Portuguese for both an unspecified region and the
+// European variant, with separate enums for Latino/Brazilian. Keep those
+// imported rules compatible while quality-profile preferences distinguish
+// explicit es-ES and pt-PT from their region-neutral es and pt counterparts.
+func formatLanguageName(name string) string {
+	name = releaseparse.LanguageName(name)
+	switch name {
+	case releaseparse.LanguageSpanishSpain:
+		return "spanish"
+	case releaseparse.LanguagePortuguesePortugal:
+		return "portuguese"
+	}
+	return name
 }
 
 // Radarr's language enum (NzbDrone.Core.Languages.Language), named as the

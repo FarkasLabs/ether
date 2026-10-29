@@ -349,16 +349,18 @@ External)", and subtitle mode **Always** selects them.
 
 ## Release languages and anime numbering
 
-A quality profile's **Languages** accept ISO codes in preference order, such as
+A quality profile's **Languages** accept preferred ISO language codes, such as
 `fr`, `es-419` or `pt-BR`. Ether reads audio languages from release names and
 addon flags:
 
 - **Regional variants:** `LATINO`, `ES-MX` and `es-419` are Latin American
-  Spanish; `CASTELLANO`, `ES-ES` and plain `SPANISH` are Spanish. `PT-BR`,
-  `DUBLADO` and `BRAZILIAN` are Brazilian Portuguese; `PT-PT` and plain
-  `PORTUGUESE` are Portuguese. A regional preference (`es-419`) ranks its own
-  variant first and the other variant above other languages. A plain preference
-  (`es`) accepts either.
+  Spanish; `CASTELLANO` and `ES-ES` identify Spanish from Spain. `PT-BR`,
+  `DUBLADO` and `BRAZILIAN` identify Brazilian Portuguese; `PT-PT` identifies
+  Portuguese from Portugal. Plain `SPANISH` and `PORTUGUESE` leave the region
+  unspecified. Regional preferences (`es-ES`, `es-419`, `pt-PT`, `pt-BR`) rank
+  their own variant above other or unspecified variants. Bare `es` and `pt`
+  accept all regions equally. Imported custom formats retain Starr's separate
+  Latino/Brazilian language categories.
 - **Subtitle tags:** `VOSTFR`, `VOSE`, `SUBFRENCH` and `LEGENDADO` mean the
   original audio with subtitles in that language. They never count as that
   language's audio, so a French dub still ranks above a VOSTFR release for a

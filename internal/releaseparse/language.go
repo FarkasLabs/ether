@@ -11,9 +11,11 @@ import (
 // separately carries its region after a hyphen ("spanish-latino",
 // "portuguese-brazil"); its base is the part before the hyphen.
 const (
-	LanguageMulti            = "multi"
-	LanguageSpanishLatino    = "spanish-latino"
-	LanguagePortugueseBrazil = "portuguese-brazil"
+	LanguageMulti              = "multi"
+	LanguageSpanishLatino      = "spanish-latino"
+	LanguageSpanishSpain       = "spanish-spain"
+	LanguagePortugueseBrazil   = "portuguese-brazil"
+	LanguagePortuguesePortugal = "portuguese-portugal"
 )
 
 // subtitleTags declare subtitles in a language without claiming its audio
@@ -58,11 +60,11 @@ func LanguageName(v string) string {
 	case "latino", "latam", "spanish (latino)", "spanish latino", "spanish (latin america)":
 		return LanguageSpanishLatino
 	case "castellano", "castilian", "spanish (spain)":
-		return "spanish"
+		return LanguageSpanishSpain
 	case "brazilian", "brazilian portuguese", "portuguese (brazil)":
 		return LanguagePortugueseBrazil
 	case "portuguese (portugal)":
-		return "portuguese"
+		return LanguagePortuguesePortugal
 	}
 	if base, _, ok := strings.Cut(s, "-"); ok {
 		if _, known := isoLanguages[base]; !known && len(base) > 3 {
@@ -83,8 +85,12 @@ func LanguageName(v string) string {
 	switch {
 	case name == "spanish" && latinAmerica[tag.Region]:
 		return LanguageSpanishLatino
+	case name == "spanish" && tag.Region == "es":
+		return LanguageSpanishSpain
 	case name == "portuguese" && tag.Region == "br":
 		return LanguagePortugueseBrazil
+	case name == "portuguese" && tag.Region == "pt":
+		return LanguagePortuguesePortugal
 	}
 	return name
 }
@@ -124,8 +130,8 @@ func LanguageMatch(release, want string) int {
 // Torrentio print for a release's audio languages to language names.
 // The Mexican flag is how those addons label Latino Spanish.
 var flagLanguages = map[string]string{
-	"GB": "english", "US": "english", "JP": "japanese", "RU": "russian", "IT": "italian", "PT": "portuguese",
-	"BR": LanguagePortugueseBrazil, "ES": "spanish", "MX": LanguageSpanishLatino, "KR": "korean", "CN": "chinese",
+	"GB": "english", "US": "english", "JP": "japanese", "RU": "russian", "IT": "italian", "PT": LanguagePortuguesePortugal,
+	"BR": LanguagePortugueseBrazil, "ES": LanguageSpanishSpain, "MX": LanguageSpanishLatino, "KR": "korean", "CN": "chinese",
 	"TW": "chinese", "HK": "chinese", "FR": "french", "DE": "german", "NL": "dutch", "IN": "hindi", "PL": "polish",
 	"LT": "lithuanian", "LV": "latvian", "EE": "estonian", "CZ": "czech", "SK": "slovak", "SI": "slovenian",
 	"HU": "hungarian", "RO": "romanian", "BG": "bulgarian", "RS": "serbian", "HR": "croatian", "UA": "ukrainian",

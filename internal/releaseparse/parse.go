@@ -44,7 +44,7 @@ var containers = map[string]bool{
 // subtitleTags. Regional variants are named by language.go's constants.
 var languages = []struct{ token, name string }{
 	{"DUAL", LanguageMulti}, {"FRENCH", "french"}, {"TRUEFRENCH", "french"}, {"VFF", "french"}, {"VFQ", "french"}, {"VF2", "french"},
-	{"GERMAN", "german"}, {"SPANISH", "spanish"}, {"CASTELLANO", "spanish"}, {"LATINO", LanguageSpanishLatino}, {"LATAM", LanguageSpanishLatino}, {"ITALIAN", "italian"},
+	{"GERMAN", "german"}, {"SPANISH", "spanish"}, {"CASTELLANO", LanguageSpanishSpain}, {"CASTILIAN", LanguageSpanishSpain}, {"LATINO", LanguageSpanishLatino}, {"LATAM", LanguageSpanishLatino}, {"ITALIAN", "italian"},
 	{"DUTCH", "dutch"}, {"PORTUGUESE", "portuguese"}, {"RUSSIAN", "russian"}, {"RUS", "russian"}, {"UKRAINIAN", "ukrainian"}, {"UKR", "ukrainian"}, {"POLISH", "polish"},
 	{"KOREAN", "korean"}, {"JAPANESE", "japanese"}, {"CHINESE", "chinese"}, {"MANDARIN", "chinese"},
 	{"HINDI", "hindi"}, {"TELUGU", "telugu"}, {"TAMIL", "tamil"}, {"TURKISH", "turkish"},
@@ -54,8 +54,8 @@ var languages = []struct{ token, name string }{
 	{"ENGLISH", "english"}, {"ENG", "english"},
 	// Explicit regional language tags are used by WEB release groups.
 	// Do not treat bare country codes (BR/US/GB) as audio languages.
-	{"PT-BR", LanguagePortugueseBrazil}, {"BRAZILIAN", LanguagePortugueseBrazil}, {"DUBLADO", LanguagePortugueseBrazil}, {"PT-PT", "portuguese"},
-	{"ES-ES", "spanish"}, {"ES-MX", LanguageSpanishLatino}, {"ES-419", LanguageSpanishLatino},
+	{"PT-BR", LanguagePortugueseBrazil}, {"BRAZILIAN", LanguagePortugueseBrazil}, {"DUBLADO", LanguagePortugueseBrazil}, {"PT-PT", LanguagePortuguesePortugal},
+	{"ES-ES", LanguageSpanishSpain}, {"ES-MX", LanguageSpanishLatino}, {"ES-419", LanguageSpanishLatino},
 	{"EN-US", "english"}, {"EN-GB", "english"},
 }
 
