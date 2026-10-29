@@ -114,15 +114,41 @@ describe("Cache management", () => {
     expect(await screen.findByText(/Severance · S02E04/)).toBeInTheDocument();
     expect(screen.getByText(/next in a household viewing sequence/)).toBeInTheDocument();
   });
-  it("does not poll while the explorer tab is active", async () => {
+  it("refreshes explorer releases and totals without losing the filter", async () => {
     vi.useFakeTimers({ shouldAdvanceTime: true });
-    const { fake } = renderApp("/cache/explorer");
-    expect(await screen.findByText("Arrival", {}, WAIT)).toBeInTheDocument();
+    let count = 0;
+    const { fake } = renderAppWith("/cache/explorer", (method, path) => {
+      if (method !== "GET" || path !== "/cache/") return undefined;
+      count++;
+      return {
+        releases:
+          count === 1
+            ? []
+            : [
+                {
+                  ReleaseID: "new",
+                  Title: "New arrival",
+                  Bytes: 100,
+                  Size: 100,
+                  Plays: 0,
+                  Pins: [],
+                },
+              ],
+        preload: {},
+      };
+    });
+    expect(await screen.findByText("No retained media yet", {}, WAIT)).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText("Search cached releases"), {
+      target: { value: "arrival" },
+    });
     const before = calls(fake, "GET", "/cache/").length;
     await act(async () => {
-      vi.advanceTimersByTime(15_000);
+      vi.advanceTimersByTime(5000);
     });
-    expect(calls(fake, "GET", "/cache/")).toHaveLength(before);
+    expect(calls(fake, "GET", "/cache/").length).toBeGreaterThan(before);
+    expect(await screen.findByText("New arrival", {}, WAIT)).toBeInTheDocument();
+    expect(screen.getByText("1 releases")).toBeInTheDocument();
+    expect(screen.getByLabelText("Search cached releases")).toHaveValue("arrival");
   });
   it("backs off polling after a cache load fails", async () => {
     vi.useFakeTimers({ shouldAdvanceTime: true });

@@ -260,16 +260,17 @@ export default function Cache() {
   const config = useAsync(() => api.getConfig(), []);
   const live = useAsync((signal) => apiFetch<CacheSnapshot>("/cache/", { signal }), []);
   const tab = useRouteTab(CACHE_TABS);
-  // Não refaz o GET /cache/ completo enquanto o dono filtra/pagina no Explorer;
-  // nas demais abas, dobra o intervalo a cada falha (teto 60s) e reseta no sucesso.
+  // Keep the explorer live, and back off after failures.
   const [pollFailures, setPollFailures] = useState(0);
   useEffect(() => {
     if (live.error) setPollFailures((n) => Math.min(n + 1, 4));
     else if (live.data) setPollFailures(0);
   }, [live.error, live.data]);
   useInterval(
-    () => void live.reload(),
-    tab === "explorer" ? null : Math.min(5000 * 2 ** pollFailures, 60_000),
+    () => {
+      if (!live.loading) void live.reload();
+    },
+    Math.min(5000 * 2 ** pollFailures, 60_000),
   );
   const { draft, setDraft, dirty, reset } = useDraft<Policy>(config.data?.cache);
   useUnsavedGuard(dirty);
