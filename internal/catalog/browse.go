@@ -13,6 +13,9 @@ import (
 // in-memory count and page caching so repeated library/recommendation reads
 // return without hitting disk.
 func (c *Catalog) Browse(ctx context.Context, q core.BrowseQuery) (core.Page, error) {
+	if err := c.admitFallbacks(ctx); err != nil {
+		return core.Page{}, err
+	}
 	if q.Filter.Person > 0 {
 		c.ensurePersonCredits(ctx, q.Filter.Person)
 	}
@@ -141,6 +144,10 @@ func (c *Catalog) browseWhere(f core.Filter) (string, []any, error) {
 		conds = append(conds, "NOT ("+q+")")
 		args = append(args, a...)
 	}
+	if c.config().GateMoviesByHomeRelease {
+		conds = append(conds, homeReleaseSQL("t"))
+		args = append(args, c.now().Unix(), c.now().Unix()-int64(homeReleaseGrace.Seconds()))
+	}
 	if len(f.ExcludeKeys) > 0 {
 		conds = append(conds, "t.key NOT IN ("+placeholders(len(f.ExcludeKeys))+")")
 		for _, k := range f.ExcludeKeys {
@@ -238,6 +245,9 @@ func escapeLike(s string) string {
 
 // Facet returns value counts over the browsable set.
 func (c *Catalog) Facet(ctx context.Context, t core.MediaType, facet string) ([]core.FacetValue, error) {
+	if err := c.admitFallbacks(ctx); err != nil {
+		return nil, err
+	}
 	gen := c.writeGen.Load()
 	minBucket := c.minuteBucket()
 	fkey := string(t) + "|" + facet
@@ -257,6 +267,10 @@ func (c *Catalog) Facet(ctx context.Context, t core.MediaType, facet string) ([]
 	}
 	base := "t.browsable=1 AND t.adult=0 AND t.released_ts<>0 AND t.released_ts<=? AND " + typeCond
 	args = append([]any{c.now().Unix()}, args...)
+	if c.config().GateMoviesByHomeRelease {
+		base += " AND " + homeReleaseSQL("t")
+		args = append(args, c.now().Unix(), c.now().Unix()-int64(homeReleaseGrace.Seconds()))
+	}
 	var q string
 	switch facet {
 	case "language":

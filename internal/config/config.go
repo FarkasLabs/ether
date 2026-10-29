@@ -236,6 +236,8 @@ type Cache struct {
 }
 
 type Catalog struct {
+	// GateMoviesByHomeRelease waits for a worldwide digital or physical release.
+	GateMoviesByHomeRelease bool `json:"gateMoviesByHomeRelease"`
 	// HideFranchiseCollections hides automatic TMDB groups from Plex's
 	// Collections tab. The zero value preserves existing libraries.
 	HideFranchiseCollections bool                    `json:"hideFranchiseCollections"`

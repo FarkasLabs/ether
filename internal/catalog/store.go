@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/braedonsaunders/ether/internal/core"
+	"github.com/braedonsaunders/ether/internal/tmdb"
 )
 
 const titleCols = `key,type,tmdb_id,imdb,tvdb,show_key,show_tmdb,show_title,season_title,season,episode,
@@ -156,6 +157,9 @@ func (c *Catalog) hydrateSlice(ctx context.Context, items []core.Title) error {
 	}
 	args := keyArgs(items)
 	ph := placeholders(len(items))
+	if err := c.hydrateHomeRelease(ctx, items); err != nil {
+		return err
+	}
 	// genres
 	if err := c.scanPairs(ctx, `SELECT key,genre FROM catalog_genres WHERE key IN (`+ph+`) ORDER BY genre`, args, func(i int, v string) {
 		items[i].Genres = append(items[i].Genres, v)
@@ -336,7 +340,9 @@ type upsertOpts struct {
 	// only from TMDB's show and season payloads, so a date that is added,
 	// moved or withdrawn must replace the stored one, including on rows an
 	// earlier detail upsert marked (which otherwise keep their date).
-	airDates bool
+	airDates     bool
+	releaseDates *tmdb.ReleaseDates
+	gateEnabled  bool
 }
 
 // UpsertTitle stores a title (exported for tests/seeders and other components that
@@ -398,6 +404,11 @@ func upsertOne(ctx context.Context, tx *sql.Tx, t core.Title, o upsertOpts, now 
 	if o.detail {
 		detailInt = 1
 	}
+	if o.releaseDates != nil && o.gateEnabled && t.Type == core.TypeMovie {
+		if _, err := tx.ExecContext(ctx, `UPDATE catalog_home_release SET fallback_admitted=1 WHERE key=? AND checked=1 AND earliest_ts=0 AND EXISTS (SELECT 1 FROM catalog_titles t WHERE t.key=catalog_home_release.key AND t.released_ts<>0 AND t.released_ts<=?)`, int64(t.Key), now-int64(homeReleaseGrace.Seconds())); err != nil {
+			return err
+		}
+	}
 	// Keep richer existing fields when a summary upsert would blank them:
 	// handled per-field with CASE in ON CONFLICT for a few detail-only fields.
 	_, err := tx.ExecContext(ctx, `
@@ -445,6 +456,11 @@ ON CONFLICT(key) DO UPDATE SET
 		t.CollectionID, t.CollectionName, t.ChildCount, t.LeafCount, browsableInt, addedAtFor(browsableInt, now), now, detailInt, t.Adult, detailAtFor(detailInt, now))
 	if err != nil {
 		return fmt.Errorf("catalog: upsert %d: %w", t.Key, err)
+	}
+	if o.releaseDates != nil && t.Type == core.TypeMovie {
+		if err := saveHomeReleases(ctx, tx, t, o.releaseDates, now); err != nil {
+			return err
+		}
 	}
 	if o.airDates && !o.detail {
 		if _, err := tx.ExecContext(ctx, `UPDATE catalog_titles SET released_ts=?, year=? WHERE key=?`, releasedTS, t.Year, int64(t.Key)); err != nil {
@@ -534,6 +550,9 @@ func replacePairs(ctx context.Context, tx *sql.Tx, table, col string, key int64,
 }
 
 func (c *Catalog) queryTitles(ctx context.Context, q string, args ...any) ([]core.Title, error) {
+	if err := c.admitFallbacks(ctx); err != nil {
+		return nil, err
+	}
 	rows, err := c.db.QueryContext(ctx, q, args...)
 	if err != nil {
 		return nil, err
@@ -560,7 +579,7 @@ func (c *Catalog) queryTitles(ctx context.Context, q string, args ...any) ([]cor
 	}
 	visible := out[:0]
 	for _, t := range out {
-		if t.IsReleased(c.now()) {
+		if t.IsReleased(c.now()) && (!c.config().GateMoviesByHomeRelease || homeReleaseVisible(&t, c.now())) {
 			visible = append(visible, t)
 		}
 	}

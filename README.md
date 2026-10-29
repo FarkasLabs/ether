@@ -317,3 +317,7 @@ Ether is an independent, clean-room implementation of the HTTP protocol used by 
 "Plex" is a trademark of Plex, Inc. Ether is **not affiliated with, sponsored by, or endorsed by Plex, Inc.** This product uses the TMDB API but is not endorsed or certified by TMDB.
 
 [**GPL-3.0 License**](LICENSE) · [**Legal**](LEGAL.md) · [**Third-Party Notices**](THIRD_PARTY_NOTICES.md)
+
+### Movie release window
+
+In Catalog settings, **Wait for digital or physical release** optionally hides movies until the earliest TMDB digital or physical release date anywhere in the world. It is off by default. Movies whose completed TMDB release-date details have no digital or physical date become visible 90 days after their theatrical release; once admitted by that fallback, they remain admitted if TMDB later changes its dates. Movies awaiting details stay hidden while bounded background batches check the catalog. Missing and future dates are rechecked, and older dates are periodically refreshed. The original theatrical date and year remain unchanged, and a date does not verify release quality.
