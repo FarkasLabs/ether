@@ -10,6 +10,8 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+
+	"github.com/braedonsaunders/ether/internal/config"
 )
 
 func TestInstanceLockSecondAcquireFails(t *testing.T) {
@@ -96,4 +98,44 @@ func TestInstanceLockBlocksSecondApp(t *testing.T) {
 	if !errors.Is(err, errAnotherInstanceRunning) {
 		t.Fatalf("err %v should wrap errAnotherInstanceRunning", err)
 	}
+}
+
+func TestLockedStartupPreservesConfig(t *testing.T) {
+	dir := t.TempDir()
+	cfg, err := config.Open(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	before := cfg.Get().Server.Port
+	held, err := acquireInstanceLock(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer held.Release()
+	t.Setenv("ETHER_PORT", "12345")
+	_, err = New(context.Background(), Options{DataDir: dir, Logger: slog.New(slog.NewTextHandler(io.Discard, nil))})
+	if !errors.Is(err, errAnotherInstanceRunning) {
+		t.Fatalf("got %v", err)
+	}
+	reopened, err := config.Open(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := reopened.Get().Server.Port; got != before {
+		t.Fatalf("port changed from %d to %d", before, got)
+	}
+}
+
+func TestFailedStartupReleasesInstanceLock(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("ETHER_PORT", "invalid")
+	_, err := New(context.Background(), Options{DataDir: dir, Logger: slog.New(slog.NewTextHandler(io.Discard, nil))})
+	if err == nil {
+		t.Fatal("expected invalid port error")
+	}
+	lock, err := acquireInstanceLock(dir)
+	if err != nil {
+		t.Fatalf("lock retained after failed New: %v", err)
+	}
+	lock.Release()
 }

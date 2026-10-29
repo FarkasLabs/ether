@@ -188,11 +188,21 @@ func New(ctx context.Context, opts Options) (*App, error) {
 	}
 	a.log = slog.New(admin.TeeHandler(base.Handler(), a.logs))
 	slog.SetDefault(a.log)
+	var err error
+	if a.instanceLock, err = acquireInstanceLock(opts.DataDir); err != nil {
+		return nil, err
+	}
+	a.closers = append(a.closers, a.instanceLock.Release)
+	started := false
+	defer func() {
+		if !started {
+			a.Close()
+		}
+	}()
 	if err := a.confirmUpdateStartup(); err != nil {
 		return nil, err
 	}
 
-	var err error
 	if a.cfg, err = config.Open(opts.DataDir); err != nil {
 		return nil, fmt.Errorf("config: %w", err)
 	}
@@ -252,15 +262,6 @@ func New(ctx context.Context, opts Options) (*App, error) {
 		}
 		gate = olderNodesGate(id.NodeID, clusterLiveAfter, time.Now)
 	}
-	// Instância única por DataDir: antes de abrir o SQLite (e de qualquer
-	// cleanStale do transcode em build), toma o lock exclusivo. Um segundo
-	// processo no mesmo DataDir disputa o SQLite e apaga os s-*/downloads
-	// do processo vivo. Liberado em Close via closers (por último: é o
-	// primeiro closer registrado, e Close roda em ordem reversa).
-	if a.instanceLock, err = acquireInstanceLock(opts.DataDir); err != nil {
-		return nil, err
-	}
-	a.closers = append(a.closers, a.instanceLock.Release)
 	if a.db, dialect, err = store.OpenWithRetry(ctx, store.Options{
 		DataDir: opts.DataDir, Driver: dbCfg.Driver, URL: dbCfg.URL,
 		Logger: a.log.With("component", "store"), MigrationGate: gate,
@@ -311,6 +312,7 @@ func New(ctx context.Context, opts Options) (*App, error) {
 	}
 	a.connectClusterHooks()
 	a.initUpdates()
+	started = true
 	return a, nil
 }
 
