@@ -187,7 +187,10 @@ func entryEpisodeIdentity(info core.ReleaseInfo, req core.SearchRequest, entryEp
 // FetchNZB implements newznab.Backend for an addon's Usenet streams: it
 // downloads the stream's NZB. The addon's own origin is trusted (a
 // self-hosted addon on the LAN); any other host, and every redirect hop,
-// must be public. Errors name the host only.
+// must be public. Errors name the host only. Whatever the server answers
+// is transient (core.ErrSourceUnavailable): a login page or an oversized
+// body today says nothing permanent about the release. Only a release
+// without a usable NZB link is rejected (core.ErrReleaseRejected).
 func (b *Backend) FetchNZB(ctx context.Context, r core.Release, reserve func(context.Context, string) error) ([]byte, error) {
 	if r.Protocol != core.ProtocolUsenet || r.NZBURL == "" {
 		return nil, fmt.Errorf("stremio: %q has no NZB to fetch: %w", r.Name, core.ErrReleaseRejected)
@@ -225,10 +228,10 @@ func (b *Backend) FetchNZB(ctx context.Context, r core.Release, reserve func(con
 		return nil, fmt.Errorf("stremio: NZB from %s: %w: %v", link.Host, core.ErrSourceUnavailable, err)
 	}
 	if len(body) > maxNZB {
-		return nil, fmt.Errorf("stremio: NZB from %s is larger than %d bytes: %w", link.Host, maxNZB, core.ErrReleaseRejected)
+		return nil, fmt.Errorf("stremio: NZB from %s is larger than %d bytes: %w", link.Host, maxNZB, core.ErrSourceUnavailable)
 	}
 	if !bytes.Contains(bytes.ToLower(body[:min(len(body), 64<<10)]), []byte("<nzb")) {
-		return nil, fmt.Errorf("stremio: %s did not answer with an NZB: %w", link.Host, core.ErrReleaseRejected)
+		return nil, fmt.Errorf("stremio: %s did not answer with an NZB: %w", link.Host, core.ErrSourceUnavailable)
 	}
 	return body, nil
 }

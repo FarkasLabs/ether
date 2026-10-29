@@ -102,9 +102,11 @@ func prepareDirect(req *http.Request, p Payload) *http.Request {
 // DirectPayload probes an HTTP stream release and returns its payload:
 // one ranged request learns the file's exact size and final location and
 // rejects what is not the release (an error page, a "downloading" clip, a
-// server without range requests). Rejections wrap core.ErrNotCached or
-// core.ErrSourceUnavailable: the addon may serve the file later, so none
-// marks the release bad.
+// server without range requests or a size). Every answer the addon gives
+// is transient (core.ErrNotCached or core.ErrSourceUnavailable): an addon
+// that is still fetching a file, or behind a misbehaving proxy, may serve
+// it properly later, so none marks the release bad. Only a release whose
+// own link is malformed is rejected (core.ErrReleaseRejected).
 func (s *Service) DirectPayload(ctx context.Context, rel core.Release) ([]byte, error) {
 	link, err := url.Parse(rel.StreamURL)
 	if err != nil || (link.Scheme != "http" && link.Scheme != "https") || link.Host == "" {
@@ -138,11 +140,11 @@ func (s *Service) DirectPayload(ctx context.Context, rel core.Release) ([]byte, 
 		return nil, fmt.Errorf("debrid: stream from %s answered %s, not media: %w", host, ctype, core.ErrNotCached)
 	}
 	if resp.StatusCode == http.StatusOK {
-		return nil, fmt.Errorf("debrid: stream from %s does not support range requests: %w", host, core.ErrReleaseRejected)
+		return nil, fmt.Errorf("debrid: stream from %s answered without range support: %w", host, core.ErrSourceUnavailable)
 	}
 	size := contentRangeTotal(resp.Header.Get("Content-Range"))
 	if size <= 0 {
-		return nil, fmt.Errorf("debrid: stream from %s gave no file size: %w", host, core.ErrReleaseRejected)
+		return nil, fmt.Errorf("debrid: stream from %s gave no file size: %w", host, core.ErrSourceUnavailable)
 	}
 	if size < minDirectBytes || (rel.Size > 0 && size < rel.Size/2) {
 		return nil, fmt.Errorf("debrid: stream from %s is %d bytes, not the %d byte release (still downloading?): %w", host, size, rel.Size, core.ErrNotCached)

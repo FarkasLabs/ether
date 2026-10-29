@@ -237,12 +237,18 @@ func TestFetchNZBFromAddonOriginOnly(t *testing.T) {
 			t.Errorf("%s: fetched", name)
 			continue
 		}
+		if errors.Is(err, core.ErrReleaseRejected) || errors.Is(err, core.ErrArticleMissing) || errors.Is(err, core.ErrArticleCorrupt) {
+			t.Errorf("%s: server answer classified as permanent: %v", name, err)
+		}
 		if strings.Contains(err.Error(), secret) {
 			t.Errorf("%s: error leaks the addon path: %v", name, err)
 		}
 	}
 	if _, err := b.FetchNZB(t.Context(), core.Release{Name: "t", Protocol: core.ProtocolTorrent, InfoHash: hashA}, reserve); !errors.Is(err, core.ErrReleaseRejected) {
 		t.Fatalf("torrent: %v", err)
+	}
+	if _, err := b.FetchNZB(t.Context(), core.Release{Name: "m", Protocol: core.ProtocolUsenet, NZBURL: "stremio:///x"}, reserve); !errors.Is(err, core.ErrReleaseRejected) {
+		t.Fatalf("malformed NZB link: %v", err)
 	}
 	budget := errors.New("budget")
 	rel.NZBURL = addon.URL + "/" + secret + "/get.nzb"

@@ -104,6 +104,10 @@ func newDirectRig(t *testing.T, cfg config.Debrid) *directRig {
 			w.Header().Set("Content-Type", "video/mp4")
 			w.Header().Set("Content-Length", "100")
 			fmt.Fprint(w, strings.Repeat("x", 100))
+		case "/" + addonKey + "/nosize":
+			w.Header().Set("Content-Type", "video/mp4")
+			w.WriteHeader(http.StatusPartialContent)
+			fmt.Fprint(w, "x")
 		case "/" + addonKey + "/private":
 			http.Redirect(w, req, "http://internal.test/x.mkv", http.StatusFound)
 		default:
@@ -171,7 +175,8 @@ func TestDirectPayloadRejectsWhatIsNotTheRelease(t *testing.T) {
 	for path, want := range map[string]error{
 		"placeholder": core.ErrNotCached,
 		"html":        core.ErrNotCached,
-		"norange":     core.ErrReleaseRejected,
+		"norange":     core.ErrSourceUnavailable,
+		"nosize":      core.ErrSourceUnavailable,
 		"missing":     core.ErrSourceUnavailable,
 		"private":     core.ErrSourceUnavailable,
 	} {
@@ -182,9 +187,15 @@ func TestDirectPayloadRejectsWhatIsNotTheRelease(t *testing.T) {
 		if err != nil && strings.Contains(err.Error(), addonKey) {
 			t.Errorf("%s: error leaks the link: %v", path, err)
 		}
-		if errors.Is(err, core.ErrArticleMissing) || errors.Is(err, core.ErrArticleCorrupt) {
+		if errors.Is(err, core.ErrArticleMissing) || errors.Is(err, core.ErrArticleCorrupt) || errors.Is(err, core.ErrReleaseRejected) {
 			t.Errorf("%s: transient answer would mark the release bad: %v", path, err)
 		}
+	}
+	// Only a malformed link is the release's own fault.
+	bad := r.release("x")
+	bad.StreamURL = "stremio:///detail/movie/tt1"
+	if _, err := r.svc.DirectPayload(context.Background(), bad); !errors.Is(err, core.ErrReleaseRejected) {
+		t.Fatalf("malformed link: %v", err)
 	}
 	// A file far smaller than the size the addon announced is a placeholder.
 	rel := r.release("same-origin.mkv")
