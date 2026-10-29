@@ -266,3 +266,116 @@ func TestIssue94StopIdentityCompatibility(t *testing.T) {
 		})
 	}
 }
+
+func TestIssue94LatePartAndDownloadDoNotReplaceOwner(t *testing.T) {
+	for _, tc := range []struct{ name, method, sid, query string }{
+		{"old range", "GET", "old", ""},
+		{"old head", "HEAD", "old", ""},
+		{"download", "GET", "download", "?download=1"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			f, m := issue94Fixture(t, true, "open")
+			decision := func(id string) {
+				hdr := []string{"X-Plex-Client-Identifier", "phone", "X-Plex-Session-Identifier", id, "Accept", "application/json"}
+				q := issue94Query("trans", 3000)
+				r := f.get(t, "/video/:/transcode/universal/decision?"+q, hdr...)
+				if r.Code != 200 {
+					t.Fatal(r.Code)
+				}
+				r = f.get(t, "/video/:/transcode/universal/start.m3u8?"+q, hdr...)
+				if r.Code != 200 {
+					t.Fatal(r.Code)
+				}
+			}
+			decision("old")
+			decision("new")
+			r := f.request(t, tc.method, "/library/parts/1000000000000550/1759276800/file.mkv"+tc.query, map[string]string{"X-Plex-Client-Identifier": "phone", "X-Plex-Session-Identifier": tc.sid, "Range": "bytes=0-9"})
+			if r.Code != 206 {
+				t.Fatalf("part=%d", r.Code)
+			}
+			r = f.get(t, "/:/timeline?ratingKey=1000000000000550&state=stopped&time=1000&duration=8340000", "X-Plex-Client-Identifier", "phone", "X-Plex-Session-Identifier", "old")
+			if r.Code != 200 {
+				t.Fatalf("stop=%d", r.Code)
+			}
+			if _, ok := m.SessionFor(ownerUser.ID, "phone", fightClub.Key); !ok {
+				t.Fatal("late request made old stop remove replacement")
+			}
+			r = f.get(t, "/video/:/transcode/universal/session/trans/base/index.m3u8", "X-Plex-Client-Identifier", "phone")
+			if r.Code != 200 {
+				t.Fatalf("playlist=%d", r.Code)
+			}
+			r = f.get(t, "/:/timeline?ratingKey=1000000000000550&state=stopped&time=1000&duration=8340000", "X-Plex-Client-Identifier", "phone", "X-Plex-Session-Identifier", "new")
+			if _, ok := m.SessionFor(ownerUser.ID, "phone", fightClub.Key); ok {
+				t.Fatal("current stop did not stop playback")
+			}
+		})
+	}
+}
+
+func TestIssue94DirectPartIdentifierReuse(t *testing.T) {
+	f, m := issue94Fixture(t, true, "open")
+	part := func(id string) {
+		r := f.get(t, "/library/parts/1000000000000550/1759276800/file.mkv", "X-Plex-Client-Identifier", "phone", "X-Plex-Session-Identifier", id, "Range", "bytes=0-9")
+		if r.Code != 206 {
+			t.Fatalf("part %s: %d", id, r.Code)
+		}
+	}
+	stop := func(id string) {
+		r := f.get(t, "/:/timeline?ratingKey=1000000000000550&state=stopped&time=1000&duration=8340000", "X-Plex-Client-Identifier", "phone", "X-Plex-Session-Identifier", id)
+		if r.Code != 200 {
+			t.Fatal(r.Code)
+		}
+	}
+	live := func() bool { _, ok := m.SessionFor(ownerUser.ID, "phone", fightClub.Key); return ok }
+	part("old")
+	part("new")
+	part("old")
+	stop("old")
+	if !live() {
+		t.Fatal("late old part stole direct-play ownership")
+	}
+	stop("new")
+	if live() {
+		t.Fatal("current direct-play stop failed")
+	}
+	part("old")
+	if !live() {
+		t.Fatal("old identifier could not start new source")
+	}
+	stop("old")
+	if live() {
+		t.Fatal("reused identifier could not stop new source")
+	}
+}
+
+func TestIssue94DecisionCanReusePriorIdentifier(t *testing.T) {
+	f, m := issue94Fixture(t, true, "open")
+	for _, id := range []string{"old", "new", "old"} {
+		r := f.get(t, "/video/:/transcode/universal/decision?"+issue94Query("trans", 3000), "X-Plex-Client-Identifier", "phone", "X-Plex-Session-Identifier", id, "Accept", "application/json")
+		if r.Code != 200 {
+			t.Fatal(r.Code)
+		}
+	}
+	r := f.get(t, "/:/timeline?ratingKey=1000000000000550&state=stopped&time=1000&duration=8340000", "X-Plex-Client-Identifier", "phone", "X-Plex-Session-Identifier", "old")
+	if r.Code != 200 {
+		t.Fatal(r.Code)
+	}
+	if _, ok := m.SessionFor(ownerUser.ID, "phone", fightClub.Key); ok {
+		t.Fatal("authoritatively reused identifier did not stop")
+	}
+}
+
+func TestIssue94OwnerHistoryBound(t *testing.T) {
+	o := newPlaybackOwners()
+	now := time.Now()
+	for i := 0; i < 1000; i++ {
+		o.bind(1, "phone", fightClub.Key, fmt.Sprintf("id-%d", i), "play", true, now)
+	}
+	e := o.entries[playbackOwnerKey{1, "phone", fightClub.Key}]
+	if len(e.prior) != playbackOwnerHistoryLimit {
+		t.Fatalf("history length=%d", len(e.prior))
+	}
+	if !o.stale(1, "phone", fightClub.Key, "id-998") || o.stale(1, "phone", fightClub.Key, "id-0") {
+		t.Fatal("history did not retain newest and evict oldest")
+	}
+}

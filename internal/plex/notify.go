@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"slices"
 	"sort"
 	"strings"
 	"sync"
@@ -135,14 +136,20 @@ type playbackOwnerKey struct {
 }
 type playbackOwner struct {
 	current string
-	prior   map[string]bool
+	playID  string
+	prior   []string
 	updated time.Time
 }
 
 func newPlaybackOwners() *playbackOwners {
 	return &playbackOwners{entries: make(map[playbackOwnerKey]*playbackOwner)}
 }
-func (o *playbackOwners) bind(user int64, client string, key core.RatingKey, id string, now time.Time) {
+
+// A decision is an authoritative handoff. A part request can establish direct
+// playback, but an old range on the same source cannot undo that handoff.
+const playbackOwnerHistoryLimit = 32
+
+func (o *playbackOwners) bind(user int64, client string, key core.RatingKey, id, playID string, decision bool, now time.Time) {
 	if id == "" {
 		return
 	}
@@ -151,14 +158,21 @@ func (o *playbackOwners) bind(user int64, client string, key core.RatingKey, id 
 	k := playbackOwnerKey{user, client, key}
 	e := o.entries[k]
 	if e == nil {
-		e = &playbackOwner{prior: make(map[string]bool)}
+		e = &playbackOwner{}
 		o.entries[k] = e
 	}
-	if e.current != "" && e.current != id {
-		e.prior[e.current] = true
+	if !decision && e.playID == playID && e.current != id && slices.Contains(e.prior, id) {
+		return
 	}
-	delete(e.prior, id)
+	e.prior = slices.DeleteFunc(e.prior, func(v string) bool { return v == id || v == e.current })
+	if e.current != "" && e.current != id {
+		e.prior = append(e.prior, e.current)
+		if len(e.prior) > playbackOwnerHistoryLimit {
+			e.prior = e.prior[len(e.prior)-playbackOwnerHistoryLimit:]
+		}
+	}
 	e.current = id
+	e.playID = playID
 	e.updated = now
 }
 func (o *playbackOwners) stale(user int64, client string, key core.RatingKey, id string) bool {
@@ -168,7 +182,7 @@ func (o *playbackOwners) stale(user int64, client string, key core.RatingKey, id
 	o.mu.Lock()
 	defer o.mu.Unlock()
 	e := o.entries[playbackOwnerKey{user, client, key}]
-	return e != nil && e.current != "" && e.current != id && e.prior[id]
+	return e != nil && e.current != "" && e.current != id && slices.Contains(e.prior, id)
 }
 func (o *playbackOwners) expire(now time.Time, ttl time.Duration) {
 	o.mu.Lock()
