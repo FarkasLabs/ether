@@ -2,13 +2,17 @@ package app
 
 import (
 	"encoding/json"
+	"errors"
 	"github.com/braedonsaunders/ether/internal/admin"
 	"github.com/braedonsaunders/ether/internal/config"
 	"github.com/braedonsaunders/ether/internal/newznab"
 	"github.com/braedonsaunders/ether/internal/plextv"
 	"github.com/braedonsaunders/ether/internal/resolver"
+	"github.com/braedonsaunders/ether/internal/retryafter"
 	"github.com/braedonsaunders/ether/internal/transcode"
 	"net/http"
+	"strconv"
+	"time"
 )
 
 func (a *App) playbackPolicyHandler() http.Handler {
@@ -28,12 +32,26 @@ func (a *App) playbackPolicyHandler() http.Handler {
 			http.Error(w, "invalid Prowlarr settings", 400)
 			return
 		}
-		indexers, err := newznab.DiscoverProwlarr(r.Context(), in.Config, newznab.Options{})
+		report, err := newznab.DiscoverProwlarrReport(r.Context(), in.Config, newznab.Options{Logger: a.log})
 		if err != nil {
+			// A failed discovery changes nothing (no import, no removal);
+			// a 429 keeps a validated Retry-After for the caller (never a
+			// raw/malformed/past value from upstream).
+			var rl *newznab.RateLimitError
+			if errors.As(err, &rl) {
+				if h := prowlarrRetryAfterHeader(rl.RetryAfter); h != "" {
+					w.Header().Set("Retry-After", h)
+				}
+			}
 			http.Error(w, "Prowlarr discovery failed", 502)
 			return
 		}
+		indexers := report.Indexers
 		if in.Import {
+			// Additive only: upsert the discovered indexers. Indexers
+			// absent from this discovery are NEVER removed here —
+			// disappearance at the source may be transient, so deletion
+			// is the owner's explicit action, not an import side effect.
 			err = a.cfg.Update(func(c *config.Config) error {
 				byID := map[string]int{}
 				for i, x := range c.Indexers {
@@ -58,9 +76,22 @@ func (a *App) playbackPolicyHandler() http.Handler {
 			indexers[i].APIKey = admin.RedactedSecret
 		}
 		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(map[string]any{"indexers": indexers, "imported": in.Import})
+		_ = json.NewEncoder(w).Encode(map[string]any{"indexers": indexers, "imported": in.Import, "skippedUnknownProtocol": report.SkippedUnknownProtocol, "warnings": report.Warnings})
 	})
 	return m
+}
+
+// prowlarrRetryAfterHeader validates a Retry-After value before it is
+// propagated to the caller: retryafter.Parse rejects empty, malformed and
+// past values, and the delay is capped at newznab.MaxRateLimitPause (the
+// Newznab client's shared bound) so a bogus upstream value is never
+// forwarded verbatim. Returns "" when there is nothing valid to send.
+func prowlarrRetryAfterHeader(v string) string {
+	d, ok := retryafter.Parse(v, time.Now(), newznab.MaxRateLimitPause)
+	if !ok {
+		return ""
+	}
+	return strconv.FormatInt(int64(d/time.Second), 10)
 }
 func validatePlaybackConfig(c config.Config) []admin.FieldError {
 	var errs []admin.FieldError
