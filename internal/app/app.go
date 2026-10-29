@@ -168,6 +168,7 @@ type App struct {
 	updates           *updateState
 	plexServer        *plex.Server
 	handler           http.Handler
+	instanceLock      *instanceLock
 	closers           []func()
 	closeOnce         sync.Once
 }
@@ -251,6 +252,15 @@ func New(ctx context.Context, opts Options) (*App, error) {
 		}
 		gate = olderNodesGate(id.NodeID, clusterLiveAfter, time.Now)
 	}
+	// Instância única por DataDir: antes de abrir o SQLite (e de qualquer
+	// cleanStale do transcode em build), toma o lock exclusivo. Um segundo
+	// processo no mesmo DataDir disputa o SQLite e apaga os s-*/downloads
+	// do processo vivo. Liberado em Close via closers (por último: é o
+	// primeiro closer registrado, e Close roda em ordem reversa).
+	if a.instanceLock, err = acquireInstanceLock(opts.DataDir); err != nil {
+		return nil, err
+	}
+	a.closers = append(a.closers, a.instanceLock.Release)
 	if a.db, dialect, err = store.OpenWithRetry(ctx, store.Options{
 		DataDir: opts.DataDir, Driver: dbCfg.Driver, URL: dbCfg.URL,
 		Logger: a.log.With("component", "store"), MigrationGate: gate,
@@ -265,6 +275,7 @@ func New(ctx context.Context, opts Options) (*App, error) {
 				"url", dbCfg.Redacted().URL, "attempt", attempt, "retry", wait, "err", err)
 		},
 	}); err != nil {
+		a.Close() // libera o instance lock (o db não foi aberto)
 		return nil, fmt.Errorf("database: %w", err)
 	}
 	if dialect == store.Postgres {
