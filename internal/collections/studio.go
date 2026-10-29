@@ -160,7 +160,7 @@ func (s *Service) Preview(ctx context.Context, sp core.CollectionSpec, n int) (*
 	if err := Validate(&named); err != nil {
 		return nil, err
 	}
-	res, err := s.evaluate(ctx, named, evalOptions{seed: firstNonEmpty(sp.ID, sp.Name)})
+	res, err := s.evaluate(ctx, named, evalOptions{seed: named.Name})
 	if err != nil {
 		return nil, err
 	}

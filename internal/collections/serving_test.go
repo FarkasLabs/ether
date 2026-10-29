@@ -479,3 +479,38 @@ func TestLayoutRowAddsUnpromotedCollectionAndPreservesRestrictions(t *testing.T)
 		t.Fatalf("disabled collection selection = %v", err)
 	}
 }
+
+func TestPersonalSortRefreshesWhenWatchMembershipChanges(t *testing.T) {
+	st := &fakeState{watched: map[int64]map[core.RatingKey]bool{1: {core.MovieKey(101): true}}}
+	scorer := &fakeScorer{}
+	e := newEnv(t, withOpts(collections.WithState(st), collections.WithScorer(scorer)))
+	sp := spec("Changing watch state", "movie", catalogSource(), rl("watched", "is", false))
+	sp.Sort = "personal"
+	created, err := e.svc.CreateSpec(e.ctx, sp)
+	if err != nil {
+		t.Fatal(err)
+	}
+	key := core.SmartKey(mustInt(t, created.ID))
+	before, err := e.svc.Items(e.ctx, owner, key, 0, 100)
+	if err != nil {
+		t.Fatal(err)
+	}
+	st.mu.Lock()
+	st.watched[1] = map[core.RatingKey]bool{core.MovieKey(102): true}
+	st.mu.Unlock()
+	after, err := e.svc.Items(e.ctx, owner, key, 0, 100)
+	if err != nil {
+		t.Fatal(err)
+	}
+	contains := func(items []core.Title, key core.RatingKey) bool {
+		for _, item := range items {
+			if item.Key == key {
+				return true
+			}
+		}
+		return false
+	}
+	if len(before.Items) != len(after.Items) || !contains(after.Items, core.MovieKey(101)) || contains(after.Items, core.MovieKey(102)) {
+		t.Fatalf("watch-state transition returned stale membership: before=%v after=%v", before.Items, after.Items)
+	}
+}

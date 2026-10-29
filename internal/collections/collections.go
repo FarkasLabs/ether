@@ -22,6 +22,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"slices"
 	"sort"
 	"strconv"
 	"sync"
@@ -386,7 +387,7 @@ func (s *Service) build(ctx context.Context, row *specRow) (*memberSet, error) {
 
 func (s *Service) buildNow(ctx context.Context, row *specRow) (*memberSet, error) {
 	started := time.Now()
-	res, err := s.evaluate(ctx, row.spec, evalOptions{seed: row.publicID(), persist: true})
+	res, err := s.evaluate(ctx, row.spec, evalOptions{seed: row.spec.Name, persist: true})
 	if err != nil {
 		return nil, err
 	}
@@ -427,10 +428,11 @@ func resolvedChanged(a, b core.CollectionSpec) bool {
 
 // personalEntry caches a user's personal ordering of a collection.
 type personalEntry struct {
-	id   int64
-	hash string
-	keys []core.RatingKey
-	at   time.Time
+	id    int64
+	hash  string
+	keys  []core.RatingKey
+	input []core.RatingKey
+	at    time.Time
 }
 
 // serve returns the members a user sees: content-rating and personal
@@ -470,7 +472,7 @@ func (s *Service) personalOrder(ctx context.Context, id int64, hash string, user
 	}
 	ck := fmt.Sprintf("%d|%d", id, user.ID)
 	s.mu.Lock()
-	if pe, ok := s.personal[ck]; ok && pe.hash == hash && s.now().Sub(pe.at) < personalTTL && len(pe.keys) == len(keys) {
+	if pe, ok := s.personal[ck]; ok && pe.hash == hash && s.now().Sub(pe.at) < personalTTL && slices.Equal(pe.input, keys) {
 		s.mu.Unlock()
 		return pe.keys
 	}
@@ -505,7 +507,7 @@ func (s *Service) personalOrder(ctx context.Context, id int64, hash string, user
 	if len(s.personal) > 2000 {
 		s.personal = map[string]personalEntry{}
 	}
-	s.personal[ck] = personalEntry{id: id, hash: hash, keys: out, at: s.now()}
+	s.personal[ck] = personalEntry{id: id, hash: hash, keys: out, input: append([]core.RatingKey(nil), keys...), at: s.now()}
 	s.mu.Unlock()
 	return out
 }

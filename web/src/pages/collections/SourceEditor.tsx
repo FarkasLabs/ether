@@ -126,7 +126,7 @@ function SourceBody({
           <LookupPicker
             kind={lookup}
             multiple={false}
-            region={source.kind === "watchProvider" ? source.region : region}
+            region={source.kind === "watchProvider" ? source.region || region : region}
             value={picked}
             ariaLabel={`${label} search`}
             onChange={(p) =>
@@ -137,7 +137,8 @@ function SourceBody({
             <label className="flex items-center gap-2 text-xs text-fg-muted">
               Region
               <Input
-                value={source.region}
+                value={source.region ?? ""}
+                placeholder={region}
                 maxLength={2}
                 className="h-8 w-16 uppercase"
                 aria-label={`${label} region`}

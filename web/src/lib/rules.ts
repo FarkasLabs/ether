@@ -583,7 +583,7 @@ export function describeSource(s: Source): string {
     case "stevenlu":
       return `StevenLu: ${STEVENLU_LISTS.find((l) => l.value === s.list)?.label ?? s.list}`;
     case "watchProvider":
-      return `${s.label || "Streaming service"} (${s.region})`;
+      return `${s.label || "Streaming service"}${s.region ? ` (${s.region})` : " (default region)"}`;
     default:
       return `${sourceMeta(s.kind)?.label}: ${s.label || (s.id ? `#${s.id}` : "not chosen")}`;
   }
