@@ -171,9 +171,8 @@ func (rt hostRewriteTransport) RoundTrip(req *http.Request) (*http.Response, err
 }
 
 // Tie test: ProwlarrIDPrefix(cfg) must be a prefix of every ID Discover
-// generates for the same instance, however the URL is spelled (trailing
-// slash, host case, explicit default port), and all spellings share one
-// prefix.
+// generates for the same configured spelling (including host case and
+// explicit default ports). Existing spellings retain their legacy scope.
 func TestProwlarrPrefixIsPrefixOfDiscoveredIDsAcrossURLSpellings(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		fmt.Fprint(w, `[{"id":4,"name":"News","enable":true,"protocol":"usenet"}]`)
@@ -205,25 +204,6 @@ func TestProwlarrPrefixIsPrefixOfDiscoveredIDsAcrossURLSpellings(t *testing.T) {
 			t.Fatalf("%q: present %v not under prefix %q", raw, report.PresentIDs, prefix)
 		}
 	}
-	// All spellings of the same instance+base share exactly one prefix.
-	want := ProwlarrIDPrefix(config.Prowlarr{URL: "http://example.com:9696/base"})
-	for _, raw := range []string{
-		"http://EXAMPLE.com:9696/base/",
-		"HTTP://Example.COM:9696/base",
-	} {
-		if got := ProwlarrIDPrefix(config.Prowlarr{URL: raw}); got != want {
-			t.Fatalf("prefix(%q)=%q want %q", raw, got, want)
-		}
-	}
-	if got := ProwlarrIDPrefix(config.Prowlarr{URL: "http://EXAMPLE.com:80/base/"}); got != ProwlarrIDPrefix(config.Prowlarr{URL: "http://example.com/base"}) {
-		t.Fatalf("http default port changed scope: %q", got)
-	}
-	if got := ProwlarrIDPrefix(config.Prowlarr{URL: "https://EXAMPLE.com:443/base/"}); got != ProwlarrIDPrefix(config.Prowlarr{URL: "https://example.com/base"}) {
-		t.Fatalf("https default port changed scope: %q", got)
-	}
-	if ProwlarrIDPrefix(config.Prowlarr{URL: "http://example.com:8080/base"}) == ProwlarrIDPrefix(config.Prowlarr{URL: "http://example.com/base"}) {
-		t.Fatal("non-default port must change scope")
-	}
 }
 
 // Golden vector (C3): the expected prefix is hard-coded on purpose.
@@ -236,8 +216,6 @@ func TestProwlarrIDPrefixGoldenVector(t *testing.T) {
 	const want = "prowlarr-1cf1d5715817-"
 	for _, raw := range []string{
 		"http://example.com:9696/base",
-		"http://EXAMPLE.com:9696/base/",
-		"HTTP://Example.COM:9696/base",
 	} {
 		if got := ProwlarrIDPrefix(config.Prowlarr{URL: raw}); got != want {
 			t.Fatalf("prefix(%q)=%q want golden %q", raw, got, want)

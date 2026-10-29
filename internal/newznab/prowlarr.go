@@ -7,7 +7,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"net"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -41,36 +40,14 @@ func prowlarrScope(base string) string {
 	return hex.EncodeToString(sum[:6])
 }
 
-// normalizeProwlarrBase parses and validates a Prowlarr base URL exactly
-// as discovery requires, then canonicalises it so the same instance always
-// yields the same scope: scheme/host lower-cased and a default port
-// (80/http, 443/https) dropped. It is the single normalisation used by
-// both DiscoverProwlarrReport and ProwlarrIDPrefix, so IDs stay consistent
-// however the owner spells the URL.
+// normalizeProwlarrBase preserves the URL spelling used by existing imported
+// IDs. Canonicalizing host case, ports or escaped paths here would change the
+// persisted identity and make additive imports create duplicate indexers.
 func normalizeProwlarrBase(raw string) (*url.URL, error) {
 	base, err := url.Parse(strings.TrimRight(raw, "/"))
-	if err != nil {
+	if err != nil || base.Host == "" || (base.Scheme != "http" && base.Scheme != "https") || base.User != nil || base.RawQuery != "" || base.Fragment != "" {
 		return nil, fmt.Errorf("prowlarr: URL must be an HTTP(S) base URL")
 	}
-	base.Scheme = strings.ToLower(base.Scheme)
-	if base.Host == "" || (base.Scheme != "http" && base.Scheme != "https") || base.User != nil || base.RawQuery != "" || base.Fragment != "" {
-		return nil, fmt.Errorf("prowlarr: URL must be an HTTP(S) base URL")
-	}
-	host := strings.ToLower(base.Hostname())
-	port := base.Port()
-	if (base.Scheme == "http" && port == "80") || (base.Scheme == "https" && port == "443") {
-		port = ""
-	}
-	switch {
-	case port != "":
-		base.Host = net.JoinHostPort(host, port)
-	case strings.Contains(host, ":"):
-		base.Host = "[" + host + "]"
-	default:
-		base.Host = host
-	}
-	base.Path = strings.TrimRight(base.Path, "/")
-	base.RawPath = ""
 	return base, nil
 }
 
