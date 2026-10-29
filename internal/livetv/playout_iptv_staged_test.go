@@ -185,7 +185,7 @@ func TestIPTVCloseBetweenSnapshotAndPublishDiscardsStaged(t *testing.T) {
 
 	select {
 	case err := <-tuneDone:
-		if !errors.Is(err, core.ErrNotFound) {
+		if !errors.Is(err, core.ErrNotFound) && !errors.Is(err, context.Canceled) {
 			t.Fatalf("tune closed mid-preparation err = %v", err)
 		}
 	case <-time.After(2 * time.Second):

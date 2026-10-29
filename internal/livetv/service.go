@@ -75,6 +75,9 @@ func (s *Service) Close() error {
 	return nil
 }
 func (s *Service) stopTrack(t *track) {
+	if t.cancel != nil {
+		t.cancel()
+	}
 	s.transMu.Lock()
 	delete(s.transcodes, t.playbackID)
 	s.transMu.Unlock()

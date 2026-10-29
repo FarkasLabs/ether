@@ -27,6 +27,7 @@ type channelLimiter interface {
 type track struct {
 	programme  Programme
 	hls        core.HLSSession
+	cancel     context.CancelFunc
 	playbackID string
 	offset     time.Duration
 	sequence   int64
@@ -45,6 +46,7 @@ type session struct {
 	nextSequence    int64
 	discontinuities int64
 	relay           core.HLSSession
+	relayCancel     context.CancelFunc
 	relayInfo       *core.MediaInfo
 	dash            core.DASHSession
 	// mu guards the fields above and below it. It is never held across
@@ -84,6 +86,36 @@ func (ss *session) bindContext(parent context.Context) (context.Context, context
 	return ctx, func() { stop(); cancel() }
 }
 
+// startOwnedHLS ties startup to the request and the returned encoder to the
+// session. Once startup completes, request cancellation must not end playback.
+func (s *Service) startOwnedHLS(request context.Context, ss *session, req core.HLSRequest) (core.HLSSession, context.CancelFunc, error) {
+	base := ss.ctx
+	if base == nil {
+		base = s.ctx
+	}
+	if base == nil {
+		base = context.Background()
+	}
+	lifetime, cancel := context.WithCancel(base)
+	stop := context.AfterFunc(request, cancel)
+	hls, err := s.o.Transcoder.StartHLS(lifetime, req)
+	stop()
+	if err == nil && request.Err() != nil {
+		err = request.Err()
+	}
+	if err == nil && lifetime.Err() != nil {
+		err = lifetime.Err()
+	}
+	if err != nil {
+		cancel()
+		if hls != nil {
+			hls.Close()
+		}
+		return nil, nil, err
+	}
+	return hls, cancel, nil
+}
+
 func (ss *session) close(s *Service) {
 	if ss.startupCancel != nil {
 		ss.startupCancel()
@@ -100,10 +132,14 @@ func (ss *session) close(s *Service) {
 	ss.generation++
 	tracks := ss.tracks
 	relay := ss.relay
+	relayCancel := ss.relayCancel
 	dash := ss.dash
 	reserved := ss.reserved
 	ss.mu.Unlock()
 	s.revokeInput(ss)
+	if relayCancel != nil {
+		relayCancel()
+	}
 	if relay != nil {
 		relay.Close()
 	}
@@ -410,7 +446,7 @@ func (s *Service) prepareTrackStaged(ctx context.Context, ss *session, p Program
 	gen := ss.generation
 	stage := &session{
 		info: ss.info, user: ss.user, caps: ss.caps,
-		tracks: append([]*track(nil), ss.tracks...), nextSequence: ss.nextSequence,
+		tracks: append([]*track(nil), ss.tracks...), nextSequence: ss.nextSequence, ctx: ss.ctx,
 	}
 	stagedFrom := len(stage.tracks)
 	ss.mu.Unlock()
@@ -459,7 +495,7 @@ func (s *Service) startIPTVSession(ctx context.Context, ss *session) error {
 		return core.ErrNotFound
 	}
 	gen := ss.generation
-	stage := &session{info: ss.info, user: ss.user, caps: ss.caps}
+	stage := &session{info: ss.info, user: ss.user, caps: ss.caps, ctx: ss.ctx}
 	ss.mu.Unlock()
 
 	ctx, cancel := ss.bindContext(ctx)
@@ -474,12 +510,16 @@ func (s *Service) startIPTVSession(ctx context.Context, ss *session) error {
 		if relay != nil {
 			relay.Close()
 		}
+		if stage.relayCancel != nil {
+			stage.relayCancel()
+		}
 		s.revokeInput(stage)
 		return core.ErrNotFound
 	}
 	ss.inputURL, ss.inputSource, ss.inputHeaders = stage.inputURL, stage.inputSource, stage.inputHeaders
 	ss.info.MediaInfo, ss.info.ActiveSourceID = stage.info.MediaInfo, stage.info.ActiveSourceID
 	ss.relay, ss.relayInfo, ss.resources = stage.relay, stage.relayInfo, stage.resources
+	ss.relayCancel = stage.relayCancel
 	s.transferInput(stage, ss)
 	ss.mu.Unlock()
 	return nil
@@ -527,12 +567,12 @@ func (s *Service) prepareTrackOnStage(ctx context.Context, ss *session, p Progra
 		decision.Kind = core.DecisionRemux
 	}
 	decision.Container = "mpegts"
-	hs, err := s.o.Transcoder.StartHLS(s.ctx, core.HLSRequest{SessionID: "livetv-" + ss.info.ID + "-" + strconv.FormatInt(p.Start.UnixMilli(), 10), InputURL: s.o.Playback.InputURL(ps.ID), Info: info, Decision: decision, StartOffset: offset, SegmentDuration: segmentDuration})
+	hs, lifetimeCancel, err := s.startOwnedHLS(ctx, ss, core.HLSRequest{SessionID: "livetv-" + ss.info.ID + "-" + strconv.FormatInt(p.Start.UnixMilli(), 10), InputURL: s.o.Playback.InputURL(ps.ID), Info: info, Decision: decision, StartOffset: offset, SegmentDuration: segmentDuration})
 	if err != nil {
 		s.o.Playback.Stop(ps.ID)
 		return nil, err
 	}
-	tr := &track{programme: p, hls: hs, playbackID: ps.ID, offset: offset, count: trackCount(info.Duration - offset)}
+	tr := &track{programme: p, hls: hs, cancel: lifetimeCancel, playbackID: ps.ID, offset: offset, count: trackCount(info.Duration - offset)}
 	tr.sequence = ss.nextSequence
 	ss.nextSequence += int64(tr.count)
 	s.transMu.Lock()
@@ -803,7 +843,7 @@ func (s *Service) startIPTVSource(ctx context.Context, ss *session) error {
 			// playable. MPEG-2/MP2 HLS needs conversion on Apple TV too.
 			dec := s.o.Transcoder.Decide(*info, ss.caps, core.DecideOptions{DirectPlay: true, DirectStream: true, AudioStream: -1, SubtitleStream: -1})
 			if !dec.VideoCopy || !dec.AudioCopy {
-				return s.startIPTVRelay(ss, *info)
+				return s.startIPTVRelay(ctx, ss, *info)
 			}
 		}
 		ss.resources["index.m3u8"] = c.StreamURL
@@ -822,7 +862,7 @@ func (s *Service) startIPTVSource(ctx context.Context, ss *session) error {
 	copy := *info
 	copy.Duration = 0
 	ss.info.MediaInfo = &copy
-	return s.startIPTVRelay(ss, copy)
+	return s.startIPTVRelay(ctx, ss, copy)
 }
 func (s *Service) serveRelayPlaylist(w http.ResponseWriter, r *http.Request, ss *session) {
 	ss.mu.Lock()
