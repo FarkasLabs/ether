@@ -41,9 +41,9 @@ func TestFetchNZBBlocksFeedURLToPrivateHost(t *testing.T) {
 	}
 }
 
-// Regression (owner review): a proxy configured on the owner's HTTP
-// client must not carry an untrusted feed URL to the metadata address
-// — guarded fetches ignore proxies and dial (and validate) directly.
+// Regression (owner review v3): com proxy configurado, a rota é
+// preservada para destinos públicos, mas um destino metadata de feed
+// não-confiável é recusado na validação prévia — nem proxy nem destino.
 func TestFetchNZBWithConfiguredProxyDoesNotReachProxy(t *testing.T) {
 	var proxyHits atomic.Int32
 	proxySrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

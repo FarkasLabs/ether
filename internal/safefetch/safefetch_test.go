@@ -155,94 +155,156 @@ func TestGuardedClientPublicFakeAndInternalBlocked(t *testing.T) {
 	}
 }
 
-// The two pools are distinct transports and neither uses a proxy,
-// however the base transport was configured.
-func TestGuardedTransportsHaveNoProxyAndSeparatePools(t *testing.T) {
+// As pools trusted/public são distintas; cada uma tem variante direta
+// (Proxy=nil, dial guardado e pinado) e variante via-proxy (Proxy do
+// dono preservado), com pools próprios.
+func TestGuardedTransportsPreserveProxyAndSeparatePools(t *testing.T) {
 	proxyURL, _ := url.Parse("http://proxy.test:8080")
 	rt := (&Guard{}).Transport(&http.Transport{Proxy: http.ProxyURL(proxyURL)})
 	tr, ok := rt.(transport)
 	if !ok {
 		t.Fatalf("Transport type = %T, want safefetch transport", rt)
 	}
-	pub, okPub := tr.public.(*http.Transport)
-	trust, okTrust := tr.trusted.(*http.Transport)
+	pub, okPub := tr.public.(policyTransport)
+	trust, okTrust := tr.trusted.(policyTransport)
 	if !okPub || !okTrust {
-		t.Fatalf("pool types = %T/%T, want two *http.Transport", tr.public, tr.trusted)
+		t.Fatalf("pool types = %T/%T, want two policyTransport", tr.public, tr.trusted)
 	}
-	if pub == trust {
-		t.Fatal("trusted and public pools are the same transport (shared connection pool)")
+	if pub.direct == trust.direct || pub.proxied == trust.proxied || pub.direct == pub.proxied || trust.direct == trust.proxied {
+		t.Fatal("pools trusted/public (ou direto/proxy) compartilham *http.Transport")
 	}
-	for name, pool := range map[string]*http.Transport{"public": pub, "trusted": trust} {
-		if pool.Proxy != nil {
-			t.Errorf("%s pool Proxy != nil; guarded fetches must never proxy", name)
+	for name, pool := range map[string]policyTransport{"public": pub, "trusted": trust} {
+		if pool.direct.Proxy != nil {
+			t.Errorf("%s direct Proxy != nil; variante direta não usa proxy", name)
 		}
-		if pool.DialContext == nil || pool.DialTLSContext != nil || pool.Dial != nil || pool.DialTLS != nil {
-			t.Errorf("%s pool dial hooks not fully guarded (DialContext=%v DialTLSContext=%v Dial=%v DialTLS=%v)",
-				name, pool.DialContext != nil, pool.DialTLSContext != nil, pool.Dial != nil, pool.DialTLS != nil)
+		if pool.direct.DialContext == nil || pool.direct.DialTLSContext != nil || pool.direct.Dial != nil || pool.direct.DialTLS != nil {
+			t.Errorf("%s direct dial hooks not fully guarded (DialContext=%v DialTLSContext=%v Dial=%v DialTLS=%v)",
+				name, pool.direct.DialContext != nil, pool.direct.DialTLSContext != nil, pool.direct.Dial != nil, pool.direct.DialTLS != nil)
+		}
+		if pool.proxy == nil || pool.proxied.Proxy == nil {
+			t.Errorf("%s proxied: Proxy do dono não preservado", name)
+			continue
+		}
+		req, _ := http.NewRequest(http.MethodGet, "http://public.test/ok", nil)
+		got, err := pool.proxied.Proxy(req)
+		if err != nil || got == nil || got.String() != proxyURL.String() {
+			t.Errorf("%s proxied.Proxy = %v, %v; want %v", name, got, err, proxyURL)
 		}
 	}
 }
 
-// Regression (owner review, bypass 1): with a proxy configured on the
-// base transport, an untrusted request to the cloud metadata address
-// must reach neither the proxy nor the destination. The guard dials
-// directly (Proxy=nil), so the metadata address is blocked at dial
-// time. A public destination likewise goes direct, not via the proxy.
-func TestGuardedClientNeverUsesConfiguredProxy(t *testing.T) {
-	var proxyHits atomic.Int32
+// Casos do dono (v3): com proxy configurado, destino público passa
+// PELO proxy (proxy hits=1, direct=0) — a rota do dono é preservada.
+// Destino privado/metadata é recusado na validação prévia: nem proxy
+// nem destino são tocados (hits=0). Mutação: forçar Proxy=nil na
+// variante via-proxy faz o 1º caso falhar (hit direto, proxy 0).
+func TestGuardedClientWithConfiguredProxy(t *testing.T) {
+	var proxyHits, targetHits, directDials atomic.Int32
 	proxySrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		proxyHits.Add(1)
 		fmt.Fprint(w, "proxied")
 	}))
 	defer proxySrv.Close()
 	targetSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		targetHits.Add(1)
 		fmt.Fprint(w, "public-ok")
 	}))
 	defer targetSrv.Close()
-	_, proxyPort, _ := net.SplitHostPort(strings.TrimPrefix(proxySrv.URL, "http://"))
 	_, targetPort, _ := net.SplitHostPort(strings.TrimPrefix(targetSrv.URL, "http://"))
 
-	// public.test and proxy.test both "resolve" to a public IP; the fake
-	// dial connects to whichever real test server the validated port
-	// names, so a proxied request observably lands on the proxy.
 	guard := &Guard{
 		LookupIP: func(_ context.Context, host string) ([]netip.Addr, error) {
 			switch host {
-			case "public.test", "proxy.test":
+			case "public.test":
 				return []netip.Addr{netip.MustParseAddr("93.184.216.34")}, nil
+			case "internal.test":
+				return []netip.Addr{netip.MustParseAddr("127.0.0.1")}, nil
 			}
 			return nil, fmt.Errorf("unknown host %q", host)
 		},
+		// Dial direto (pinado) só pode ser este hook; se a requisição
+		// for direta, ele conecta no servidor-alvo real e conta.
 		Dial: func(ctx context.Context, network, addr string) (net.Conn, error) {
-			_, port, err := net.SplitHostPort(addr)
-			if err != nil {
-				return nil, err
-			}
-			real := proxySrv.Listener.Addr().String()
-			if port == targetPort {
-				real = targetSrv.Listener.Addr().String()
-			}
+			directDials.Add(1)
 			var d net.Dialer
-			return d.DialContext(ctx, network, real)
+			return d.DialContext(ctx, network, targetSrv.Listener.Addr().String())
 		},
 	}
-	proxyURL, _ := url.Parse("http://proxy.test:" + proxyPort)
+	proxyURL, _ := url.Parse(proxySrv.URL)
 	client := guard.Client(&http.Client{Transport: &http.Transport{Proxy: http.ProxyURL(proxyURL)}})
 
-	if _, err := client.Get("http://169.254.169.254/latest/meta-data"); !errors.Is(err, ErrBlocked) {
-		t.Fatalf("metadata fetch via configured proxy err = %v, want ErrBlocked", err)
-	}
+	// 1) Destino público via proxy.
 	resp, err := client.Get("http://public.test:" + targetPort + "/ok")
 	if err != nil {
 		t.Fatalf("public fetch with configured proxy: %v", err)
 	}
 	body, _ := io.ReadAll(resp.Body)
 	resp.Body.Close()
-	if string(body) != "public-ok" {
-		t.Fatalf("public fetch body = %q, want direct %q", body, "public-ok")
+	if string(body) != "proxied" {
+		t.Fatalf("public fetch body = %q, want %q (via proxy)", body, "proxied")
 	}
-	if got := proxyHits.Load(); got != 0 {
-		t.Fatalf("proxy hit %d times, want 0 (guarded fetches ignore proxies)", got)
+	if got := proxyHits.Load(); got != 1 {
+		t.Fatalf("proxy hit %d times, want 1", got)
+	}
+	if got := directDials.Load(); got != 0 {
+		t.Fatalf("direct dials = %d, want 0 (rota via proxy preservada)", got)
+	}
+	if got := targetHits.Load(); got != 0 {
+		t.Fatalf("target hit %d times directly, want 0", got)
+	}
+
+	// 2) Destino privado/metadata: recusado antes do proxy.
+	for _, raw := range []string{
+		"http://169.254.169.254/latest/meta-data",
+		"http://internal.test:" + targetPort + "/secret",
+	} {
+		if _, err := client.Get(raw); !errors.Is(err, ErrBlocked) {
+			t.Fatalf("private fetch %q via configured proxy err = %v, want ErrBlocked", raw, err)
+		}
+	}
+	if got := proxyHits.Load(); got != 1 {
+		t.Fatalf("proxy hit %d times after private fetches, want 1 (só o público)", got)
+	}
+	if got := directDials.Load(); got != 0 {
+		t.Fatalf("direct dials = %d after private fetches, want 0", got)
+	}
+	if got := targetHits.Load(); got != 0 {
+		t.Fatalf("target hit %d times, want 0", got)
+	}
+}
+
+type countingRoundTripper struct{ hits *atomic.Int32 }
+
+func (c countingRoundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
+	c.hits.Add(1)
+	return &http.Response{
+		StatusCode: http.StatusOK,
+		Status:     "200 OK",
+		Header:     make(http.Header),
+		Body:       io.NopCloser(strings.NewReader("custom-ok")),
+		Request:    req,
+	}, nil
+}
+
+// RoundTripper custom/wrapped não é clonável: o cliente guardado deve
+// falhar com "safefetch: unsupported transport" sem chamar o original
+// (sem fallback sem enforcement). Mutação: restaurar o fallback faz
+// este teste falhar (custom é chamado e responde 200).
+func TestGuardedClientRejectsUnsupportedTransport(t *testing.T) {
+	var hits atomic.Int32
+	guard := &Guard{LookupIP: func(_ context.Context, host string) ([]netip.Addr, error) {
+		return []netip.Addr{netip.MustParseAddr("93.184.216.34")}, nil
+	}}
+	client := guard.Client(&http.Client{Transport: countingRoundTripper{hits: &hits}})
+	_, err := client.Get("http://public.test/ok")
+	if !errors.Is(err, ErrUnsupportedTransport) {
+		t.Fatalf("custom transport err = %v, want ErrUnsupportedTransport", err)
+	}
+	if !strings.Contains(err.Error(), "safefetch: unsupported transport") {
+		t.Fatalf("custom transport err = %q, want clear unsupported message", err)
+	}
+	if got := hits.Load(); got != 0 {
+		t.Fatalf("custom RoundTripper called %d times, want 0", got)
 	}
 }
 

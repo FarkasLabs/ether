@@ -80,7 +80,8 @@ type Client struct {
 	db   *sql.DB
 	http *http.Client
 	// guarded fetches through safefetch: destinations are validated at
-	// dial time (see trustedCtx for the owner-origin exception).
+	// dial time, ou antes de chamar o proxy do dono quando há um (see
+	// trustedCtx for the owner-origin exception).
 	guarded  *http.Client
 	log      *slog.Logger
 	cacheTTL time.Duration

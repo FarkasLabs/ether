@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -56,16 +57,27 @@ func TestInstallFromSourceBlocksPrivateDownloadURL(t *testing.T) {
 	}
 }
 
-// Regression (owner review): a proxy configured on the owner's HTTP
-// client must not carry a listing-supplied metadata URL anywhere —
-// guarded source fetches ignore proxies and validate the destination
-// themselves.
-func TestInstallFromSourceWithConfiguredProxyDoesNotReachProxy(t *testing.T) {
+// Regression (owner review v3): com proxy configurado, a rota é
+// preservada para destinos públicos, mas uma metadata URL vinda do
+// listing é recusada na validação prévia — nem proxy nem destino.
+func TestInstallFromSourceWithConfiguredProxyBlocksMetadataBeforeProxy(t *testing.T) {
 	ctx := context.Background()
 	var proxyHits atomic.Int32
+	// Proxy fake funcional: encaminha a URL absoluta que recebe. O
+	// listing (origem confiável do dono) passa por ele legitimamente;
+	// a URL metadata do listing, não — é recusada antes do proxy.
+	direct := &http.Client{Transport: &http.Transport{Proxy: nil}}
 	proxySrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		proxyHits.Add(1)
-		w.Write(readFixture(t, "public.yml"))
+		resp, err := direct.Get(r.URL.String())
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadGateway)
+			return
+		}
+		defer resp.Body.Close()
+		body, _ := io.ReadAll(resp.Body)
+		w.WriteHeader(resp.StatusCode)
+		_, _ = w.Write(body)
 	}))
 	defer proxySrv.Close()
 	proxyURL, _ := url.Parse(proxySrv.URL)
@@ -74,11 +86,18 @@ func TestInstallFromSourceWithConfiguredProxyDoesNotReachProxy(t *testing.T) {
 	s := newTestService(t, config.IndexerSites{})
 	s.sourceHC = (&safefetch.Guard{}).Client(&http.Client{Transport: &http.Transport{Proxy: http.ProxyURL(proxyURL)}})
 	s.ApplyConfig(config.Config{IndexerSites: config.IndexerSites{DefinitionsURL: src.URL + "/listing"}})
+	if _, err := s.Catalog(ctx, false); err != nil {
+		t.Fatalf("catalog via proxy: %v", err)
+	}
+	before := proxyHits.Load()
+	if before == 0 {
+		t.Fatal("listing confiável não passou pelo proxy configurado")
+	}
 	if _, err := s.InstallFromSource(ctx, "evil"); !errors.Is(err, safefetch.ErrBlocked) {
 		t.Fatalf("InstallFromSource(metadata, proxy configured) err = %v, want ErrBlocked", err)
 	}
-	if got := proxyHits.Load(); got != 0 {
-		t.Fatalf("proxy hit %d times, want 0", got)
+	if got := proxyHits.Load(); got != before {
+		t.Fatalf("proxy hit %d times, want %d (metadata recusada antes do proxy)", got, before)
 	}
 }
 

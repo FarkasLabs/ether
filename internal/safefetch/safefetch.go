@@ -19,15 +19,32 @@
 // trusted origin — must be public. Redirects are revalidated on each hop
 // both by CheckRedirect (scheme/length) and by the dialer (address).
 //
-// Two further invariants keep the dial-time check from being bypassed:
+// Proxy handling is explicit, never a silent bypass of the owner's
+// network setup:
 //
-//   - No proxy. Guarded transports always dial the destination directly
-//     (Proxy is forced to nil, so neither a proxy configured on the base
-//     transport nor HTTP_PROXY/HTTPS_PROXY in the environment is ever
-//     used). A proxy would be dialed instead of the destination, so the
-//     guard would validate the proxy's address and the proxy would then
-//     happily fetch a private target. Fetching indexers and definition
-//     sources therefore deliberately ignores proxy configuration.
+//   - Sem proxy (nem configurado no transporte base, nem resolvido do
+//     ambiente para aquela requisição): o dial é direto, no IP já
+//     validado (pinado), como descrito acima.
+//   - Com proxy: a rota do dono é PRESERVADA — a requisição vai ao
+//     proxy —, mas o DESTINO é validado antes de o proxy ser chamado:
+//     o host do destino é resolvido localmente e, se qualquer endereço
+//     não for público (e o destino não for exatamente a origem
+//     confiável), a requisição é recusada sem tocar no proxy nem no
+//     destino. O host do proxy em si pode ser privado: é a origem de
+//     rede que o dono escolheu, portanto alcançá-lo é permitido. Para
+//     HTTPS/CONNECT quem resolve o nome do destino é o proxy; a
+//     validação prévia por resolução local é a política adotada, e o
+//     rebinding residual atrás do proxy (a resolução do proxy divergir
+//     da local) é uma limitação declarada desta política, não um
+//     comportamento silencioso.
+//
+// Two further invariants keep the check from being bypassed:
+//
+//   - Transporte clonável apenas. Só *http.Transport pode ser guardado:
+//     ele é clonado para que dial, proxy e pools sejam reconfigurados
+//     com enforcement. Qualquer outro RoundTripper (custom/wrapped)
+//     produz ErrUnsupportedTransport em cada requisição, em vez de
+//     buscar sem pinagem/validação no dial.
 //   - Separate connection pools per policy. A guarded client carries
 //     two transports with independent pools: one only ever dials the
 //     exact trusted origin, the other only ever dials public addresses.
@@ -35,6 +52,8 @@
 //     own destination, so a connection opened to a private trusted
 //     origin can never be reused by a later untrusted request to the
 //     same host — reuse would skip the dial (and its check) entirely.
+//     As variantes direta e via-proxy de cada política também têm pools
+//     próprios.
 package safefetch
 
 import (
@@ -51,6 +70,12 @@ import (
 // ErrBlocked reports a destination the guard refused: a non-http(s)
 // scheme, or a host that resolves to a non-public address.
 var ErrBlocked = errors.New("safefetch: blocked non-public destination")
+
+// ErrUnsupportedTransport reports a base transport the guard cannot
+// enforce its policy on: anything that is not a clonable
+// *http.Transport. Guarded clients return it instead of fetching
+// through a custom RoundTripper without dial-time enforcement.
+var ErrUnsupportedTransport = errors.New("safefetch: unsupported transport")
 
 // cgnat is RFC 6598 shared address space (100.64.0.0/10, also Tailscale).
 // The repo already treats CGNAT as local when classifying Plex clients
@@ -143,6 +168,14 @@ func (g *Guard) ValidatePublicURL(ctx context.Context, rawURL string) error {
 	if (u.Scheme != "http" && u.Scheme != "https") || u.Hostname() == "" {
 		return fmt.Errorf("%w: %q is not an http(s) URL with a host", ErrBlocked, rawURL)
 	}
+	return g.validatePublicDestination(ctx, u)
+}
+
+// validatePublicDestination resolves u's host and refuses it when any
+// candidate address is not public. It is the pre-proxy check: with a
+// proxy the request still goes to the proxy afterwards, but a
+// non-public destination never reaches it.
+func (g *Guard) validatePublicDestination(ctx context.Context, u *url.URL) error {
 	ips, err := g.resolve(ctx, u.Hostname())
 	if err != nil {
 		return err
@@ -348,62 +381,118 @@ func (t transport) RoundTrip(req *http.Request) (*http.Response, error) {
 	return t.public.RoundTrip(req)
 }
 
-// policyTransport builds one pool's transport from base. A
-// *http.Transport base is cloned — Clone gives the clone its own
-// connection pool — with Proxy forced to nil (guarded fetches never
-// use a proxy, configured or from the environment: the guard must dial
-// and validate the destination itself, not hand the request to a
-// proxy that would fetch an unchecked target) and with the dial hooks
-// replaced by the pool's guarded dialer. Dial/DialTLS/DialTLSContext,
-// when set, would bypass DialContext, so they are dropped (the
-// transport then performs any TLS handshake over the guarded dial).
+// policyTransport builds one policy pool (trusted or public) from
+// base. Only a *http.Transport base can be guarded: it is cloned —
+// Clone gives each clone its own connection pool — into two variants:
+//
+//   - direct: Proxy forced to nil and the dial hooks replaced by the
+//     pool's guarded dialer, so the destination is resolved, validated
+//     and dialed at the validated (pinned) address. Dial/DialTLS/
+//     DialTLSContext, when set, would bypass DialContext, so they are
+//     dropped (the transport then performs any TLS handshake over the
+//     guarded dial).
+//   - proxied: the base's Proxy function (configured, or resolved from
+//     the environment per request) and its dial hooks are preserved as
+//     the owner set them — the dial target there is the proxy, the
+//     owner's own network origin, which may legitimately be private.
+//     RoundTrip validates the destination before this variant is used.
+//
+// Any other RoundTripper has no dialer or pool the guard can split or
+// reconfigure, so it yields unsupportedTransport: requests fail with
+// ErrUnsupportedTransport rather than fetching without enforcement.
 func (g *Guard) policyTransport(base http.RoundTripper, trusted bool) http.RoundTripper {
 	if base == nil {
 		base = http.DefaultTransport
+	}
+	ht, ok := base.(*http.Transport)
+	if !ok {
+		return unsupportedTransport{base: base}
 	}
 	dial := g.publicDialContext
 	if trusted {
 		dial = g.trustedDialContext
 	}
-	if ht, ok := base.(*http.Transport); ok {
-		clone := ht.Clone()
-		clone.Proxy = nil
-		clone.DialContext = dial
-		clone.Dial = nil
-		clone.DialTLSContext = nil
-		clone.DialTLS = nil
-		clone.OnProxyConnectResponse = nil
-		return clone
+	direct := ht.Clone()
+	direct.Proxy = nil
+	direct.DialContext = dial
+	direct.Dial = nil
+	direct.DialTLSContext = nil
+	direct.DialTLS = nil
+	direct.OnProxyConnectResponse = nil
+	proxied := ht.Clone()
+	// DialTLS/DialTLSContext criariam TLS direto no destino, fora do
+	// túnel do proxy; descartados também aqui (o TLS com o destino via
+	// CONNECT é feito pelo transporte sobre o dial do proxy).
+	proxied.DialTLSContext = nil
+	proxied.DialTLS = nil
+	return policyTransport{
+		guard:   g,
+		trusted: trusted,
+		proxy:   ht.Proxy,
+		direct:  direct,
+		proxied: proxied,
 	}
-	// A custom RoundTripper has no dialer or pool the guard can split
-	// or reconfigure; validate the destination before handing over
-	// instead (trusted: exact origin only; public: resolves public).
-	return policyRoundTripper{base: base, guard: g, trusted: trusted}
 }
 
-type policyRoundTripper struct {
-	base    http.RoundTripper
+// unsupportedTransport refuses every request: the guard cannot pin or
+// validate dials made inside a custom RoundTripper, so it must not
+// fetch through one at all.
+type unsupportedTransport struct {
+	base http.RoundTripper
+}
+
+func (u unsupportedTransport) RoundTrip(*http.Request) (*http.Response, error) {
+	return nil, fmt.Errorf("%w: %T, want *http.Transport", ErrUnsupportedTransport, u.base)
+}
+
+// policyTransport is one policy's pool pair. Per request it resolves
+// whether a proxy applies (the base transport's Proxy function, which
+// for http.DefaultTransport is ProxyFromEnvironment): sem proxy, usa a
+// variante direta com IP pinado validado; com proxy, preserva a rota
+// do dono, mas valida o destino antes de chamar o proxy (público, ou
+// exatamente a origem confiável nesta pool de confiança). O proxy em
+// si pode ser privado — é escolha do dono. Para HTTPS/CONNECT o proxy
+// resolve o nome do destino; a validação prévia usa a resolução local
+// e o rebinding residual atrás do proxy é a limitação declarada no
+// pacote.
+type policyTransport struct {
 	guard   *Guard
 	trusted bool
+	proxy   func(*http.Request) (*url.URL, error)
+	direct  *http.Transport
+	proxied *http.Transport
 }
 
-func (p policyRoundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
+func (p policyTransport) RoundTrip(req *http.Request) (*http.Response, error) {
+	var proxyURL *url.URL
+	if p.proxy != nil {
+		u, err := p.proxy(req)
+		if err != nil {
+			return nil, err
+		}
+		proxyURL = u
+	}
+	if proxyURL == nil {
+		return p.direct.RoundTrip(req)
+	}
+	// Via proxy: validar o destino ANTES de o proxy ser chamado.
 	if p.trusted {
 		if !isTrustedRequest(req) {
 			return nil, fmt.Errorf("%w: %q is not the trusted origin", ErrBlocked, req.URL.Redacted())
 		}
-		return p.base.RoundTrip(req)
-	}
-	if err := p.guard.ValidatePublicURL(req.Context(), req.URL.String()); err != nil {
+		// Origem confiável exata: privada é legítima (LAN do dono).
+	} else if err := p.guard.validatePublicDestination(req.Context(), req.URL); err != nil {
 		return nil, err
 	}
-	return p.base.RoundTrip(req)
+	return p.proxied.RoundTrip(req)
 }
 
-// Transport returns a RoundTripper that validates destinations at dial
-// time, with separate trusted-origin and public connection pools and
-// no proxy (see the package documentation). A nil base means
-// http.DefaultTransport.
+// Transport returns a RoundTripper that validates destinations (at
+// dial time sem proxy; antes de chamar o proxy, com proxy), with
+// separate trusted-origin and public connection pools (see the package
+// documentation). A nil base means http.DefaultTransport. A base that
+// is not a *http.Transport yields a RoundTripper whose requests all
+// fail with ErrUnsupportedTransport.
 func (g *Guard) Transport(base http.RoundTripper) http.RoundTripper {
 	if g == nil {
 		g = &Guard{}
