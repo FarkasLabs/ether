@@ -3,6 +3,7 @@ package plex
 import (
 	"context"
 	"crypto/rand"
+	"encoding/json"
 	"hash/fnv"
 	"strconv"
 	"sync"
@@ -22,16 +23,11 @@ type streamRef struct {
 	slot  string // identity within the title (see streamSlot)
 }
 
-// streamRegistry hands out stable Stream ids. Ids are a hash of (ratingKey,
-// stream position) for the initial identity; the registry resolves them back
-// (for /library/streams/{id} and audioStreamID/subtitleStreamID params) and
-// probes past hash collisions and changed stream identities. Previously issued
-// IDs keep their identity when an estimate or another release is rendered.
-//
-// External (sidecar) subtitles hash their source instead: they follow the
-// embedded streams, whose count differs between the estimate shown before
-// play and the probed release, so a position would name a different stream
-// (or none) once playback starts.
+// streamRegistry hands out stable Stream IDs. Audio/subtitle IDs include
+// their identity as well as title and position, so a cached ID cannot change
+// language after a new release, registry eviction, or server restart. Video
+// IDs retain position identity; external subtitles retain source identity.
+// Hash collisions are resolved by probing without overwriting old references.
 type streamRegistry struct {
 	mu   sync.Mutex
 	byID map[int64]streamRef
@@ -41,10 +37,6 @@ const maxStreamRefs = 200_000
 
 func newStreamRegistry() *streamRegistry { return &streamRegistry{byID: map[int64]streamRef{}} }
 
-func streamHash(key core.RatingKey, index int) int64 {
-	return slotHash(key, strconv.Itoa(index))
-}
-
 func slotHash(key core.RatingKey, slot string) int64 {
 	h := fnv.New64a()
 	h.Write([]byte(strconv.FormatInt(int64(key), 10) + "/" + slot))
@@ -52,11 +44,16 @@ func slotHash(key core.RatingKey, slot string) int64 {
 	return int64(h.Sum64()%2_000_000_000) + 1
 }
 
-// streamSlot is a stream's identity within its title: its position, or
-// for a sidecar with a known source, that source.
+// streamSlot is a stream's stable identity within its title.
 func streamSlot(index int, info core.StreamInfo) string {
 	if info.External && info.ExternalURL != "" {
 		return "external/" + info.ExternalURL
+	}
+	if info.Type == "audio" || info.Type == "subtitle" {
+		// JSON avoids ambiguous separators in arbitrary track titles. Probe-only
+		// hints and default flags do not change a track's identity.
+		raw, _ := json.Marshal([]any{index, info.Type, info.Language, info.Codec, info.Channels, info.Title, info.Forced, info.External, info.ExternalURL})
+		return "track-v2/" + string(raw)
 	}
 	return strconv.Itoa(index)
 }

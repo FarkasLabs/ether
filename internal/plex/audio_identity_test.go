@@ -152,3 +152,23 @@ func TestAudioIdentityPrefersExplicitRegionBeforeCodec(t *testing.T) {
 		t.Fatalf("explicit Brazilian track lost to position %d", got)
 	}
 }
+
+func TestStreamIdentityIDsSurviveRegistrationOrderChanges(t *testing.T) {
+	for _, kind := range []string{"audio", "subtitle"} {
+		en := core.StreamInfo{Type: kind, Language: "eng", Codec: "aac", Channels: 2}
+		fr := en
+		fr.Language = "fre"
+		before := newStreamRegistry()
+		englishID := before.register(fightClub.Key, 1, en)
+		// A restart or registry eviction must not let a cached English ID select
+		// French merely because French is now the first render at that position.
+		after := newStreamRegistry()
+		frenchID := after.register(fightClub.Key, 1, fr)
+		if frenchID == englishID {
+			t.Fatalf("%s cached English ID aliases French after reset", kind)
+		}
+		if got := after.register(fightClub.Key, 1, en); got != englishID {
+			t.Fatalf("%s English ID changed with registration order", kind)
+		}
+	}
+}
