@@ -24,6 +24,15 @@ func (s *Server) stopPlayback(id, reason string) {
 	if s.d.Playback == nil {
 		return
 	}
+	ps, ok := s.d.Playback.Session(id)
+	if !ok {
+		return
+	}
+	unlock, err := s.lockPlaybackOwner(s.ctx, ps.UserID, ps.ClientID)
+	if err != nil {
+		return
+	}
+	defer unlock()
 	for _, e := range s.sessions.list() {
 		if ps, ok := s.d.Playback.SessionFor(e.user.ID, e.client.ClientID, e.key); ok && ps.ID == id {
 			s.setTermination(e.id, reason)

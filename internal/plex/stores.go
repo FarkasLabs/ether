@@ -132,6 +132,7 @@ type transcodeEntry struct {
 	id          string // client "session" param
 	streamToken string // independent random capability; never a client-chosen ID
 	playID      string // core.PlaySession.ID
+	playbackID  string // explicit X-Plex-Session-Identifier owning this encoder
 	userID      int64
 	clientID    string
 	key         core.RatingKey

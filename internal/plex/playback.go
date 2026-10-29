@@ -387,8 +387,9 @@ func (s *Server) prepare(ctx context.Context, pr *Request, p *playRequest) (*cor
 	if p.subSet && p.subSel >= 0 && p.subSel < len(ps.Info.Streams) && ps.Info.Streams[p.subSel].Type == "subtitle" {
 		subtitle = p.subSel
 	}
+	s.playbackOwners.bind(pr.User.ID, pr.ClientID, p.key, pr.SessionID, ps.ID, true, s.now())
 	s.transcodes.put(&transcodeEntry{
-		id: p.sessionID, playID: ps.ID, userID: pr.User.ID, clientID: pr.ClientID, key: p.key,
+		id: p.sessionID, playID: ps.ID, playbackID: pr.SessionID, userID: pr.User.ID, clientID: pr.ClientID, key: p.key,
 		requested: requested,
 		decision:  dec, info: ps.Info, subtitle: subtitle, caps: p.caps, opts: p.opts, offset: p.offset, updatedAt: s.now(),
 	})
@@ -409,6 +410,12 @@ func (s *Server) handleDecision(w http.ResponseWriter, r *http.Request) {
 	}
 	ctx := r.Context()
 	pr := FromContext(ctx)
+	unlockOwner, locked := s.lockPlaybackRequest(w, r)
+	if !locked {
+		return
+	}
+	defer unlockOwner()
+
 	if chi.URLParam(r, "ttype") != "" && chi.URLParam(r, "ttype") != "video" {
 		s.writeEmpty(w, r)
 		return
@@ -418,6 +425,12 @@ func (s *Server) handleDecision(w http.ResponseWriter, r *http.Request) {
 		writeHTTPError(w, http.StatusBadRequest)
 		return
 	}
+	unlockEncoder, lockErr := s.lockEncoder(ctx, p.sessionID)
+	if lockErr != nil {
+		return
+	}
+	defer unlockEncoder()
+
 	t, ps, dec, err := s.prepare(ctx, pr, &p)
 	if err != nil {
 		if errors.Is(err, core.ErrNotFound) && t == nil {
@@ -744,6 +757,12 @@ func (s *Server) handleStartHLS(w http.ResponseWriter, r *http.Request) {
 	}
 	ctx := r.Context()
 	pr := FromContext(ctx)
+	unlockOwner, locked := s.lockPlaybackRequest(w, r)
+	if !locked {
+		return
+	}
+	defer unlockOwner()
+
 	if s.d.Transcoder == nil || s.d.Playback == nil {
 		writeHTTPError(w, http.StatusServiceUnavailable)
 		return
@@ -753,6 +772,17 @@ func (s *Server) handleStartHLS(w http.ResponseWriter, r *http.Request) {
 		writeHTTPError(w, http.StatusBadRequest)
 		return
 	}
+	unlockEncoder, lockErr := s.lockEncoder(ctx, p.sessionID)
+	if lockErr != nil {
+		return
+	}
+	defer unlockEncoder()
+
+	if s.playbackOwners.stale(pr.User.ID, pr.ClientID, p.key, pr.SessionID) {
+		writeHTTPError(w, http.StatusGone)
+		return
+	}
+
 	if !s.transcodes.claim(p.sessionID, pr.User.ID, pr.ClientID, s.now()) {
 		writeHTTPError(w, http.StatusForbidden)
 		return
@@ -778,6 +808,10 @@ func (s *Server) handleStartHLS(w http.ResponseWriter, r *http.Request) {
 		}
 		entry, _ = s.transcodes.get(p.sessionID)
 	}
+	s.playbackOwners.bind(pr.User.ID, pr.ClientID, p.key, pr.SessionID, ps.ID, true, s.now())
+	entry.playbackID = pr.SessionID
+	s.transcodes.put(entry)
+
 	dec := entry.decision
 	if dec.Kind == core.DecisionDirectPlay && !p.opts.DirectPlay {
 		// An MDE client got "direct play OK" from the decision, judged the
@@ -796,6 +830,8 @@ func (s *Server) handleStartHLS(w http.ResponseWriter, r *http.Request) {
 	}
 	if existing, ok := s.d.Transcoder.Session(p.sessionID); ok && existing != nil {
 		if entry.started && entry.offset == p.offset {
+			unlockEncoder()
+			unlockOwner()
 			s.writeMasterPlaylist(w, r, p.sessionID, existing, ps.Info, dec)
 			return
 		}
@@ -815,6 +851,8 @@ func (s *Server) handleStartHLS(w http.ResponseWriter, r *http.Request) {
 	}
 	entry.decision, entry.offset, entry.started, entry.updatedAt = dec, p.offset, true, s.now()
 	s.transcodes.put(entry)
+	unlockEncoder()
+	unlockOwner()
 	s.writeMasterPlaylist(w, r, p.sessionID, hs, ps.Info, dec)
 }
 
@@ -979,29 +1017,50 @@ func (s *Server) handleTranscodePing(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handleTranscodeStop(w http.ResponseWriter, r *http.Request) {
 	id := sanitizeSessionID(r.URL.Query().Get("session"))
-	if id != "" {
-		if e, ok := s.transcodes.get(id); ok && e.userID == FromContext(r.Context()).User.ID {
-			// A seek may have opened a replacement transcode against the same
-			// source. Only release the source when its last consumer stops.
-			shared := false
-			if s.d.Transcoder != nil && e.playID != "" {
-				for _, other := range s.transcodes.byPlayID(e.playID) {
-					if other != id {
-						if _, active := s.d.Transcoder.Session(other); active {
-							shared = true
-							break
-						}
+	pr := FromContext(r.Context())
+	if e, ok := s.transcodes.get(id); id != "" && ok && e.userID == pr.User.ID {
+		unlockOwner, err := s.lockPlaybackOwner(r.Context(), e.userID, e.clientID)
+		if err != nil {
+			return
+		}
+		defer unlockOwner()
+		unlockEncoder, err := s.lockEncoder(r.Context(), id)
+		if err != nil {
+			return
+		}
+		defer unlockEncoder()
+		current, ok := s.transcodes.get(id)
+		if !ok || current.userID != e.userID || current.clientID != e.clientID {
+			w.WriteHeader(http.StatusOK)
+			return
+		}
+		e = current
+		if s.playbackOwners.stale(e.userID, e.clientID, e.key, pr.SessionID) && e.playbackID != pr.SessionID {
+			w.WriteHeader(http.StatusOK)
+			return
+		}
+		shared := false
+		if s.d.Transcoder != nil && e.playID != "" {
+			for _, other := range s.transcodes.byPlayID(e.playID) {
+				if other != id {
+					if _, active := s.d.Transcoder.Session(other); active {
+						shared = true
+						break
 					}
 				}
 			}
-			if !shared && e.playID != "" && s.d.Playback != nil {
-				s.d.Playback.Stop(e.playID)
-			}
-			if s.d.Transcoder != nil {
-				s.d.Transcoder.Stop(id)
-			}
-			s.transcodes.remove(id)
 		}
+		// A replacement decision owns the source before its encoder starts.
+		// Retire a superseded encoder without releasing that prepared source,
+		// including stops that omit the external playback identifier.
+		superseded := s.playbackOwners.stale(e.userID, e.clientID, e.key, e.playbackID)
+		if !superseded && !shared && e.playID != "" && s.d.Playback != nil {
+			s.d.Playback.Stop(e.playID)
+		}
+		if s.d.Transcoder != nil {
+			s.d.Transcoder.Stop(id)
+		}
+		s.transcodes.remove(id)
 	}
 	w.WriteHeader(http.StatusOK)
 }
@@ -1075,6 +1134,12 @@ func (s *Server) handlePart(w http.ResponseWriter, r *http.Request) {
 	}
 	ctx := r.Context()
 	pr := FromContext(ctx)
+	unlockOwner, locked := s.lockPlaybackRequest(w, r)
+	if !locked {
+		return
+	}
+	defer unlockOwner()
+
 	id, err := strconv.ParseInt(chi.URLParam(r, "part"), 10, 64)
 	if err != nil || s.d.Playback == nil {
 		writeHTTPError(w, http.StatusNotFound)
@@ -1116,9 +1181,13 @@ func (s *Server) handlePart(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
+	if r.Method != http.MethodHead && r.URL.Query().Get("download") != "1" {
+		s.playbackOwners.bind(pr.User.ID, pr.ClientID, key, pr.SessionID, ps.ID, false, s.now())
+	}
 	if r.URL.Query().Get("download") == "1" {
 		w.Header().Set("Content-Disposition", "attachment; filename=\""+strings.ReplaceAll(chi.URLParam(r, "file"), "\"", "")+"\"")
 	}
+	unlockOwner()
 	s.d.Playback.ServeRange(w, r, ps.ID)
 }
 

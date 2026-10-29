@@ -33,6 +33,12 @@ func (s *Server) handleStartDASH(w http.ResponseWriter, r *http.Request) {
 	}
 	ctx := r.Context()
 	pr := FromContext(ctx)
+	unlockOwner, locked := s.lockPlaybackRequest(w, r)
+	if !locked {
+		return
+	}
+	defer unlockOwner()
+
 	if s.d.Transcoder == nil || s.d.Playback == nil {
 		writeHTTPError(w, http.StatusServiceUnavailable)
 		return
@@ -40,6 +46,15 @@ func (s *Server) handleStartDASH(w http.ResponseWriter, r *http.Request) {
 	p, err := s.parsePlayRequest(r)
 	if err != nil {
 		writeHTTPError(w, http.StatusBadRequest)
+		return
+	}
+	unlockEncoder, lockErr := s.lockEncoder(ctx, p.sessionID)
+	if lockErr != nil {
+		return
+	}
+	defer unlockEncoder()
+	if s.playbackOwners.stale(pr.User.ID, pr.ClientID, p.key, pr.SessionID) {
+		writeHTTPError(w, http.StatusGone)
 		return
 	}
 	p.protocol = core.ProtocolDASH
@@ -65,6 +80,10 @@ func (s *Server) handleStartDASH(w http.ResponseWriter, r *http.Request) {
 		}
 		entry, _ = s.transcodes.get(p.sessionID)
 	}
+	s.playbackOwners.bind(pr.User.ID, pr.ClientID, p.key, pr.SessionID, ps.ID, true, s.now())
+	entry.playbackID = pr.SessionID
+	s.transcodes.put(entry)
+
 	dec := entry.decision
 	if dec.Kind == core.DecisionDirectPlay {
 		// The client asked for DASH anyway: remux.
@@ -75,6 +94,8 @@ func (s *Server) handleStartDASH(w http.ResponseWriter, r *http.Request) {
 		// start for the same decision keeps the session (and its finished
 		// segments); a new decision request starts afresh.
 		if ds, isDASH := existing.(core.DASHSession); isDASH && entry.started {
+			unlockEncoder()
+			unlockOwner()
 			s.serveStreamManifest(w, r, p.sessionID, ds.ServeManifest)
 			return
 		}
@@ -102,6 +123,8 @@ func (s *Server) handleStartDASH(w http.ResponseWriter, r *http.Request) {
 	}
 	entry.decision, entry.offset, entry.started, entry.updatedAt = dec, p.offset, true, s.now()
 	s.transcodes.put(entry)
+	unlockEncoder()
+	unlockOwner()
 	s.serveStreamManifest(w, r, p.sessionID, ds.ServeManifest)
 }
 

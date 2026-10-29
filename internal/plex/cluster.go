@@ -412,23 +412,51 @@ func (s *Server) sessionEntries(ctx context.Context) []playEntry {
 // endLocalSession applies a "stopped" timeline another node received for a
 // session this node serves, as handleTimeline does for a local one.
 func (s *Server) endLocalSession(tid string, offset time.Duration) {
+	var snapshot *playEntry
+	for _, e := range s.sessions.list() {
+		if e.id == tid {
+			snapshot = &e
+			break
+		}
+	}
+	if snapshot == nil {
+		return
+	}
+	unlockOwner, err := s.lockPlaybackOwner(s.ctx, snapshot.user.ID, snapshot.client.ClientID)
+	if err != nil {
+		return
+	}
+	defer unlockOwner()
 	e, ok := s.sessions.remove(tid)
 	if !ok {
 		return
 	}
+	if s.playbackOwners.stale(e.user.ID, e.client.ClientID, e.key, e.client.SessionID) {
+		s.cleanSupersededEncoders(s.ctx, e.user.ID, e.client.ClientID, e.key, e.client.SessionID)
+		return
+	}
 	e.offset = offset
 	s.notifyPlaying(e, "stopped")
-	s.cl.poke()
+	if s.cl != nil {
+		s.cl.poke()
+	}
 	if s.d.Playback != nil {
 		if ps, ok := s.d.Playback.SessionFor(e.user.ID, e.client.ClientID, e.key); ok {
 			s.d.Playback.Stop(ps.ID)
 		}
 	}
 	for _, id := range s.transcodes.forClient(e.user.ID, e.client.ClientID, e.key) {
-		if s.d.Transcoder != nil {
-			s.d.Transcoder.Stop(id)
+		unlock, err := s.lockEncoder(s.ctx, id)
+		if err != nil {
+			return
 		}
-		s.transcodes.remove(id)
+		if current, ok := s.transcodes.get(id); ok && current.userID == e.user.ID && current.clientID == e.client.ClientID && current.key == e.key {
+			if s.d.Transcoder != nil {
+				s.d.Transcoder.Stop(id)
+			}
+			s.transcodes.remove(id)
+		}
+		unlock()
 	}
 }
 
