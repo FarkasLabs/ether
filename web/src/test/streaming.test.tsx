@@ -249,6 +249,22 @@ describe("Playback", () => {
     expect(screen.getByText("RTX Video: Unavailable")).toBeInTheDocument();
   });
 
+  it("identifies cached subtitles by real title, episode and download age, with explicit unknown titles", async () => {
+    renderApp("/playback/subtitles");
+    expect(
+      await screen.findByText("Some Show · S01E02 · The Episode", {}, WAIT),
+    ).toBeInTheDocument();
+    expect(screen.getByText("Some.Show.S01E02.720p.WEB-DL-GROUP")).toBeInTheDocument();
+    expect(screen.getByText("Unknown title")).toBeInTheDocument();
+    expect(screen.getByText(/3 hours ago/)).toBeInTheDocument();
+    expect(screen.getByText(/yesterday/)).toBeInTheDocument();
+    // No cache hash or raw rating key is shown as identification.
+    expect(screen.queryByText(/abc123|orphan99/)).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /Adjust timing for Some Show/ }));
+    expect(await screen.findByRole("dialog", {}, WAIT)).toBeInTheDocument();
+    expect(screen.getByLabelText("Offset (milliseconds)")).toBeInTheDocument();
+  });
+
   it("saves nested server enhancement settings without losing transcoding preferences", async () => {
     const { fake } = renderApp("/playback");
     await screen.findByRole("button", { name: "RTX Video Super Resolution" }, WAIT);
