@@ -1,7 +1,9 @@
 package subtitles
 
 import (
+	"context"
 	"encoding/json"
+	"github.com/braedonsaunders/ether/internal/config"
 	"os"
 	"path/filepath"
 	"strings"
@@ -21,21 +23,20 @@ func writeCacheEntry(t *testing.T, dir, id, meta string) {
 	}
 }
 
-// The cache meta has no title: Key must come from the selection index and
-// FetchedAt from the meta. An entry without an index file keeps Key empty
-// (unknown title upstream) — no key is invented.
+// Title key and download time come from sidecar metadata. Legacy entries
+// remain unknown even when the selection index contains their title.
 func TestCachedSubtitlesKeyAndFetchedAt(t *testing.T) {
 	s := New(Options{CacheDir: t.TempDir()})
+	title := &core.Title{Key: core.EpisodeKey(1399, 1, 2)}
 	fetched := time.Date(2026, 10, 20, 12, 0, 0, 0, time.UTC)
 	writeCacheEntry(t, s.dir, "abc123",
-		`{"fileId":7,"language":"pt-br","release":"Some.Movie.2024.1080p.WEB-DL","fetchedAt":"`+fetched.Format(time.RFC3339)+`"}`)
+		`{"titleKey":"`+title.Key.String()+`","fileId":7,"language":"pt-br","release":"Some.Movie.2024.1080p.WEB-DL","fetchedAt":"`+fetched.Format(time.RFC3339)+`"}`)
 	writeCacheEntry(t, s.dir, "orphan99",
 		`{"fileId":9,"language":"en","release":"Other.Movie.2023.720p","fetchedAt":"`+fetched.Add(-time.Hour).Format(time.RFC3339)+`"}`)
 
-	// Index entry for the episode this subtitle was remembered for.
-	title := &core.Title{Key: core.EpisodeKey(1399, 1, 2)}
+	// An unrelated legacy index entry must not supply a key for orphan metadata.
 	s.saveSelection(title, "pt-br", "Some.Movie.2024.1080p.WEB-DL",
-		selection{ID: "abc123", FileID: 7, Language: "pt-br", Release: "Some.Movie.2024.1080p.WEB-DL", At: fetched})
+		selection{ID: "orphan99", FileID: 7, Language: "pt-br", Release: "Some.Movie.2024.1080p.WEB-DL", At: fetched})
 
 	items, err := s.CachedSubtitles()
 	if err != nil {
@@ -50,7 +51,7 @@ func TestCachedSubtitlesKeyAndFetchedAt(t *testing.T) {
 	}
 	got := byID["abc123"]
 	if got.Key != title.Key.String() {
-		t.Fatalf("key = %q, want rating key %q from index", got.Key, title.Key.String())
+		t.Fatalf("key = %q, want rating key %q from metadata", got.Key, title.Key.String())
 	}
 	if !got.FetchedAt.Equal(fetched) || got.Language != "pt-br" || got.Release != "Some.Movie.2024.1080p.WEB-DL" {
 		t.Fatalf("meta fields lost: %+v", got)
@@ -89,5 +90,22 @@ func TestCachedSubtitlesFetchedAtFallsBackToMtime(t *testing.T) {
 	}
 	if items[0].Key != "" {
 		t.Fatalf("key = %q, want empty with no index at all", items[0].Key)
+	}
+}
+
+func TestDownloadedSubtitleMetadataCarriesTitleKey(t *testing.T) {
+	f := newOSFake(t)
+	s := New(Options{Config: config.OpenSubtitles{Enabled: true, APIKey: "k"}, CacheDir: t.TempDir(), BaseURL: f.srv.URL})
+	key := core.MovieKey(700)
+	if _, err := s.fetchAndCache(context.Background(), "newfile", Candidate{FileID: 11, Language: "en"}, key); err != nil {
+		t.Fatal(err)
+	}
+	rows, err := s.CachedSubtitles()
+	if err != nil || len(rows) != 1 || rows[0].Key != key.String() {
+		t.Fatalf("metadata rows %+v %v", rows, err)
+	}
+	// No selection index was ever written.
+	if _, err := os.Stat(filepath.Join(s.dir, "index")); !os.IsNotExist(err) {
+		t.Fatalf("unexpected index: %v", err)
 	}
 }

@@ -614,7 +614,7 @@ func (s *Service) cached(id, format string) bool {
 // fetchAndCache downloads + normalises a candidate, single-flighted per id.
 // Downloads count against the account's quota, so the work stays with the
 // caller that started it.
-func (s *Service) fetchAndCache(ctx context.Context, id string, c Candidate) (string, error) {
+func (s *Service) fetchAndCache(ctx context.Context, id string, c Candidate, key core.RatingKey) (string, error) {
 	if s.dir != "" && s.cached(id, "srt") && s.cached(id, "vtt") {
 		return id, nil
 	}
@@ -631,7 +631,7 @@ func (s *Service) fetchAndCache(ctx context.Context, id string, c Candidate) (st
 			if err := os.MkdirAll(s.dir, 0o755); err != nil {
 				return "", err
 			}
-			meta, _ := json.Marshal(map[string]any{"fileId": c.FileID, "language": c.Language, "release": c.Release, "fetchedAt": s.now().UTC()})
+			meta, _ := json.Marshal(map[string]any{"titleKey": key.String(), "fileId": c.FileID, "language": c.Language, "release": c.Release, "fetchedAt": s.now().UTC()})
 			// .json first and .srt last: cached() checks srt+vtt, so a crash
 			// mid-write never leaves a half-visible entry.
 			for _, w := range []struct{ name, data string }{{id + ".json", string(meta)}, {id + ".vtt", vtt}, {id + ".srt", srt}} {
@@ -924,7 +924,7 @@ func (s *Service) SidecarsWithHash(ctx context.Context, title *core.Title, user 
 				break
 			}
 			id := cacheID(title, lang, c.FileID)
-			if _, err := s.fetchAndCache(ctx, id, c); err != nil {
+			if _, err := s.fetchAndCache(ctx, id, c, title.Key); err != nil {
 				if errors.Is(err, ErrQuota) {
 					quotaHit = true
 					break

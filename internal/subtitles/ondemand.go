@@ -226,7 +226,7 @@ func (s *Service) DownloadOnDemand(ctx context.Context, title *core.Title, fileI
 		return core.StreamInfo{}, core.ErrNotFound
 	}
 	id := cacheID(title, o.lang, fileID)
-	if _, err := s.fetchAndCache(ctx, id, o.cand); err != nil {
+	if _, err := s.fetchAndCache(ctx, id, o.cand, title.Key); err != nil {
 		return core.StreamInfo{}, err
 	}
 	release := o.cand.Release

@@ -356,7 +356,7 @@ func (a *Aligner) timelines(ctx context.Context, bs *buildState, title *core.Tit
 				break
 			}
 			bs.downloads++
-			if _, err := a.s.fetchAndCache(ctx, id, c); err != nil {
+			if _, err := a.s.fetchAndCache(ctx, id, c, title.Key); err != nil {
 				a.s.log.Debug("alignment subtitle download failed", "file", c.FileID, "err", err)
 				continue
 			}
