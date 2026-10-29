@@ -10,23 +10,11 @@
 //     de redirect é um novo RoundTrip e decide de novo): todo endereço
 //     candidato precisa ser público — qualquer um não-público recusa a
 //     requisição — e UM IP validado é escolhido.
-//   - O host da requisição é REESCRITO para esse IP literal (host:port)
-//     antes de entregar ao transporte interno. Direto, o DialContext
-//     recebe o IP (sem nova resolução do nome); via proxy, o CONNECT /
-//     a forma absoluta já levam o IP literal — o proxy NÃO resolve o
-//     hostname, portanto a resolução do proxy não pode divergir para um
-//     endereço privado (fecha o rebinding atrás do proxy).
-//   - req.Host preserva o Host original. No TLS, o ServerName continua
-//     sendo o hostname original: direto, via DialTLSContext próprio que
-//     lê a decisão do contexto; via proxy HTTPS, via clone do transporte
-//     por requisição com TLSClientConfig.ServerName = hostname original
-//     (o transporte compartilhado nunca tem ServerName mutado). O clone
-//     por requisição de HTTPS-via-proxy não compartilha pool — é o custo
-//     declarado desse modo. HTTP claro via proxy é escrito pela própria
-//     guarda numa conexão dedicada (sem pool): net/http montaria a
-//     forma absoluta a partir de req.Host, então só escrevendo a
-//     requisição dá para mandar IP literal na request-line E o Host
-//     original ao mesmo tempo.
+//   - Direct connections use a pool key containing the original hostname
+//     and validated IP. The dial hook connects to that IP, and TLS uses the
+//     original hostname. Proxy requests carry the IP in the absolute URI
+//     or CONNECT target; their Host header and TLS name remain original.
+//     HTTP proxy requests and HTTPS CONNECT tunnels use dedicated connections.
 //
 // The one exception is the owner-configured origin: an indexer or a
 // definitions source the owner deliberately pointed at a LAN host must
@@ -88,6 +76,8 @@ import (
 	"net/url"
 	"strings"
 	"time"
+
+	"golang.org/x/net/http/httpguts"
 )
 
 // ErrBlocked reports a destination the guard refused: a non-http(s)
@@ -232,7 +222,8 @@ type routeDecision struct {
 	proxy      *url.URL
 	ip         netip.Addr
 	host       string // original hostname (no port)
-	targetAddr string // validated "IP:port" the URL is rewritten to
+	targetAddr string // validated IP:port
+	poolAddr   string // direct pool key, including hostname and IP
 }
 
 type routeDecisionKey struct{}
@@ -499,7 +490,7 @@ func (t transport) RoundTrip(req *http.Request) (*http.Response, error) {
 //
 //   - direct: Proxy forced to nil and the dial hooks replaced by the
 //     pool's guarded dialer, so the destination is dialed at the
-//     validated (pinned) IP the request was rewritten to. Dial/DialTLS,
+//     validated (pinned) IP in the route decision. Dial/DialTLS,
 //     when set, would bypass DialContext, so they are dropped;
 //     DialTLSContext is replaced by the guard's own, which dials the
 //     IP and uses the original hostname as TLS ServerName (from the
@@ -529,12 +520,20 @@ func (g *Guard) policyTransport(base http.RoundTripper, trusted bool) http.Round
 	if !ok {
 		return unsupportedTransport{base: base}
 	}
-	dial := g.publicDialContext
-	if trusted {
-		dial = g.trustedDialContext
+	dial := func(ctx context.Context, network, addr string) (net.Conn, error) {
+		dec, ok := decisionFromContext(ctx)
+		if !ok || dec.trusted != trusted || addr != dec.poolAddr {
+			return nil, fmt.Errorf("%w: invalid direct route", ErrBlocked)
+		}
+		return g.dial(ctx, network, dec.targetAddr)
 	}
 	direct := ht.Clone()
 	direct.Proxy = nil
+	// Bound the total idle connections even when the supplied transport has
+	// no global limit; pool keys include both hostname and validated IP.
+	if direct.MaxIdleConns <= 0 {
+		direct.MaxIdleConns = 100
+	}
 	direct.DialContext = dial
 	direct.Dial = nil
 	direct.DialTLSContext = g.dialTLSContext(dial, ht.TLSClientConfig)
@@ -568,6 +567,20 @@ func (g *Guard) policyTransport(base http.RoundTripper, trusted bool) http.Round
 		direct:    direct,
 		proxied:   proxied,
 	}
+}
+
+// CloseIdleConnections releases the guarded pools when the client is retired.
+func (t transport) CloseIdleConnections() {
+	for _, rt := range []http.RoundTripper{t.public, t.trusted} {
+		if c, ok := rt.(interface{ CloseIdleConnections() }); ok {
+			c.CloseIdleConnections()
+		}
+	}
+}
+
+func (p policyTransport) CloseIdleConnections() {
+	p.direct.CloseIdleConnections()
+	p.proxied.CloseIdleConnections()
 }
 
 // unsupportedTransport refuses every request: the guard cannot pin or
@@ -659,15 +672,18 @@ func (p policyTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 		targetAddr: net.JoinHostPort(ip.String(), port),
 	}
 	bound := req.Clone(context.WithValue(ctx, routeDecisionKey{}, dec))
+	dec.poolAddr = net.JoinHostPort(fmt.Sprintf("%x.%x", ip.As16(), strings.ToLower(dec.host)), port)
 	bound.URL.Host = dec.targetAddr
 	if bound.Host == "" {
 		// Preserve the original Host header: with the URL rewritten to
 		// an IP, the transport would otherwise send the IP as Host.
 		bound.Host = req.URL.Host
 	}
+	var resp *http.Response
 	switch {
 	case proxyURL == nil:
-		return p.direct.RoundTrip(bound)
+		bound.URL.Host = dec.poolAddr
+		resp, err = p.direct.RoundTrip(bound)
 	case bound.URL.Scheme == "https":
 		// TLS ao destino sobre o CONNECT: o ServerName precisa ser o
 		// hostname original, e o TLSClientConfig do transporte
@@ -682,11 +698,16 @@ func (p policyTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 			cfg.ServerName = dec.host
 		}
 		cloned.TLSClientConfig = cfg
-		return cloned.RoundTrip(bound)
+		cloned.DisableKeepAlives = true
+		resp, err = cloned.RoundTrip(bound)
 	default:
 		// HTTP claro via proxy, escrito pela guarda (abaixo).
-		return p.roundTripViaHTTPProxy(bound, dec)
+		resp, err = p.roundTripViaHTTPProxy(bound, dec)
 	}
+	if resp != nil {
+		resp.Request = req
+	}
+	return resp, err
 }
 
 // roundTripViaHTTPProxy sends one plain-HTTP request through the
@@ -700,6 +721,34 @@ func (p policyTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 // the declared cost of this mode. Proxy auth comes from the proxy
 // URL's userinfo, as http.Transport would do.
 func (p policyTransport) roundTripViaHTTPProxy(bound *http.Request, dec *routeDecision) (*http.Response, error) {
+	if !httpguts.ValidHostHeader(bound.Host) || (bound.Method != "" && !httpguts.ValidHeaderFieldName(bound.Method)) {
+		if bound.Body != nil {
+			bound.Body.Close()
+		}
+		return nil, errors.New("safefetch: invalid request host or method")
+	}
+	for k, values := range bound.Header {
+		if !httpguts.ValidHeaderFieldName(k) {
+			if bound.Body != nil {
+				bound.Body.Close()
+			}
+			return nil, fmt.Errorf("safefetch: invalid header %q", k)
+		}
+		for _, v := range values {
+			if !httpguts.ValidHeaderFieldValue(v) {
+				if bound.Body != nil {
+					bound.Body.Close()
+				}
+				return nil, fmt.Errorf("safefetch: invalid header value for %q", k)
+			}
+		}
+	}
+	if len(bound.Trailer) != 0 {
+		if bound.Body != nil {
+			bound.Body.Close()
+		}
+		return nil, fmt.Errorf("%w: proxy request trailers", ErrUnsupportedTransport)
+	}
 	proxy := dec.proxy
 	proxyPort := proxy.Port()
 	if proxyPort == "" {
@@ -707,6 +756,9 @@ func (p policyTransport) roundTripViaHTTPProxy(bound *http.Request, dec *routeDe
 	}
 	conn, err := p.proxyDial(bound.Context(), "tcp", net.JoinHostPort(proxy.Hostname(), proxyPort))
 	if err != nil {
+		if bound.Body != nil {
+			bound.Body.Close()
+		}
 		return nil, err
 	}
 	stop := context.AfterFunc(bound.Context(), func() { conn.Close() })
@@ -743,7 +795,8 @@ func (p policyTransport) roundTripViaHTTPProxy(bound *http.Request, dec *routeDe
 		header.Set("User-Agent", "Go-http-client/1.1")
 	}
 	if proxy.User != nil {
-		cred := base64.StdEncoding.EncodeToString([]byte(proxy.User.String()))
+		password, _ := proxy.User.Password()
+		cred := base64.StdEncoding.EncodeToString([]byte(proxy.User.Username() + ":" + password))
 		header.Set("Proxy-Authorization", "Basic "+cred)
 	} else if pa := bound.Header.Get("Proxy-Authorization"); pa != "" {
 		header.Set("Proxy-Authorization", pa)
@@ -795,7 +848,7 @@ func (p policyTransport) roundTripViaHTTPProxy(bound *http.Request, dec *routeDe
 			if _, err := io.WriteString(bw, "0\r\n\r\n"); err != nil {
 				return fail(err)
 			}
-		} else if _, err := io.Copy(bw, bound.Body); err != nil {
+		} else if _, err := io.CopyN(bw, bound.Body, bound.ContentLength); err != nil {
 			return fail(err)
 		}
 		bound.Body.Close()
@@ -806,9 +859,20 @@ func (p policyTransport) roundTripViaHTTPProxy(bound *http.Request, dec *routeDe
 	if timeout := p.proxied.ResponseHeaderTimeout; timeout > 0 {
 		_ = conn.SetReadDeadline(time.Now().Add(timeout))
 	}
-	resp, err := http.ReadResponse(bufio.NewReader(conn), bound)
-	if err != nil {
-		return fail(err)
+	br := bufio.NewReader(conn)
+	var resp *http.Response
+	for n := 0; ; n++ {
+		resp, err = http.ReadResponse(br, bound)
+		if err != nil {
+			return fail(err)
+		}
+		if resp.StatusCode < 100 || resp.StatusCode >= 200 || resp.StatusCode == 101 {
+			break
+		}
+		resp.Body.Close()
+		if n >= 9 {
+			return fail(errors.New("safefetch: too many informational responses"))
+		}
 	}
 	_ = conn.SetReadDeadline(time.Time{})
 	resp.Request = bound
@@ -831,9 +895,9 @@ func (b *proxyConnBody) Close() error {
 	return errors.Join(err, b.conn.Close())
 }
 
-// Transport returns a RoundTripper that resolves+validates each
-// destination once per request and rewrites it to the validated IP
-// before any inner transport runs (direct or via an http proxy), with
+// Transport returns a RoundTripper that resolves and validates each
+// destination once per request and binds connections to the validated IP,
+// with
 // separate trusted-origin and public connection pools (see the package
 // documentation). A nil base means http.DefaultTransport. A base that
 // is not a *http.Transport yields a RoundTripper whose requests all
