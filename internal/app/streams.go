@@ -67,7 +67,7 @@ func (p plexSubtitles) OpenFormatAt(id, format string, offset time.Duration) (io
 }
 
 func (p plexSubtitles) CachedSidecars(ctx context.Context, t *core.Title, u *core.User, embedded []core.StreamInfo) []core.StreamInfo {
-	return p.a.subtitles.CachedSidecars(t, p.a.subtitleUser(ctx, u), embedded)
+	return p.a.subtitles.CachedSidecars(t, p.a.subtitleUser(ctx, u), embedded, p.a.subtitlePrefs(ctx, u))
 }
 
 func (p plexSubtitles) PrefetchSidecars(ctx context.Context, t *core.Title, u *core.User) bool {

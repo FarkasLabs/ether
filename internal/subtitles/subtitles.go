@@ -767,16 +767,33 @@ func prefSig(p Preferences) string { return p.Mode + "/" + p.Style }
 // the fast path for p: forced-only and style forced need a real forced
 // track, style sdh needs an SDH track. Unconstrained prefs accept any.
 func selectionSatisfies(sel selection, p Preferences) bool {
-	if p.Mode == "forced-only" && !sel.Forced {
-		return false
+	if p.Mode == "forced-only" {
+		return sel.Forced
 	}
 	switch p.Style {
 	case "sdh":
 		return sel.SDH
 	case "forced":
 		return sel.Forced
+	case "normal":
+		return !sel.Forced && !sel.SDH
 	}
 	return true
+}
+
+// Embedded tracks cover a preference only when their kind is suitable.
+// Keep language coverage in MissingLanguages so shared language matching remains
+// authoritative. SDH is represented in StreamInfo by its title, as in trackprefs.
+func missingForPreferences(user *core.User, embedded []core.StreamInfo, p Preferences) []string {
+	var suitable []core.StreamInfo
+	for _, st := range embedded {
+		title := strings.ToLower(st.Title)
+		hi := strings.Contains(title, "sdh") || strings.Contains(title, "hearing impaired") || strings.Contains(title, "[cc]") || title == "cc"
+		if selectionSatisfies(selection{Forced: st.Forced, SDH: hi}, p) {
+			suitable = append(suitable, st)
+		}
+	}
+	return MissingLanguages(user, suitable)
 }
 
 // candidatesForFetch applies Preferences to ranked candidates: forced-only
@@ -802,6 +819,8 @@ func candidatesForFetch(cands []Candidate, p Preferences) []Candidate {
 		match = func(c Candidate) bool { return c.HearingImp }
 	case "forced":
 		match = func(c Candidate) bool { return c.Forced }
+	case "normal":
+		match = func(c Candidate) bool { return !c.Forced && !c.HearingImp }
 	default:
 		return cands
 	}
@@ -827,7 +846,7 @@ func (s *Service) Sidecars(ctx context.Context, title *core.Title, user *core.Us
 	return s.SidecarsForRelease(ctx, title, user, embedded, "", prefs...)
 }
 
-// selection is the persisted choice for one title+language+release, so
+// selection is the persisted choice for one title+language+release+preference, so
 // later playbacks skip the search and download entirely.
 type selection struct {
 	ID       string    `json:"id"`
@@ -842,7 +861,8 @@ type selection struct {
 	// persisted before this field existed load with SDH=false and keep
 	// serving as non-SDH until re-downloaded — SDH is never invented
 	// from a release name.
-	SDH bool `json:"sdh,omitempty"`
+	SDH        bool   `json:"sdh,omitempty"`
+	Preference string `json:"preference,omitempty"`
 }
 
 func releaseSig(release string) string {
@@ -859,15 +879,20 @@ func releaseSig(release string) string {
 	return hex.EncodeToString(h[:6])
 }
 
-func (s *Service) indexPath(title *core.Title, lang, release string) string {
-	return filepath.Join(s.dir, "index", fmt.Sprintf("%d.%s.%s.json", int64(title.Key), lang, releaseSig(release)))
+func (s *Service) indexPath(title *core.Title, lang, release string, prefs ...Preferences) string {
+	sig := releaseSig(release)
+	if p := firstPrefs(prefs); p != (Preferences{}) {
+		h := sha1.Sum([]byte(prefSig(p)))
+		sig += "-" + hex.EncodeToString(h[:8])
+	}
+	return filepath.Join(s.dir, "index", fmt.Sprintf("%d.%s.%s.json", int64(title.Key), lang, sig))
 }
 
-func (s *Service) loadSelection(title *core.Title, lang, release string) (selection, bool) {
+func (s *Service) loadSelection(title *core.Title, lang, release string, prefs ...Preferences) (selection, bool) {
 	if s.dir == "" {
 		return selection{}, false
 	}
-	b, err := os.ReadFile(s.indexPath(title, lang, release))
+	b, err := os.ReadFile(s.indexPath(title, lang, release, prefs...))
 	if err != nil {
 		return selection{}, false
 	}
@@ -878,11 +903,11 @@ func (s *Service) loadSelection(title *core.Title, lang, release string) (select
 	return sel, true
 }
 
-func (s *Service) saveSelection(title *core.Title, lang, release string, sel selection) {
+func (s *Service) saveSelection(title *core.Title, lang, release string, sel selection, prefs ...Preferences) {
 	if s.dir == "" {
 		return
 	}
-	p := s.indexPath(title, lang, release)
+	p := s.indexPath(title, lang, release, prefs...)
 	if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
 		s.log.Debug("subtitle index dir", "err", err)
 		return
@@ -956,7 +981,7 @@ func (s *Service) SidecarsWithHash(ctx context.Context, title *core.Title, user 
 	// automatic choices, and are listed even when the release embeds
 	// that language (the viewer asked for this file).
 	manual := s.manualSelections(title.Key)
-	missing := MissingLanguages(user, embedded)
+	missing := missingForPreferences(user, embedded, pref)
 	if len(missing) == 0 && len(manual) == 0 {
 		return nil, nil
 	}
@@ -982,9 +1007,9 @@ func (s *Service) SidecarsWithHash(ctx context.Context, title *core.Title, user 
 			continue
 		}
 		// Fast path only when the persisted selection satisfies the
-		// requested preferences; a cached full track must not answer a
-		// forced-only (or sdh/forced-style) request — search fresh.
-		if sel, ok := s.loadSelection(title, lang, cacheRelease); ok && selectionSatisfies(sel, pref) {
+		// requested preferences. An isolated preference result may include
+		// a ranked fallback when no preferred style was available.
+		if sel, ok := s.loadSelection(title, lang, cacheRelease, pref); ok && (sel.Preference == prefSig(pref) || selectionSatisfies(sel, pref)) {
 			add(lang, sel)
 			continue
 		}
@@ -1026,7 +1051,8 @@ func (s *Service) SidecarsWithHash(ctx context.Context, title *core.Title, user 
 				release = c.FileName
 			}
 			sel := selection{ID: id, FileID: c.FileID, Language: lang, Release: release, At: s.now().UTC(), Forced: c.Forced, SDH: c.HearingImp}
-			s.saveSelection(title, lang, cacheRelease, sel)
+			sel.Preference = prefSig(pref)
+			s.saveSelection(title, lang, cacheRelease, sel, pref)
 			add(lang, sel)
 			found = true
 			break

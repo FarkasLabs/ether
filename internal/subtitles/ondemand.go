@@ -133,10 +133,11 @@ func (s *Service) manualPath(key core.RatingKey, lang string) string {
 // track (whichever release it was matched to). Streams whose ExternalURL
 // is already in embedded are skipped, so it can top up a session's
 // enriched MediaInfo too. Nil when the service is disabled.
-func (s *Service) CachedSidecars(title *core.Title, user *core.User, embedded []core.StreamInfo) []core.StreamInfo {
+func (s *Service) CachedSidecars(title *core.Title, user *core.User, embedded []core.StreamInfo, prefs ...Preferences) []core.StreamInfo {
 	if title == nil || !s.Enabled() {
 		return nil
 	}
+	pref := firstPrefs(prefs)
 	all := s.titleSelections(title.Key)
 	if len(all) == 0 {
 		return nil
@@ -146,6 +147,9 @@ func (s *Service) CachedSidecars(title *core.Title, user *core.User, embedded []
 	for _, e := range all {
 		if e.sig == manualSig {
 			manual[e.lang] = e.sel
+			continue
+		}
+		if e.sel.Preference != prefSig(pref) && !((e.sel.Preference == "" || e.sel.Preference == prefSig(Preferences{})) && selectionSatisfies(e.sel, pref)) {
 			continue
 		}
 		if cur, ok := newest[e.lang]; !ok || e.sel.At.After(cur.At) {
@@ -171,7 +175,7 @@ func (s *Service) CachedSidecars(title *core.Title, user *core.User, embedded []
 		out = append(out, sidecarStream(nextIndex, lang, sel))
 		nextIndex++
 	}
-	for _, lang := range MissingLanguages(user, embedded) {
+	for _, lang := range missingForPreferences(user, embedded, pref) {
 		if sel, ok := manual[lang]; ok {
 			add(lang, sel)
 			delete(manual, lang)
@@ -310,7 +314,7 @@ func (s *Service) PrefetchSidecars(title *core.Title, user *core.User, prefs ...
 		return false
 	}
 	have := map[string]bool{}
-	for _, st := range s.CachedSidecars(title, user, nil) {
+	for _, st := range s.CachedSidecars(title, user, nil, prefs...) {
 		have[st.Language] = true
 	}
 	need := false
