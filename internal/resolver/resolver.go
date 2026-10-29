@@ -1182,6 +1182,15 @@ func rejectIdentity(rel core.Release, t *core.Title, sreq core.SearchRequest) st
 	if idConflict {
 		return "indexer title identifier mismatch"
 	}
+	// An explicit contradiction remains unsafe even when an indexer reports
+	// the requested ID; reported IDs can themselves be wrong.
+	if !isEpisode {
+		for _, director := range t.Directors {
+			if releaseparse.DisclaimsDirector(rel.Name, director.Name) {
+				return "director disclaimer"
+			}
+		}
+	}
 	// Title / obfuscation.
 	wantTitle := sreq.Title
 	miniseriesPart := 0
