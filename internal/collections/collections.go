@@ -83,7 +83,7 @@ type Service struct {
 	buildBudget time.Duration
 
 	mu       sync.Mutex
-	airMu    sync.Mutex // serialize bounded air-date refreshes across evaluations
+	airGate  chan struct{} // context-aware admission to serialized air-date refreshes
 	members  map[int64]*memberSet
 	flights  flight.Group[buildKey, *memberSet]
 	personal map[string]personalEntry
@@ -178,7 +178,7 @@ func New(db *sql.DB, cat core.Catalog, log *slog.Logger, opts ...Option) (*Servi
 	}
 	s := &Service{db: db, cat: cat, log: log, now: time.Now,
 		liveTTL: 2 * time.Minute, tick: time.Minute, buildBudget: 20 * time.Second,
-		members: map[int64]*memberSet{}, personal: map[string]personalEntry{},
+		members: map[int64]*memberSet{}, personal: map[string]personalEntry{}, airGate: make(chan struct{}, 1),
 		opts: options{indexTTL: 2 * time.Minute}}
 	for _, fn := range opts {
 		fn(s)

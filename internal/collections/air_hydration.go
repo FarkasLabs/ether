@@ -24,8 +24,15 @@ type airRecord struct {
 }
 
 func (s *Service) hydrateAirDates(ctx context.Context, cs []*cand, mode string, now time.Time, online bool) (int, int, error) {
-	s.airMu.Lock()
-	defer s.airMu.Unlock()
+	select {
+	case s.airGate <- struct{}{}:
+	case <-ctx.Done():
+		return 0, 0, ctx.Err()
+	}
+	defer func() { <-s.airGate }()
+	if err := ctx.Err(); err != nil {
+		return 0, 0, err
+	}
 	if err := s.loadAirDates(ctx, cs, mode, now); err != nil {
 		return 0, 0, err
 	}

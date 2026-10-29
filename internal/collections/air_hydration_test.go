@@ -6,6 +6,7 @@ import (
 	"errors"
 	"net/url"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -30,7 +31,7 @@ func TestAirHydrationBudgetAndFailureCooldown(t *testing.T) {
 	defer db.Close()
 	f := &failingAirTMDB{}
 	now := time.Date(2026, 10, 28, 12, 0, 0, 0, time.UTC)
-	s := &Service{db: db, api: newTMDBAPI(f, func() time.Time { return now })}
+	s := &Service{db: db, api: newTMDBAPI(f, func() time.Time { return now }), airGate: make(chan struct{}, 1)}
 	cs := make([]*cand, 150)
 	for i := range cs {
 		cs[i] = &cand{e: &entry{key: core.ShowKey(int64(i + 1)), typ: core.TypeShow}}
@@ -84,4 +85,50 @@ func TestAirDetailsExcludeSpecialsAndFuture(t *testing.T) {
 			t.Fatalf("got %+v want episode=%s premiere=%s", r, tc.episode, tc.premiere)
 		}
 	}
+}
+
+// Signal that hydration has reached the cancellation-aware admission select.
+type admissionObservedContext struct {
+	context.Context
+	observed chan struct{}
+	once     sync.Once
+}
+
+func (c *admissionObservedContext) Done() <-chan struct{} {
+	c.once.Do(func() { close(c.observed) })
+	return c.Context.Done()
+}
+
+func TestAirHydrationCanceledWhileWaiting(t *testing.T) {
+	s := &Service{airGate: make(chan struct{}, 1)}
+	s.airGate <- struct{}{} // another evaluation owns admission
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	observed := &admissionObservedContext{Context: ctx, observed: make(chan struct{})}
+	done := make(chan error, 1)
+	go func() {
+		_, _, err := s.hydrateAirDates(observed, nil, "latestEpisode", time.Now(), false)
+		done <- err
+	}()
+	// The only other holder remains active throughout: cancellation must not
+	// need it to finish, nor steal its admission token.
+	select {
+	case <-observed.observed:
+	case <-time.After(time.Second):
+		cancel()
+		t.Fatal("hydration did not reach admission")
+	}
+	cancel()
+	select {
+	case err := <-done:
+		if !errors.Is(err, context.Canceled) {
+			t.Fatalf("got %v", err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("canceled hydration still waiting for another evaluation")
+	}
+	if len(s.airGate) != 1 {
+		t.Fatal("waiting cancellation released another evaluation's admission")
+	}
+	<-s.airGate
 }
