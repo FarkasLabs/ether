@@ -61,6 +61,14 @@ func TestSeasonDashEpisode(t *testing.T) {
 	if !reflect.DeepEqual(info.Seasons, []int{2}) || !reflect.DeepEqual(info.Episodes, []int{5}) || info.FullSeason || len(info.AbsoluteEpisodes) != 0 {
 		t.Fatalf("got seasons=%v episodes=%v full=%v absolute=%v", info.Seasons, info.Episodes, info.FullSeason, info.AbsoluteEpisodes)
 	}
+	info = Parse("[Erai-raws] Kimetsu no Yaiba S3 - 05 [1080p][ABCDEF12].mkv")
+	if !reflect.DeepEqual(info.Seasons, []int{3}) || !reflect.DeepEqual(info.Episodes, []int{5}) || info.FullSeason || info.Title != "Kimetsu no Yaiba" {
+		t.Fatalf("S3 - 05: title=%q seasons=%v episodes=%v full=%v", info.Title, info.Seasons, info.Episodes, info.FullSeason)
+	}
+	// A cour ("Part 2") between the season and the number is not read.
+	if info = Parse("[G] Show S3 Part 2 - 03 (1080p)"); len(info.Episodes) != 0 {
+		t.Fatalf("S3 Part 2 - 03 read as episode %v", info.Episodes)
+	}
 	// A season range is still a range.
 	info = Parse("Show Seasons 1 - 5 1080p BluRay")
 	if !info.FullSeason || len(info.Episodes) != 0 {

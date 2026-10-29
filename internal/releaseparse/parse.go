@@ -23,14 +23,15 @@ var (
 	reEpRange     = regexp.MustCompile(`(?i)E(\d{1,3})`)
 	// Anime absolute numbering and "Season N - EE" (parseAbsoluteEpisode,
 	// parseSeasonDashEpisode).
-	reAbsoluteBracket = regexp.MustCompile(`(?i)(?:^|\s)-\s+(\d{1,4})(?:v\d{1,2})?(?:\s*[\[(]|\s*$|\s+(?:END|FINAL)\b)`)
-	reAbsoluteTag     = regexp.MustCompile(`(?i)\s-\s(\d{1,4})(?:v\d{1,2})?`)
-	reDashNumber      = regexp.MustCompile(`\s-\s(\d{1,4})(?:v\d{1,2})?\b`)
-	reSeasonDashEp    = regexp.MustCompile(`(?i)\b(?:Season|Saison|Stagione|Temporada)\s*(\d{1,2})\s+-\s+(\d{1,4})(?:v\d{1,2})?\b`)
-	reChannels        = regexp.MustCompile(`([257])[\s.]([01])\b`)
-	reRawChannels     = regexp.MustCompile(`\b(5\.1|7\.1|2\.0|2\.1|6\.1)\b`)
-	reGroupTail       = regexp.MustCompile(`-([A-Za-z0-9][A-Za-z0-9_]{1,})$`)
-	reBracket         = regexp.MustCompile(`\[([^\]]+)\]`)
+	reAbsoluteBracket   = regexp.MustCompile(`(?i)(?:^|\s)-\s+(\d{1,4})(?:v\d{1,2})?(?:\s*[\[(]|\s*$|\s+(?:END|FINAL)\b)`)
+	reAbsoluteTag       = regexp.MustCompile(`(?i)\s-\s(\d{1,4})(?:v\d{1,2})?`)
+	reDashNumber        = regexp.MustCompile(`\s-\s(\d{1,4})(?:v\d{1,2})?\b`)
+	reSeasonShortDashEp = regexp.MustCompile(`(?i)\bS(\d{1,2})\s+-\s+(\d{1,4})(?:v\d{1,2})?\b`)
+	reSeasonDashEp      = regexp.MustCompile(`(?i)\b(?:Season|Saison|Stagione|Temporada)\s*(\d{1,2})\s+-\s+(\d{1,4})(?:v\d{1,2})?\b`)
+	reChannels          = regexp.MustCompile(`([257])[\s.]([01])\b`)
+	reRawChannels       = regexp.MustCompile(`\b(5\.1|7\.1|2\.0|2\.1|6\.1)\b`)
+	reGroupTail         = regexp.MustCompile(`-([A-Za-z0-9][A-Za-z0-9_]{1,})$`)
+	reBracket           = regexp.MustCompile(`\[([^\]]+)\]`)
 )
 
 var containers = map[string]bool{
@@ -265,6 +266,16 @@ func parseEpisodes(spaced, upper string, info *core.ReleaseInfo) int {
 		}
 	}
 	if hasS {
+		// Anime: "Show S2 - 05 (1080p)" is season 2's fifth episode.
+		if loc := reSeasonShortDashEp.FindStringSubmatchIndex(spaced); loc != nil && releaseTagFollows(spaced[loc[1]:]) {
+			m := submatches(spaced, loc)
+			season, _ := strconv.Atoi(m[1])
+			episode, _ := strconv.Atoi(m[2])
+			if season >= 1 && episode >= 1 {
+				info.Seasons, info.Episodes = []int{season}, []int{episode}
+				return loc[0]
+			}
+		}
 		if loc := reSeasonOnly.FindStringSubmatchIndex(spaced); loc != nil {
 			m := submatches(spaced, loc)
 			// Guard against matching the S in e.g. S01E02 (already handled) —
