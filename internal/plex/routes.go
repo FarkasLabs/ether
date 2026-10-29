@@ -47,6 +47,7 @@ func (s *Server) routes() chi.Router {
 
 	// Library
 	get("/library", s.handleLibraryRoot)
+	get("/library/", s.handleLibraryRoot)
 	get("/library/sections", s.handleSections)
 	get("/library/sections/all", s.handleSections)
 	get("/library/sections/{section}", s.handleSection)
