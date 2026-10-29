@@ -166,7 +166,10 @@ func (d *DownloadRemuxer) expireStaleAdopted(now time.Time) {
 			d.mu.Unlock()
 			continue
 		} else if err == nil {
-			_ = os.Remove(path)
+			if err := os.Remove(path); err != nil && !os.IsNotExist(err) {
+				// Keep the bytes accounted for and retry on later admission.
+				continue
+			}
 		} else if !os.IsNotExist(err) {
 			continue // erro transitório: mantém a contabilidade adotada
 		}
