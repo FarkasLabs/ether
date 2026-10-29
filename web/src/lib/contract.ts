@@ -90,7 +90,16 @@ export type Source =
 export type SourceKind = Source["kind"];
 
 export type CollectionSort =
-  "latestEpisode" | "latestSeasonPremiere" | "popularity" | "rating" | "released" | "title" | "added" | "random" | "personal" | "source";
+  | "latestEpisode"
+  | "latestSeasonPremiere"
+  | "popularity"
+  | "rating"
+  | "released"
+  | "title"
+  | "added"
+  | "random"
+  | "personal"
+  | "source";
 
 export type Refresh = "live" | "hourly" | "daily" | "weekly";
 export type ArtworkMode = "auto" | "collage" | "backdrop" | "tmdb" | "custom";
