@@ -211,6 +211,7 @@ func (s TokenStore) Pop(ctx context.Context, user int64) (Grant, error) {
 	if !config.IsSealed(a) || !config.IsSealed(r) {
 		return Grant{}, errors.New("simkl: unsealed token")
 	}
+	sealedAccess, sealedRefresh := a, r
 	a, _, err = s.Sealer.OpenField(a, "simkl_tokens", "access_token", config.FieldContext(user), clientID)
 	if err != nil {
 		return Grant{}, err
@@ -219,11 +220,31 @@ func (s TokenStore) Pop(ctx context.Context, user int64) (Grant, error) {
 	if err != nil {
 		return Grant{}, err
 	}
-	if _, err = tx.ExecContext(ctx, `DELETE FROM simkl_tokens WHERE user_id=?`, user); err != nil {
+	if err = deleteUnleasedGrant(ctx, tx, user, clientID, sealedAccess, sealedRefresh, time.Now()); err != nil {
+		return Grant{}, err
+	}
+	if _, err = tx.ExecContext(ctx, `DELETE FROM simkl_outbox WHERE user_id=?`, user); err != nil {
 		return Grant{}, err
 	}
 	if err = tx.Commit(); err != nil {
 		return Grant{}, err
 	}
 	return Grant{ClientID: clientID, Access: a, Refresh: r, ExpiresAt: time.Unix(expiry, 0)}, nil
+}
+
+// A lease may be acquired and released between the read and delete, including
+// a refresh that rotates credentials. Delete only the exact grant we read.
+func deleteUnleasedGrant(ctx context.Context, tx *sql.Tx, user int64, clientID, access, refresh string, now time.Time) error {
+	res, err := tx.ExecContext(ctx, `DELETE FROM simkl_tokens WHERE user_id=? AND lease_until<? AND client_id=? AND access_token=? AND refresh_token=?`, user, now.UnixMilli(), clientID, access, refresh)
+	if err != nil {
+		return err
+	}
+	n, err := res.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if n != 1 {
+		return ErrBusy
+	}
+	return nil
 }
