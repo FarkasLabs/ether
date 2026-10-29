@@ -187,3 +187,81 @@ func TestReviewProxyResponseHeaderTimeout(t *testing.T) {
 		t.Fatal("expected response header timeout")
 	}
 }
+
+func TestDirectFallsBackToValidatedAddress(t *testing.T) {
+	s := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { io.WriteString(w, "ok") }))
+	defer s.Close()
+	var calls []string
+	g := &Guard{LookupIP: func(context.Context, string) ([]netip.Addr, error) {
+		return []netip.Addr{netip.MustParseAddr("8.8.8.8"), netip.MustParseAddr("1.1.1.1")}, nil
+	}, Dial: func(ctx context.Context, network, addr string) (net.Conn, error) {
+		calls = append(calls, addr)
+		if strings.HasPrefix(addr, "8.8.8.8:") {
+			return nil, errors.New("unreachable")
+		}
+		if !strings.HasPrefix(addr, "1.1.1.1:") {
+			return nil, errors.New("unvalidated address")
+		}
+		var d net.Dialer
+		return d.DialContext(ctx, network, s.Listener.Addr().String())
+	}}
+	c := g.Client(&http.Client{Transport: &http.Transport{}})
+	defer c.CloseIdleConnections()
+	r, err := c.Get("http://example.com/")
+	if err != nil {
+		t.Fatal(err)
+	}
+	r.Body.Close()
+	if len(calls) != 2 || calls[0] != "8.8.8.8:80" || calls[1] != "1.1.1.1:80" {
+		t.Fatalf("dials: %v", calls)
+	}
+}
+
+func TestFallbackBeforeSendingNonReplayableBody(t *testing.T) {
+	s := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		b, _ := io.ReadAll(r.Body)
+		if string(b) != "payload" {
+			t.Errorf("body = %q", b)
+		}
+		io.WriteString(w, "ok")
+	}))
+	defer s.Close()
+	g := &Guard{LookupIP: func(context.Context, string) ([]netip.Addr, error) {
+		return []netip.Addr{netip.MustParseAddr("8.8.8.8"), netip.MustParseAddr("1.1.1.1")}, nil
+	}, Dial: func(ctx context.Context, network, addr string) (net.Conn, error) {
+		if strings.HasPrefix(addr, "8.8.8.8:") {
+			return nil, errors.New("unreachable")
+		}
+		var d net.Dialer
+		return d.DialContext(ctx, network, s.Listener.Addr().String())
+	}}
+	c := g.Client(&http.Client{Transport: &http.Transport{}})
+	defer c.CloseIdleConnections()
+	req, _ := http.NewRequest("POST", "http://example.com/", io.NopCloser(strings.NewReader("payload")))
+	if req.GetBody != nil {
+		t.Fatal("fixture must not be replayable")
+	}
+	resp, err := c.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+}
+
+func TestFallbackStopsOnDialCancellation(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	calls := 0
+	g := &Guard{Dial: func(ctx context.Context, network, addr string) (net.Conn, error) {
+		calls++
+		cancel()
+		return nil, context.Canceled
+	}}
+	p := g.policyTransport(&http.Transport{}, false).(policyTransport)
+	defer p.CloseIdleConnections()
+	ips := []netip.Addr{netip.MustParseAddr("8.8.8.8"), netip.MustParseAddr("1.1.1.1")}
+	dec := &routeDecision{ips: ips, targetAddr: "8.8.8.8:80", poolAddr: "pool:80"}
+	_, err := p.direct.DialContext(context.WithValue(ctx, routeDecisionKey{}, dec), "tcp", dec.poolAddr)
+	if !errors.Is(err, context.Canceled) || calls != 1 {
+		t.Fatalf("error %v, calls %d", err, calls)
+	}
+}

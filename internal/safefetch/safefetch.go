@@ -9,9 +9,10 @@
 //   - O destino é resolvido e validado UMA vez por RoundTrip (cada hop
 //     de redirect é um novo RoundTrip e decide de novo): todo endereço
 //     candidato precisa ser público — qualquer um não-público recusa a
-//     requisição — e UM IP validado é escolhido.
+//     requisição — e os endereços validados são preservados para o dial direto.
 //   - Direct connections use a pool key containing the original hostname
-//     and validated IP. The dial hook connects to that IP, and TLS uses the
+//     and validated address set. The dial hook connects only to that set,
+//     and TLS uses the
 //     original hostname. Proxy requests carry the IP in the absolute URI
 //     or CONNECT target; their Host header and TLS name remain original.
 //     HTTP proxy requests and HTTPS CONNECT tunnels use dedicated connections.
@@ -189,27 +190,27 @@ func (g *Guard) ValidatePublicURL(ctx context.Context, rawURL string) error {
 // proxy the request still goes to the proxy afterwards, but a
 // non-public destination never reaches it.
 func (g *Guard) validatePublicDestination(ctx context.Context, u *url.URL) error {
-	_, err := g.resolveValidatedIP(ctx, u.Hostname(), false)
+	_, err := g.resolveValidatedIPs(ctx, u.Hostname(), false)
 	return err
 }
 
-// resolveValidatedIP resolves host and returns ONE address the request
-// will be bound to. Unless trusted (exactly the owner-configured
+// resolveValidatedIPs resolves host and returns the validated addresses.
+// Unless trusted (exactly the owner-configured
 // origin, where a private LAN address is legitimate), EVERY candidate
 // must be public: a mixed answer is refused rather than picking the
 // public-looking one, so a rebinding answer cannot hide a private
 // candidate behind a public one.
-func (g *Guard) resolveValidatedIP(ctx context.Context, host string, trusted bool) (netip.Addr, error) {
+func (g *Guard) resolveValidatedIPs(ctx context.Context, host string, trusted bool) ([]netip.Addr, error) {
 	ips, err := g.resolve(ctx, host)
 	if err != nil {
-		return netip.Addr{}, err
+		return nil, err
 	}
 	for _, ip := range ips {
 		if !trusted && !IsPublicIP(ip) {
-			return netip.Addr{}, fmt.Errorf("%w: %s resolves to %s", ErrBlocked, host, ip)
+			return nil, fmt.Errorf("%w: %s resolves to %s", ErrBlocked, host, ip)
 		}
 	}
-	return ips[0], nil
+	return ips, nil
 }
 
 // routeDecision is the route chosen ONCE for one request: which proxy
@@ -221,9 +222,10 @@ type routeDecision struct {
 	trusted    bool
 	proxy      *url.URL
 	ip         netip.Addr
+	ips        []netip.Addr
 	host       string // original hostname (no port)
 	targetAddr string // validated IP:port
-	poolAddr   string // direct pool key, including hostname and IP
+	poolAddr   string // direct pool key, including hostname and address set
 }
 
 type routeDecisionKey struct{}
@@ -525,12 +527,24 @@ func (g *Guard) policyTransport(base http.RoundTripper, trusted bool) http.Round
 		if !ok || dec.trusted != trusted || addr != dec.poolAddr {
 			return nil, fmt.Errorf("%w: invalid direct route", ErrBlocked)
 		}
-		return g.dial(ctx, network, dec.targetAddr)
+		var lastErr error
+		_, port, _ := net.SplitHostPort(dec.targetAddr)
+		for _, ip := range dec.ips {
+			if err := ctx.Err(); err != nil {
+				return nil, err
+			}
+			conn, err := g.dial(ctx, network, net.JoinHostPort(ip.String(), port))
+			if err == nil {
+				return conn, nil
+			}
+			lastErr = err
+		}
+		return nil, lastErr
 	}
 	direct := ht.Clone()
 	direct.Proxy = nil
 	// Bound the total idle connections even when the supplied transport has
-	// no global limit; pool keys include both hostname and validated IP.
+	// no global limit; pool keys include the hostname and validated address set.
 	if direct.MaxIdleConns <= 0 {
 		direct.MaxIdleConns = 100
 	}
@@ -598,9 +612,9 @@ func (u unsupportedTransport) RoundTrip(*http.Request) (*http.Response, error) {
 // RoundTrip, so per redirect hop) it decides the route ONCE, in this
 // order:
 //
-//  1. Resolve e valida o destino e escolhe UM IP: público (qualquer
+//  1. Resolve e valida todos os endereços: público (qualquer
 //     candidato não-público recusa), ou — só nesta pool confiável e só
-//     para exatamente a origem do dono — o IP que for, mesmo privado.
+//     para exatamente a origem do dono — endereços mesmo privados.
 //     Destino recusado aqui nunca toca seletor, proxy nem destino.
 //  2. Chama o seletor do dono (selector: a Proxy func do transporte
 //     base, que em http.DefaultTransport é ProxyFromEnvironment) UMA
@@ -636,10 +650,11 @@ func (p policyTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 	}
 	ctx := req.Context()
 	// 1) Resolver+validar o destino ANTES de seletor/proxy/dial.
-	ip, err := p.guard.resolveValidatedIP(ctx, req.URL.Hostname(), p.trusted)
+	ips, err := p.guard.resolveValidatedIPs(ctx, req.URL.Hostname(), p.trusted)
 	if err != nil {
 		return nil, err
 	}
+	ip := ips[0]
 	// 2) Selecionar a rota UMA vez, sobre a requisição original.
 	var proxyURL *url.URL
 	if p.selector != nil {
@@ -668,11 +683,18 @@ func (p policyTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 		trusted:    p.trusted,
 		proxy:      proxyURL,
 		ip:         ip,
+		ips:        ips,
 		host:       req.URL.Hostname(),
 		targetAddr: net.JoinHostPort(ip.String(), port),
 	}
 	bound := req.Clone(context.WithValue(ctx, routeDecisionKey{}, dec))
-	dec.poolAddr = net.JoinHostPort(fmt.Sprintf("%x.%x", ip.As16(), strings.ToLower(dec.host)), port)
+	// Include the entire validated set in the pool key: a connection to any
+	// candidate can only be reused when that complete set is still approved.
+	var poolKey strings.Builder
+	for _, candidate := range ips {
+		fmt.Fprintf(&poolKey, "%x-", candidate.As16())
+	}
+	dec.poolAddr = net.JoinHostPort(fmt.Sprintf("%s.%x", poolKey.String(), strings.ToLower(dec.host)), port)
 	bound.URL.Host = dec.targetAddr
 	if bound.Host == "" {
 		// Preserve the original Host header: with the URL rewritten to
