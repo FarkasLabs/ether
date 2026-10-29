@@ -198,6 +198,8 @@ describe("Release traces", () => {
         discovery: [
           { path: "live-early", count: 2 },
           { path: "cache", count: 1, rescue: true },
+          { path: "feed", count: 0 },
+          { path: "live-complete", count: 3 },
         ],
         limits: {
           profileMinHeight: 720,
@@ -209,10 +211,40 @@ describe("Release traces", () => {
     ]);
     const view = render(<TraceDetail trace={oldTrace!} />);
     expect(screen.getByText("Discovery: unknown")).toBeInTheDocument();
-    expect(screen.getByText("Limits: unknown")).toBeInTheDocument();
+    expect(screen.getByText("Effective playback limits: unknown")).toBeInTheDocument();
     view.rerender(<TraceDetail trace={newTrace!} />);
-    expect(screen.getByText(/live-early \(2\).*rescue cache \(1\)/)).toBeInTheDocument();
-    expect(screen.getByText(/profile 720–1080p.*2160p.*5000 kbps/)).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        /Live search ended early \(2 releases\).*Rescue: Cached search \(1 release\).*Feed results \(0 releases\).*Live search completed \(3 releases\)/,
+      ),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(/Profile: 720p–1080p.*Height: 2160p.*Bitrate: 5000 kbps/),
+    ).toBeInTheDocument();
+    for (const [min, max, label] of [
+      [0, 0, "Any resolution"],
+      [1080, 0, "At least 1080p"],
+      [0, 2160, "Up to 2160p"],
+    ] as const) {
+      view.rerender(
+        <TraceDetail
+          trace={{
+            ...newTrace!,
+            limits: {
+              profileMinHeight: min,
+              profileMaxHeight: max,
+              clientMaxHeight: 0,
+              clientMaxBitrateKbps: 0,
+            },
+          }}
+        />,
+      );
+      expect(
+        screen.getByText(
+          `Effective playback limits: Profile: ${label} · Height: unlimited · Bitrate: unlimited`,
+        ),
+      ).toBeInTheDocument();
+    }
   });
   it("normalizes typed and loosely shaped traces", () => {
     const t = normalizeTraces([

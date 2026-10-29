@@ -73,13 +73,11 @@ function normalizeTrace(t: Record<string, unknown>, i: number): ResolverTrace {
     omitted: Number(t.omitted ?? 0) || undefined,
     routing: typeof t.routing === "string" ? t.routing : undefined,
     discovery: Array.isArray(t.discovery)
-      ? t.discovery
-          .filter(isPlainObject)
-          .map((d) => ({
-            path: String(d.path ?? "unknown"),
-            count: Number(d.count ?? 0),
-            rescue: Boolean(d.rescue),
-          }))
+      ? t.discovery.filter(isPlainObject).map((d) => ({
+          path: String(d.path ?? "unknown"),
+          count: Number(d.count ?? 0),
+          rescue: Boolean(d.rescue),
+        }))
       : undefined,
     limits: isPlainObject(t.limits)
       ? {
@@ -301,6 +299,28 @@ function verdict(c: CandidateTrace, trace: ResolverTrace) {
   return <Badge variant="secondary">Fallback</Badge>;
 }
 
+function profileResolution(min: number, max: number) {
+  if (min && max) return `${min}p–${max}p`;
+  if (min) return `At least ${min}p`;
+  if (max) return `Up to ${max}p`;
+  return "Any resolution";
+}
+
+function discoveryLabel(path: string) {
+  switch (path) {
+    case "feed":
+      return "Feed results";
+    case "cache":
+      return "Cached search";
+    case "live-complete":
+      return "Live search completed";
+    case "live-early":
+      return "Live search ended early";
+    default:
+      return "Unknown discovery";
+  }
+}
+
 /** Every candidate of one decision and why it won or lost. */
 export function TraceDetail({ trace, titleKey }: { trace: ResolverTrace; titleKey?: string }) {
   const cands = [...(trace.candidates ?? [])].sort(
@@ -324,14 +344,17 @@ export function TraceDetail({ trace, titleKey }: { trace: ResolverTrace; titleKe
           Discovery:{" "}
           {trace.discovery?.length
             ? trace.discovery
-                .map((d) => `${d.rescue ? "rescue " : ""}${d.path} (${d.count})`)
+                .map(
+                  (d) =>
+                    `${d.rescue ? "Rescue: " : ""}${discoveryLabel(d.path)} (${d.count} ${d.count === 1 ? "release" : "releases"})`,
+                )
                 .join(" · ")
             : "unknown"}
         </p>
         <p>
-          Limits:{" "}
+          Effective playback limits:{" "}
           {trace.limits
-            ? `profile ${trace.limits.profileMinHeight || "unset"}–${trace.limits.profileMaxHeight || "unlimited"}p · client height ${trace.limits.clientMaxHeight ? `${trace.limits.clientMaxHeight}p` : "unlimited"} · bitrate ${trace.limits.clientMaxBitrateKbps ? `${trace.limits.clientMaxBitrateKbps} kbps` : "unlimited"}`
+            ? `Profile: ${profileResolution(trace.limits.profileMinHeight, trace.limits.profileMaxHeight)} · Height: ${trace.limits.clientMaxHeight ? `${trace.limits.clientMaxHeight}p` : "unlimited"} · Bitrate: ${trace.limits.clientMaxBitrateKbps ? `${trace.limits.clientMaxBitrateKbps} kbps` : "unlimited"}`
             : "unknown"}
         </p>
       </div>
