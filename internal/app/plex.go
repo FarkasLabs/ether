@@ -90,7 +90,14 @@ func (a *App) buildPlex(cfg config.Config) (http.Handler, error) {
 		Background: true,
 	})
 	a.closers = append(a.closers, deps.PlexGUID.Close)
-	deps.EpisodeOrder = a.episodeorder
+	if !cfg.Spike.Enabled {
+		// EpisodeOrder is TMDB-backed (build_integrations.go): metadataTitle
+		// prefers it over Catalog, and the real catalog does not know the
+		// spike catalog's KindLocal keys, so wiring it in spike mode makes
+		// every /library/metadata/<KindLocal> 404 while hubs and play
+		// queues (which read Catalog directly) keep working.
+		deps.EpisodeOrder = a.episodeorder
+	}
 	deps.Discovery = a.plexDiscovery
 	deps.LiveTV = a.livetv
 	deps.Subtitles = plexSubtitles{a}
