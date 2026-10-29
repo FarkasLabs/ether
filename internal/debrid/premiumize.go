@@ -39,6 +39,12 @@ func newPremiumize(key string, opts ProviderOptions) *premiumize {
 
 func (p *premiumize) Kind() string { return "premiumize" }
 
+// supportsBackgroundCacheOnly: Acquire serves cached content through
+// directdl and only ever calls transfer/create for an uncached hash
+// when not cached-only, so a background check that has just confirmed
+// the hash as cached cannot write to the account.
+func (p *premiumize) supportsBackgroundCacheOnly() bool { return true }
+
 type pmStatus struct {
 	Status  string `json:"status"`
 	Message string `json:"message"`
