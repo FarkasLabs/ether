@@ -23,10 +23,28 @@ type ExternalBases struct {
 	TraktAPI   string // https://api.trakt.tv
 	Letterboxd string // https://letterboxd.com
 	MDBList    string // https://mdblist.com
+	StevenLu   string // https://popular-movies-data.stevenlu.com
 }
 
 func defaultBases() ExternalBases {
-	return ExternalBases{TraktAPI: "https://api.trakt.tv", Letterboxd: "https://letterboxd.com", MDBList: "https://mdblist.com"}
+	return ExternalBases{TraktAPI: "https://api.trakt.tv", Letterboxd: "https://letterboxd.com", MDBList: "https://mdblist.com",
+		StevenLu: "https://popular-movies-data.stevenlu.com"}
+}
+
+// withDefaults fills origins left empty with the real ones.
+func (b ExternalBases) withDefaults() ExternalBases {
+	d := defaultBases()
+	for _, f := range []struct {
+		v *string
+		d string
+	}{
+		{&b.TraktAPI, d.TraktAPI}, {&b.Letterboxd, d.Letterboxd}, {&b.MDBList, d.MDBList}, {&b.StevenLu, d.StevenLu},
+	} {
+		if *f.v == "" {
+			*f.v = f.d
+		}
+	}
+	return b
 }
 
 // extRef is a title named by an external list.
@@ -66,7 +84,8 @@ func newWebClient(c *http.Client, ua string, now func() time.Time) *webClient {
 		c = &http.Client{Timeout: 30 * time.Second}
 	}
 	return &webClient{http: c, ua: ua, now: now, ttl: 6 * time.Hour,
-		gaps: map[string]time.Duration{"letterboxd.com": 1500 * time.Millisecond, "mdblist.com": time.Second, "api.trakt.tv": 500 * time.Millisecond},
+		gaps: map[string]time.Duration{"letterboxd.com": 1500 * time.Millisecond, "mdblist.com": time.Second, "api.trakt.tv": 500 * time.Millisecond,
+			"popular-movies-data.stevenlu.com": time.Second},
 		last: map[string]time.Time{}, cache: map[string]webEntry{}, hostL: map[string]*sync.Mutex{}}
 }
 
@@ -455,6 +474,56 @@ func (s *Service) fetchMDBList(ctx context.Context, rawURL string) ([]extRef, er
 			r.Type = "movie"
 		case "show", "tv":
 			r.Type = "show"
+		}
+		out = append(out, r)
+	}
+	return out, nil
+}
+
+// ---------------------------------------------------------------------------
+// StevenLu
+
+// stevenLuLists are the published popular-movie feeds: the plain list and
+// the variants filtered by critic or audience score.
+var stevenLuLists = map[string]bool{
+	"movies": true, "movies-imdb-min7": true, "movies-imdb-min8": true,
+	"movies-metacritic-min50": true, "movies-metacritic-min60": true,
+	"movies-metacritic-min70": true, "movies-metacritic-min80": true,
+	"movies-rottentomatoes-min70": true, "movies-rottentomatoes-min80": true,
+}
+
+func stevenLuList(list string) (string, error) {
+	if list == "" {
+		return "movies", nil
+	}
+	if !stevenLuLists[list] {
+		return "", fmt.Errorf("unknown StevenLu list %q", list)
+	}
+	return list, nil
+}
+
+func (s *Service) fetchStevenLu(ctx context.Context, list string) ([]extRef, error) {
+	list, err := stevenLuList(list)
+	if err != nil {
+		return nil, err
+	}
+	body, _, err := s.web.get(ctx, s.bases.StevenLu+"/"+list+".json", map[string]string{"Accept": "application/json"})
+	if err != nil {
+		return nil, fmt.Errorf("stevenlu: %w", err)
+	}
+	var items []struct {
+		Title  string      `json:"title"`
+		TMDBID json.Number `json:"tmdb_id"`
+		IMDB   string      `json:"imdb_id"`
+	}
+	if err := json.Unmarshal(body, &items); err != nil {
+		return nil, fmt.Errorf("stevenlu: unexpected response: %w", err)
+	}
+	out := make([]extRef, 0, len(items))
+	for _, it := range items {
+		r := extRef{IMDB: it.IMDB, Title: it.Title, Type: "movie"}
+		if n, err := it.TMDBID.Int64(); err == nil && n > 0 {
+			r.TMDB = n
 		}
 		out = append(out, r)
 	}

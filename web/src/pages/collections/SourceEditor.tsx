@@ -7,7 +7,13 @@ import { LookupPicker, TitleSearch } from "../../components/pickers";
 import { titleSubtitle } from "../../components/Poster";
 import { DragHandle, SortableList, arrayMove } from "../../components/Sortable";
 import type { Source, TitleCard } from "../../lib/contract";
-import { TMDB_LISTS, describeSource, isSourceComplete, sourceMeta } from "../../lib/rules";
+import {
+  STEVENLU_LISTS,
+  TMDB_LISTS,
+  describeSource,
+  isSourceComplete,
+  sourceMeta,
+} from "../../lib/rules";
 import { useTitle } from "../../lib/titles";
 
 export function SourceEditor({
@@ -170,6 +176,16 @@ function SourceBody({
         </div>
       );
     }
+    case "stevenlu":
+      return (
+        <SearchSelect
+          value={source.list}
+          onChange={(v) => v && onChange({ ...source, list: v as typeof source.list })}
+          options={STEVENLU_LISTS}
+          ariaLabel={`${label} list`}
+          searchable={false}
+        />
+      );
     case "tmdbDiscover":
       return (
         <DiscoverParams
