@@ -4,9 +4,11 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -177,5 +179,71 @@ func TestDeliveryPacingIsSharedAcrossViewers(t *testing.T) {
 	}
 	if err := svc.FlushOne(ctx, 2); !errors.Is(err, ErrBusy) || posts != 1 {
 		t.Fatalf("shared pacing failed: %v posts=%d", err, posts)
+	}
+}
+
+func TestDeliveryRotatesAcrossOversubscribedQueue(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	db, err := store.OpenPath(ctx, filepath.Join(t.TempDir(), "fair.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	tokens := TokenStore{DB: db, Sealer: testSealer{}}
+	tok := Token{ClientID: "id", AccessToken: "a", RefreshToken: "r", ExpiresIn: 7 * 24 * 3600, Scope: "media:read media:write"}
+	for id := int64(1); id <= 101; id++ {
+		if err := tokens.Save(ctx, id, tok, time.Now()); err != nil {
+			t.Fatal(err)
+		}
+		for n := 0; n < 2; n++ {
+			if err := Enqueue(ctx, db, state.Event{UserID: id, Kind: state.EventCompleted, Key: core.MovieKey(1000 + id*2 + int64(n)), At: time.Now().Add(time.Duration(n) * time.Second)}); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+	if _, err := db.Exec(`UPDATE simkl_tokens SET backoff_until=? WHERE user_id=2`, time.Now().Add(time.Hour).UnixMilli()); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(`UPDATE simkl_tokens SET lease_id='held', lease_until=? WHERE user_id=3`, time.Now().Add(time.Hour).UnixMilli()); err != nil {
+		t.Fatal(err)
+	}
+	var posts atomic.Int64
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		posts.Add(1)
+		_, _ = w.Write([]byte(`{"not_found":{"movies":[],"shows":[],"episodes":[]}}`))
+	}))
+	defer srv.Close()
+	svc := Service{Auth: AuthClient{BaseURL: srv.URL, ClientID: "id"}, Tokens: tokens}
+	ticks := make(chan time.Time)
+	started := make(chan struct{})
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		runDelivery(ctx, func() Service { return svc }, func() bool {
+			_, err := db.Exec(`UPDATE simkl_post_pacing SET next_post=0 WHERE id=1`)
+			if err != nil {
+				panic(err)
+			}
+			started <- struct{}{}
+			return true
+		}, slog.Default(), ticks)
+	}()
+	for i := 0; i < 101; i++ {
+		ticks <- time.Now()
+		<-started
+	}
+	// A further tick provides a barrier after the preceding scan.
+	ticks <- time.Now()
+	<-started
+	cancel()
+	select {
+	case <-done:
+	case <-time.After(5 * time.Second):
+		t.Fatal("delivery did not stop after cancellation")
+	}
+	var remaining int
+	if err := db.QueryRow(`SELECT COUNT(*) FROM simkl_outbox WHERE user_id NOT IN (2,3) GROUP BY user_id HAVING COUNT(*)=2 LIMIT 1`).Scan(&remaining); err != sql.ErrNoRows {
+		t.Fatalf("eligible viewer starved: remaining=%d err=%v posts=%d", remaining, err, posts.Load())
 	}
 }

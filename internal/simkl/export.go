@@ -174,17 +174,22 @@ func RunDelivery(ctx context.Context, service func() Service, enabled func() boo
 	}
 	ticker := time.NewTicker(2 * time.Second)
 	defer ticker.Stop()
+	runDelivery(ctx, service, enabled, log, ticker.C)
+}
+
+func runDelivery(ctx context.Context, service func() Service, enabled func() bool, log *slog.Logger, ticks <-chan time.Time) {
+	var cursor int64
 	for {
 		select {
 		case <-ctx.Done():
 			return
-		case <-ticker.C:
+		case <-ticks:
 		}
 		if !enabled() {
 			continue
 		}
 		s := service()
-		rows, err := s.Tokens.DB.QueryContext(ctx, `SELECT DISTINCT o.user_id FROM simkl_outbox o JOIN simkl_tokens t ON t.user_id=o.user_id WHERE t.backoff_until<=? ORDER BY o.user_id LIMIT 100`, time.Now().UnixMilli())
+		rows, err := s.Tokens.DB.QueryContext(ctx, `SELECT user_id FROM (SELECT DISTINCT o.user_id FROM simkl_outbox o JOIN simkl_tokens t ON t.user_id=o.user_id WHERE t.backoff_until<=?) queued ORDER BY CASE WHEN user_id > ? THEN 0 ELSE 1 END, user_id LIMIT 100`, time.Now().UnixMilli(), cursor)
 		if err != nil {
 			if ctx.Err() == nil {
 				log.Warn("simkl: queue scan failed", "err", err)
@@ -202,6 +207,11 @@ func RunDelivery(ctx context.Context, service func() Service, enabled func() boo
 		rows.Close()
 		if err != nil {
 			continue
+		}
+		// Advance the starting viewer, even if it is leased or otherwise busy.
+		// Ordering wraps over the entire queue, not just the first page.
+		if len(users) > 0 {
+			cursor = users[0]
 		}
 		for _, id := range users {
 			if ctx.Err() != nil {
