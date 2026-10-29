@@ -909,7 +909,11 @@ func (f *remoteFile) rangeGet(ctx context.Context, start, end int64, urgent bool
 				return nil, timing{}, err
 			}
 		}
-		resp, tm, err := f.e.get(ctx, u, start, end, urgent, f.conns)
+		rctx := ctx
+		if payload.IsDirect() {
+			rctx = withDirect(ctx, payload)
+		}
+		resp, tm, err := f.e.get(rctx, u, start, end, urgent, f.conns)
 		if err != nil {
 			if errors.Is(err, core.ErrBudgetExhausted) {
 				return nil, tm, err
@@ -941,9 +945,13 @@ func (f *remoteFile) rangeGet(ctx context.Context, start, end int64, urgent bool
 		case resp.StatusCode == http.StatusPartialContent:
 			if err := checkContentRange(resp.Header.Get("Content-Range"), start, f.size); err != nil {
 				resp.Body.Close()
-				return nil, tm, err
+				return nil, tm, directMediaError(payload, err)
 			}
 			f.mu.Lock()
+			if final := resp.Request.URL.String(); payload.IsDirect() && final != u && f.gen == gen {
+				// Read the addon's redirect target directly until it fails.
+				f.pl.URL = final
+			}
 			f.linkFails = 0
 			f.mediaHealthyKey = mediaPauseKey(payload.Provider, u)
 			f.mu.Unlock()
@@ -1286,6 +1294,16 @@ func (e *Engine) send(ctx context.Context, hc *http.Client, u string, start, end
 	}
 	req.Header.Set("Range", fmt.Sprintf("bytes=%d-%d", start, end))
 	req.Header.Set("User-Agent", "Ether")
+	if p, ok := ctx.Value(directKey{}).(Payload); ok {
+		// Addon links go through the SSRF guard, never the CDN pools.
+		e.svc.direct.init()
+		if hc == e.hedge {
+			hc = e.svc.direct.hedge
+		} else {
+			hc = e.svc.direct.primary
+		}
+		req = prepareDirect(req, p)
+	}
 	resp, err := hc.Do(req)
 	tm := timing{connect: time.Duration(connect.Load()), ttfb: time.Duration(ttfb.Load())}
 	if took := time.Since(began); took > time.Second {
