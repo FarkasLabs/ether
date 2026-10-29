@@ -72,9 +72,6 @@ func (s *Service) fetchAniList(ctx context.Context, rawURL string) ([]extRef, er
 		q, _ := json.Marshal(map[string]any{"query": anilistQuery, "variables": map[string]any{"user": user, "chunk": chunk}})
 		body, _, err := s.web.post(ctx, s.bases.AniListAPI, q, hdr)
 		if err != nil {
-			if chunk > 1 {
-				break
-			}
 			if errors.Is(err, errHTTPNotFound) {
 				return nil, fmt.Errorf("anilist: user %q was not found or their lists are private", user)
 			}
@@ -99,11 +96,11 @@ func (s *Service) fetchAniList(ctx context.Context, rawURL string) ([]extRef, er
 		if err := json.Unmarshal(body, &res); err != nil {
 			return nil, fmt.Errorf("anilist: unexpected response: %w", err)
 		}
+		if len(res.Errors) > 0 {
+			return nil, fmt.Errorf("anilist: %s", res.Errors[0].Message)
+		}
 		c := res.Data.Collection
 		if c == nil {
-			if len(res.Errors) > 0 {
-				return nil, fmt.Errorf("anilist: %s", res.Errors[0].Message)
-			}
 			return nil, fmt.Errorf("anilist: unexpected response")
 		}
 		for _, l := range c.Lists {
@@ -122,6 +119,9 @@ func (s *Service) fetchAniList(ctx context.Context, rawURL string) ([]extRef, er
 		if !c.HasNextChunk {
 			break
 		}
+		if chunk == maxExternalPages {
+			return nil, fmt.Errorf("anilist: list exceeds the %d chunk limit; results would be truncated", maxExternalPages)
+		}
 	}
 	if want != "" && !matched {
 		have := make([]string, 0, len(names))
@@ -133,6 +133,9 @@ func (s *Service) fetchAniList(ctx context.Context, rawURL string) ([]extRef, er
 	}
 	ids, err := s.anime.load(ctx, s)
 	if err != nil {
+		if ctx.Err() != nil {
+			return nil, ctx.Err()
+		}
 		s.log.Warn("collections: anime id mapping unavailable; matching AniList titles by name", "err", err)
 	}
 	out := make([]extRef, 0, len(entries))
@@ -196,6 +199,9 @@ func (c *animeIDCache) load(ctx context.Context, s *Service) (map[int64]animeIDs
 	c.tried = now
 	ids, err := fetchAnimeIDs(ctx, s.web, s.bases.AnimeIDs)
 	if err != nil {
+		if ctx.Err() != nil {
+			c.tried = time.Time{}
+		}
 		return c.ids, err
 	}
 	c.ids, c.loaded = ids, now
@@ -257,7 +263,9 @@ func fetchAnimeIDs(ctx context.Context, w *webClient, src string) (map[int64]ani
 		return nil, err
 	}
 	req.Header.Set("User-Agent", w.ua)
-	resp, err := w.http.Do(req)
+	client := *w.http
+	client.CheckRedirect = sameOriginRedirect
+	resp, err := client.Do(req)
 	if err != nil {
 		return nil, err
 	}
@@ -297,6 +305,9 @@ func fetchAnimeIDs(ctx context.Context, w *webClient, src string) (map[int64]ani
 		if id != (animeIDs{}) {
 			ids[e.AniList.first()] = id
 		}
+	}
+	if tok, err := dec.Token(); err != nil || tok != json.Delim(']') {
+		return nil, fmt.Errorf("anime id mapping: incomplete JSON array")
 	}
 	if len(ids) == 0 {
 		return nil, fmt.Errorf("anime id mapping: no AniList entries")

@@ -95,6 +95,14 @@ func newWebClient(c *http.Client, ua string, now func() time.Time) *webClient {
 		last: map[string]time.Time{}, cache: map[string]webEntry{}, hostL: map[string]*sync.Mutex{}}
 }
 
+// List services must not redirect a server-side request to another origin.
+func sameOriginRedirect(req *http.Request, via []*http.Request) error {
+	if len(via) >= 10 || len(via) > 0 && (req.URL.Scheme != via[0].URL.Scheme || req.URL.Host != via[0].URL.Host) {
+		return fmt.Errorf("external list redirect changes origin")
+	}
+	return nil
+}
+
 var errHTTPNotFound = errors.New("not found")
 
 func (w *webClient) get(ctx context.Context, rawURL string, hdr map[string]string) ([]byte, http.Header, error) {
@@ -107,6 +115,9 @@ func (w *webClient) post(ctx context.Context, rawURL string, body []byte, hdr ma
 }
 
 func (w *webClient) do(ctx context.Context, method, rawURL string, reqBody []byte, hdr map[string]string) ([]byte, http.Header, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, nil, err
+	}
 	cacheKey := rawURL
 	if reqBody != nil {
 		cacheKey += "\x00" + string(reqBody)
@@ -157,7 +168,11 @@ func (w *webClient) do(ctx context.Context, method, rawURL string, reqBody []byt
 	for k, v := range hdr {
 		req.Header.Set(k, v)
 	}
-	resp, err := w.http.Do(req)
+	client := *w.http
+	if host == "graphql.anilist.co" || host == "popular-movies-data.stevenlu.com" {
+		client.CheckRedirect = sameOriginRedirect
+	}
+	resp, err := client.Do(req)
 	w.mu.Lock()
 	w.last[host] = time.Now()
 	w.mu.Unlock()
@@ -169,6 +184,27 @@ func (w *webClient) do(ctx context.Context, method, rawURL string, reqBody []byt
 	if err != nil {
 		return nil, nil, err
 	}
+	if resp.StatusCode == http.StatusTooManyRequests {
+		delay := time.Minute
+		if n, err := strconv.Atoi(resp.Header.Get("Retry-After")); err == nil && n >= 0 {
+			if n > 86400 {
+				n = 86400
+			}
+			delay = time.Duration(n) * time.Second
+		} else if until, err := http.ParseTime(resp.Header.Get("Retry-After")); err == nil {
+			delay = time.Until(until)
+		}
+		if delay < 0 {
+			delay = 0
+		}
+		if delay > 24*time.Hour {
+			delay = 24 * time.Hour
+		}
+		w.mu.Lock()
+		w.last[host] = time.Now().Add(delay - gap)
+		w.mu.Unlock()
+		return nil, nil, fmt.Errorf("%s: rate limited (%s)", u.Host, resp.Status)
+	}
 	switch {
 	case resp.StatusCode == http.StatusNotFound:
 		return nil, nil, fmt.Errorf("%s: %w", rawURL, errHTTPNotFound)
@@ -177,11 +213,28 @@ func (w *webClient) do(ctx context.Context, method, rawURL string, reqBody []byt
 	case resp.StatusCode != http.StatusOK:
 		return nil, nil, fmt.Errorf("%s: %s", u.Host, resp.Status)
 	}
+	// GraphQL can report errors with HTTP 200, including partial data. Do not
+	// cache those responses (or malformed envelopes) as successful queries.
+	if method == http.MethodPost {
+		var envelope struct {
+			Data struct {
+				Collection json.RawMessage `json:"MediaListCollection"`
+			} `json:"data"`
+			Errors []json.RawMessage `json:"errors"`
+		}
+		if json.Unmarshal(body, &envelope) != nil || len(envelope.Errors) != 0 || len(envelope.Data.Collection) == 0 || string(envelope.Data.Collection) == "null" {
+			return body, resp.Header, nil
+		}
+	}
 	w.mu.Lock()
 	if len(w.cache) > 2000 {
 		w.cache = map[string]webEntry{}
 	}
-	w.cache[cacheKey] = webEntry{body: body, header: resp.Header.Clone(), expires: w.now().Add(w.ttl)}
+	ttl := w.ttl
+	if host == "popular-movies-data.stevenlu.com" {
+		ttl = 24 * time.Hour
+	}
+	w.cache[cacheKey] = webEntry{body: body, header: resp.Header.Clone(), expires: w.now().Add(ttl)}
 	w.mu.Unlock()
 	return body, resp.Header, nil
 }
