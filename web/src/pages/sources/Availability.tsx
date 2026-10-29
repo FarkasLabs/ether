@@ -128,8 +128,11 @@ export function Availability() {
           </div>
           <p className="text-sm text-fg-muted">{s.message}</p>
           <p className="mt-2 text-xs text-fg-muted">
-            Recent movies need release evidence for 60 days; episodes for 24 hours. Suitable
-            releases unlock immediately. Older titles need no background scan.
+            {cfg.disableMovieEvidenceGate
+              ? "Movie evidence requirement is off."
+              : `Movies need evidence for ${cfg.movieEvidenceDays || 60} days after release.`}{" "}
+            Episodes need evidence for 24 hours. Eligible observed releases unlock immediately,
+            without a mandatory delay; evidence does not guarantee quality or playback.
           </p>
         </div>
         <div className="flex gap-2">
@@ -147,7 +150,7 @@ export function Availability() {
             size="sm"
             onClick={() => {
               setSaveError(null);
-              setDraft(structuredClone(cfg));
+              setDraft({ ...structuredClone(cfg), movieEvidenceDays: cfg.movieEvidenceDays || 60 });
             }}
           >
             <Settings2 size={14} />
@@ -284,17 +287,46 @@ export function Availability() {
       <RecordDrawer
         open={draft !== null}
         title="Availability settings"
-        description="Polling and health checks are independently optional. Recent titles need eligible local release evidence; older titles do not."
+        description="Configure movie visibility, polling and optional health checks."
         onClose={() => {
           if (!saving) setDraft(null);
         }}
         onSave={() => void save()}
         saving={saving}
+        saveDisabled={
+          !!draft &&
+          (!Number.isInteger(draft.movieEvidenceDays) ||
+            draft.movieEvidenceDays! < 1 ||
+            draft.movieEvidenceDays! > 366)
+        }
         saveLabel="Save settings"
         error={saveError}
       >
         {draft ? (
           <>
+            <SettingsSection
+              title="Movie visibility"
+              description="An eligible observed release unlocks a movie immediately; this is not a mandatory delay or a guarantee of quality or playback. Episodes retain their 24-hour policy."
+            >
+              <BoolRow
+                label="Require movie release evidence"
+                value={!draft.disableMovieEvidenceGate}
+                onChange={(v) => change("disableMovieEvidenceGate", !v)}
+              />
+              <NumRow
+                label="Movie evidence window"
+                value={draft.movieEvidenceDays ?? 60}
+                onChange={(v) => change("movieEvidenceDays", v)}
+                min={1}
+                max={366}
+                unit="days"
+                error={
+                  draft.movieEvidenceDays! < 1 || draft.movieEvidenceDays! > 366
+                    ? "Enter 1 to 366 days"
+                    : undefined
+                }
+              />
+            </SettingsSection>
             <SettingsSection title="Discovery & presentation">
               <BoolRow
                 label="Monitor release feeds"
@@ -318,7 +350,7 @@ export function Availability() {
                 label="Prefer checked recommendations"
                 value={draft.preferVerified}
                 onChange={(v) => change("preferVerified", v)}
-                help="Move fresh checked movies forward in discovery shelves. Recent-title visibility always uses eligible release evidence."
+                help="Move fresh checked movies forward in discovery shelves. Visibility follows the evidence settings above."
               />
               <BoolRow
                 label="Show newly available shelves"

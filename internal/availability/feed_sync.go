@@ -178,7 +178,7 @@ func (s *Service) syncFeed(parent context.Context, f core.ReleaseFeed) error {
 			if target != "" && releases[i].ID == target {
 				reachedTarget = true
 			}
-			if releases[i].PubDate.IsZero() || releases[i].PubDate.After(s.now().Add(-61*24*time.Hour)) {
+			if releases[i].PubDate.IsZero() || releases[i].PubDate.After(s.now().Add(-time.Duration(max(60, s.cfg().Availability.EffectiveMovieEvidenceDays())+1)*24*time.Hour)) {
 				oldPage = false
 			}
 		}

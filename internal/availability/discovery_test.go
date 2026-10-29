@@ -2,6 +2,7 @@ package availability
 
 import (
 	"context"
+	"github.com/braedonsaunders/ether/internal/config"
 	"github.com/braedonsaunders/ether/internal/core"
 	"github.com/braedonsaunders/ether/internal/resolver"
 	"testing"
@@ -164,5 +165,39 @@ func TestTransientCheckDoesNotEraseReleaseExistence(t *testing.T) {
 	x.s.Invalidate(t.Context(), "known")
 	if got := x.s.FilterDiscovery(t.Context(), []core.Title{title}); len(got) != 0 {
 		t.Fatal("explicit invalidation ignored")
+	}
+}
+
+func TestConfigurableMovieWindow(t *testing.T) {
+	now := time.Date(2026, 10, 20, 0, 0, 0, 0, time.UTC)
+	movie := core.Title{Key: core.MovieKey(1), Type: core.TypeMovie, Released: now.Add(-90 * 24 * time.Hour)}
+	for _, tc := range []struct {
+		cfg  config.Availability
+		want bool
+	}{
+		{config.Availability{}, false}, {config.Availability{MovieEvidenceDays: 120}, true},
+		{config.Availability{MovieEvidenceDays: 90}, false}, {config.Availability{MovieEvidenceDays: 120, DisableMovieEvidenceGate: true}, false},
+	} {
+		if got := evidenceWindow(movie, now, tc.cfg); got != tc.want {
+			t.Fatalf("%+v: got %v", tc.cfg, got)
+		}
+	}
+	ep := core.Title{Key: core.EpisodeKey(1, 1, 1), Type: core.TypeEpisode, Released: now.Add(-23 * time.Hour)}
+	if !evidenceWindow(ep, now, config.Availability{DisableMovieEvidenceGate: true, MovieEvidenceDays: 120}) {
+		t.Fatal("episode policy changed")
+	}
+	x := setup(t)
+	movie.Released = x.now.Add(-90 * 24 * time.Hour)
+	x.c.Availability.MovieEvidenceDays = 120
+	if len(x.s.FilterDiscovery(t.Context(), []core.Title{movie})) != 0 {
+		t.Fatal("extended window not applied")
+	}
+	x.c.Availability.DisableMovieEvidenceGate = true
+	if len(x.s.FilterDiscovery(t.Context(), []core.Title{movie})) != 1 {
+		t.Fatal("disabled gate still applied")
+	}
+	x.c.Availability.DisableMovieEvidenceGate = false
+	if len(x.s.FilterDiscovery(t.Context(), []core.Title{movie})) != 0 {
+		t.Fatal("gate did not resume")
 	}
 }

@@ -22,12 +22,12 @@ func (s *Service) FilterDiscovery(ctx context.Context, items []core.Title) []cor
 	keys := make(map[core.RatingKey]string)
 	allowed := map[core.RatingKey]bool{}
 	var pending []core.Title
-	policy := s.policy()
+	policy := fmt.Sprintf("%s:%+v", s.policy(), s.cfg().Availability)
 	feeds := []byte(fmt.Sprintf("%+v", s.d.Feeds.FeedSources()))
 	s.visibilityMu.Lock()
 	revision := s.visibilityRevision
 	for _, t := range items {
-		if !EvidenceWindow(t, now) {
+		if !evidenceWindow(t, now, s.cfg().Availability) {
 			allowed[t.Key] = true
 			continue
 		}

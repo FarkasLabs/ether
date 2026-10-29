@@ -682,6 +682,8 @@ export interface ClusterSetupStatus {
 }
 
 export interface AvailabilityConfig {
+  disableMovieEvidenceGate?: boolean;
+  movieEvidenceDays?: number;
   monitor: boolean;
   verify: boolean;
   preferVerified: boolean;

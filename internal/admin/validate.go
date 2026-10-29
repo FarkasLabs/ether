@@ -73,6 +73,9 @@ func ValidateConfig(cfg config.Config) []FieldError {
 		v.add("posters", "%s", err.Error())
 	}
 	a := cfg.Availability
+	if a.MovieEvidenceDays < 0 || a.MovieEvidenceDays > 366 {
+		v.add("availability.movieEvidenceDays", "must be between 1 and 366 days (0 uses the default)")
+	}
 	if a.PollMinutes < 5 || a.PollMinutes > 1440 {
 		v.add("availability.pollMinutes", "must be between 5 and 1440 minutes")
 	}
