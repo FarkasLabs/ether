@@ -107,18 +107,19 @@ func onlyNotCached(err error) bool {
 
 // playRequest is a parsed decision/start request.
 type playRequest struct {
-	key        core.RatingKey
-	collection string
-	caps       core.ClientCaps
-	opts       core.DecideOptions
-	sessionID  string // client transcode session id
-	offset     time.Duration
-	protocol   string
-	audioSel   int // stream position, -1 = default
-	subSel     int // stream position, -1 = none/default
-	subSet     bool
+	key         core.RatingKey
+	collection  string
+	caps        core.ClientCaps
+	opts        core.DecideOptions
+	sessionID   string // client transcode session id
+	offset      time.Duration
+	protocol    string
+	audioSel    int              // stream position, -1 = default
+	audioStream *core.StreamInfo // selected identity, remapped after probing
+	subSel      int              // stream position, -1 = none/default
+	subSet      bool
 	// subStream is the subtitle picked by id (request or stored), to be
-	// found again in the session's MediaInfo (resolvePlaySubtitle).
+	// found again in the session's MediaInfo (resolvePlaySelection).
 	subStream *core.StreamInfo
 	// mediaIndex is the "Play Version" position the viewer picked
 	// (0 = Auto / not sent); partReleaseID names the release directly
@@ -213,14 +214,15 @@ func (s *Server) parsePlayRequest(r *http.Request) (playRequest, error) {
 	}
 	sel := s.selections.get(userID, int64(key))
 	if sel.audioSet {
-		p.audioSel = sel.audio
+		p.audioSel, p.audioStream = sel.audio, sel.audioStream
 	}
 	if sel.subtitleSet {
 		p.subSel, p.subSet, p.subStream = sel.subtitle, true, sel.subtitleStream
 	}
 	if id, err := strconv.ParseInt(q.Get("audioStreamID"), 10, 64); err == nil {
-		if ref, ok := s.streams.lookup(id); ok && ref.key == key {
-			p.audioSel = ref.index
+		if ref, ok := s.streams.lookup(id); ok && ref.key == key && ref.info.Type == "audio" {
+			info := ref.info
+			p.audioSel, p.audioStream = ref.index, &info
 		}
 	}
 	if v := q.Get("subtitleStreamID"); v != "" {
@@ -335,7 +337,7 @@ func (s *Server) prepare(ctx context.Context, pr *Request, p *playRequest) (*cor
 		cp.Info = info
 		ps = &cp
 	}
-	resolvePlaySubtitle(p, ps.Info)
+	resolvePlaySelection(p, ps.Info)
 	s.applyStreamPreferences(ctx, pr, p, t, ps.Info)
 	applySelections(p, ps.Info, s.audioLanguages(pr.User))
 	dec := core.Decision{Kind: core.DecisionDirectPlay, VideoCopy: true, AudioCopy: true, Container: ps.Info.Container, AudioStream: p.opts.AudioStream, SubtitleStream: p.opts.SubtitleStream}
@@ -818,7 +820,7 @@ func (s *Server) handleStartHLS(w http.ResponseWriter, r *http.Request) {
 		// An MDE client got "direct play OK" from the decision, judged the
 		// media unplayable itself and now asks for a stream: decide again
 		// without direct play so a needed transcode isn't a plain remux.
-		resolvePlaySubtitle(&p, ps.Info)
+		resolvePlaySelection(&p, ps.Info)
 		applySelections(&p, ps.Info, s.audioLanguages(pr.User))
 		dec = s.d.Transcoder.Decide(ps.Info, p.caps, p.opts)
 	}
@@ -1209,7 +1211,8 @@ func (s *Server) handlePartSelect(w http.ResponseWriter, r *http.Request) {
 		if v := q.Get("audioStreamID"); v != "" {
 			if sid, err := strconv.ParseInt(v, 10, 64); err == nil {
 				if ref, ok := s.streams.lookup(sid); ok && int64(ref.key) == id && ref.info.Type == "audio" {
-					sel.audio, sel.audioSet = ref.index, true
+					info := ref.info
+					sel.audio, sel.audioSet, sel.audioStream = ref.index, true, &info
 				}
 			}
 		}
