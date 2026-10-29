@@ -798,6 +798,10 @@ func (s *Server) collectionItems(w http.ResponseWriter, r *http.Request, k core.
 func (s *Server) placeholderMetadata(ctx context.Context, pr *Request, t *core.Title, collection core.RatingKey) model.Metadata {
 	md := s.metadata(ctx, pr, t, renderOpts{})
 	md.Key = "/library/metadata/" + t.Key.String() + "?collection=" + collection.String()
+	// Future placeholders use base TMDB artwork through the collection-scoped
+	// image handler; overlays and custom poster providers require released titles.
+	md.Thumb = thumbURL(t)
+	md.Art = artURL(t)
 	if md.Thumb != "" {
 		md.Thumb += "?collection=" + collection.String()
 	}
