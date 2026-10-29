@@ -23,9 +23,10 @@ type streamRef struct {
 }
 
 // streamRegistry hands out stable Stream ids. Ids are a hash of (ratingKey,
-// stream position) so they survive restarts; the registry resolves them back
+// stream position) for the initial identity; the registry resolves them back
 // (for /library/streams/{id} and audioStreamID/subtitleStreamID params) and
-// probes past the rare collision.
+// probes past hash collisions and changed stream identities. Previously issued
+// IDs keep their identity when an estimate or another release is rendered.
 //
 // External (sidecar) subtitles hash their source instead: they follow the
 // embedded streams, whose count differs between the estimate shown before
@@ -70,11 +71,11 @@ func (r *streamRegistry) register(key core.RatingKey, index int, info core.Strea
 	id := slotHash(key, slot)
 	for {
 		ref, ok := r.byID[id]
-		if !ok || (ref.key == key && ref.slot == slot) {
+		if !ok || (ref.key == key && ref.slot == slot && sameStreamIdentity(ref.info, info)) {
 			r.byID[id] = streamRef{key: key, index: index, info: info, slot: slot}
 			return id
 		}
-		id++ // collision: probe
+		id++ // hash collision or changed identity: preserve the old reference
 	}
 }
 
@@ -88,9 +89,19 @@ func (r *streamRegistry) lookup(id int64) (streamRef, bool) {
 // ---------------------------------------------------------------------------
 // Stream selections (PUT /library/parts/{id}?audioStreamID=&subtitleStreamID=)
 
+// Selection identity excludes mutable probe/default hints. It includes the
+// distinguishing audio/subtitle metadata so an old ID cannot change language
+// when a later release reuses the same stream position.
+func sameStreamIdentity(a, b core.StreamInfo) bool {
+	return a.Type == b.Type && a.Codec == b.Codec && a.Language == b.Language &&
+		a.Channels == b.Channels && a.Title == b.Title && a.Forced == b.Forced &&
+		a.External == b.External && a.ExternalURL == b.ExternalURL
+}
+
 type selection struct {
 	audio       int // position in MediaInfo.Streams
 	audioSet    bool
+	audioStream *core.StreamInfo
 	subtitle    int // position, -1 = none
 	subtitleSet bool
 	// subtitleStream is the chosen subtitle when it was picked by stream
