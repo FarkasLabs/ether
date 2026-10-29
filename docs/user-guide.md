@@ -15,8 +15,8 @@ Ether supplies no media, provider accounts or indexer access.
 
 ## Stream torrents through debrid
 
-1. Under **Sources › Indexers**, add a torrent source: a built-in site whose
-   definition is a torrent site (see [Built-in indexers](#built-in-indexers)),
+1. Under **Sources › Indexers**, add a torrent source: a torrent site (see
+   [Sites](#sites)),
    or a Torznab URL with its protocol set to **Torrent (Torznab)**. If you
    already run Prowlarr you can import its indexers instead, but you don't
    need it.
@@ -74,22 +74,34 @@ The best release from the other source is checked at the same time, and both
 remain available for failover. **Releases › Pinned** (when you find a title) and **History** show when
 routing moved a release, and why.
 
-## Built-in indexers
+## Sites
 
 Ether can search sites itself, without a separate indexer manager. Each
-built-in site runs from a *definition*: a YAML file in the Cardigann format
+site runs from a *definition*: a YAML file in the Cardigann format
 that Prowlarr and Jackett also use, describing the site's search pages,
 sign-in, settings and categories. **Ether ships no definitions.** Install only
 definitions for sites you have the right to use, and follow those sites'
 rules.
 
+A definition is not searched by itself: it describes *how* to search a site.
+The site is searched once you add it as an indexer, and it then appears in the
+indexer list like any other indexer. One definition can back more than one
+indexer, for example two accounts or two mirror addresses.
+
 ### Install definitions
 
-Under **Sources › Indexers › Built-in sites**:
+Under **Sources › Indexers › Site definitions**, below the indexer list:
 
+- **Installed** counts your definitions and how many your indexers use.
+  Definitions no indexer uses yet are listed under **Not added as an
+  indexer**, each with **Add as indexer** and **Remove**. A definition an
+  indexer uses is shown in that indexer's drawer instead, with where it came
+  from and any warnings, so each site appears once on the page.
 - **Upload definition** takes a `.yml` file or pasted YAML. Ether checks it
   before installing and lists anything it does not support (for example a
   captcha sign-in or an unknown filter) as a warning beside the definition.
+  You can also upload from **Add indexer › Site…**, which continues straight
+  to the new indexer's settings.
 - **Definitions source** (optional) is a folder of definitions you trust: a
   GitHub folder URL (`https://github.com/<owner>/<repo>/tree/<branch>/<folder>`),
   the matching raw folder or GitHub contents API URL, or a URL that returns a
@@ -101,8 +113,9 @@ Under **Sources › Indexers › Built-in sites**:
 
 ### Add a site
 
-1. Choose **Add indexer › Built-in site…**, search, and pick an installed
-   definition, or install one from your definitions source.
+1. Choose **Add indexer › Site…**, search, and pick an installed definition,
+   install one from your definitions source, or upload one. Sites you have
+   already added are marked **Added**.
 2. The drawer shows the settings the definition asks for, such as a username
    and password, a cookie, a passkey or a sort order. Passwords are stored
    encrypted and shown as `••••` afterwards; leave them to keep them.
@@ -112,8 +125,9 @@ Under **Sources › Indexers › Built-in sites**:
 5. **Test** signs in and runs a sample search, then shows how many results it
    found and a few titles, or the site's error.
 
-Built-in sites appear in the same list as Newznab and Torznab indexers, with
-a **Built-in** badge, their protocol and their last test result. They share
+Sites appear in the same list as Newznab and Torznab indexers, with a
+**Torrent site** or **Usenet site** badge, their address and their last test
+result. They share
 the same search order, daily budgets, result cache and failover. Torrent sites
 stream through your debrid account; a definition that serves NZB files
 streams from your Usenet providers.

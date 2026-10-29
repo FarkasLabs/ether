@@ -25,17 +25,19 @@ const builtinIndexer: Indexer = {
 
 async function openAddSite() {
   fireEvent.click(await screen.findByRole("button", { name: /Add indexer/ }, WAIT));
-  fireEvent.click(await screen.findByRole("menuitem", { name: "Built-in site…" }));
-  return screen.findByRole("dialog", { name: "Add a built-in site" });
+  fireEvent.click(await screen.findByRole("menuitem", { name: "Site…" }));
+  return screen.findByRole("dialog", { name: "Add a site" });
 }
 
-describe("Sources › Indexers built-in sites", () => {
-  it("adds a built-in site from an installed definition, tests it and saves it", async () => {
+describe("Sources › Indexers sites", () => {
+  it("adds a site from an installed definition, tests it and saves it", async () => {
     const { fake } = renderApp("/sources/indexers");
     const picker = await openAddSite();
     fireEvent.click(await within(picker).findByRole("button", { name: "Use Example Private" }));
     const drawer = await screen.findByRole("dialog", { name: "Example Private" });
-    expect(within(drawer).getByText("Built-in site · Torrent")).toBeInTheDocument();
+    expect(within(drawer).getByText("Torrent site")).toBeInTheDocument();
+    expect(within(drawer).getByText("Example Private (example-private)")).toBeInTheDocument();
+    expect(within(drawer).getByText(/filter "sparkle" is not supported/)).toBeInTheDocument();
     expect(within(drawer).getByLabelText("Site address")).toHaveValue(
       "https://example-private.invalid/",
     );
@@ -70,7 +72,15 @@ describe("Sources › Indexers built-in sites", () => {
     // Newznab indexers keep their redacted keys.
     expect(body.slice(0, 3).map((ix) => ix.apiKey)).toEqual(["••••", "••••", "••••"]);
     const list = screen.getByRole("region", { name: "Indexers" });
-    expect(await within(list).findByText(/Built-in site: Example Private/, {}, WAIT)).toBeVisible();
+    expect(await within(list).findByText("Torrent site", {}, WAIT)).toBeVisible();
+    expect(within(list).getByText(/Priority 5 · example-private.invalid/)).toBeVisible();
+    // The definition now backs an indexer, so it leaves the unused list.
+    const unused = screen.getByRole("list", { name: "Unused definitions" });
+    await waitFor(() => expect(within(unused).queryByText("Example Private")).toBeNull());
+    expect(within(unused).getByText("Example Tracker")).toBeInTheDocument();
+    expect(
+      screen.getByText("2 definitions installed, 1 used by your indexers above."),
+    ).toBeInTheDocument();
   });
 
   it("generates the settings form from the definition", async () => {
@@ -88,7 +98,7 @@ describe("Sources › Indexers built-in sites", () => {
     ).toBeVisible();
   });
 
-  it("lists built-in sites with badges and their last test, and keeps stored secrets", async () => {
+  it("lists sites with their type and last test, and keeps stored secrets", async () => {
     const { fake } = renderApp("/sources/indexers", {}, (f) => {
       f.state.config.indexers = [...(f.state.config.indexers ?? []), builtinIndexer];
       f.sites.state.statuses = [
@@ -106,8 +116,14 @@ describe("Sources › Indexers built-in sites", () => {
       "title",
       "Example Private: sign-in failed",
     );
-    expect(within(list).getByText("Built-in")).toBeInTheDocument();
-    expect(within(list).getByText(/Built-in site: Example Private/)).toBeInTheDocument();
+    expect(within(list).getByText("Torrent site")).toBeInTheDocument();
+    expect(
+      within(list).getByText(
+        /example-private.invalid · 66 of 50 searches used today · 10 torrent downloads a day/,
+      ),
+    ).toBeInTheDocument();
+    // Shown once: as the indexer, not again among the definitions.
+    expect(screen.getAllByText("Example Private")).toHaveLength(1);
 
     fireEvent.click(within(list).getByRole("button", { name: "Edit Example Private" }));
     const drawer = await screen.findByRole("dialog", { name: "Example Private" });
@@ -144,7 +160,7 @@ describe("Sources › Indexers built-in sites", () => {
     expect(await within(drawer).findByText(/Wrong username or password/)).toBeInTheDocument();
   });
 
-  it("flags a built-in site whose definition was removed", async () => {
+  it("flags a site whose definition was removed", async () => {
     renderApp("/sources/indexers", {}, (f) => {
       f.state.config.indexers = [{ ...builtinIndexer, definition: "gone" }];
     });
@@ -182,6 +198,34 @@ describe("Sources › Indexers built-in sites", () => {
     expect(await within(picker).findByText(/No definitions source is set/)).toBeInTheDocument();
   });
 
+  it("marks sites that are already indexers in the picker", async () => {
+    renderApp("/sources/indexers", {}, (f) => {
+      f.state.config.indexers = [...(f.state.config.indexers ?? []), builtinIndexer];
+    });
+    await screen.findByText("Torrent site", {}, WAIT);
+    const picker = await openAddSite();
+    const installed = within(picker).getByRole("region", { name: "Installed sites" });
+    const rows = within(installed).getAllByRole("listitem");
+    expect(within(rows[1]!).getByText("Added")).toBeInTheDocument();
+    expect(within(rows[0]!).queryByText("Added")).toBeNull();
+  });
+
+  it("uploads a definition from the picker and continues to its settings", async () => {
+    const { fake } = renderApp("/sources/indexers");
+    const picker = await openAddSite();
+    fireEvent.click(within(picker).getByRole("button", { name: /Upload definition/ }));
+    const upload = await screen.findByRole("dialog", { name: "Upload definition" });
+    fireEvent.change(within(upload).getByLabelText("Definition YAML"), {
+      target: { value: "id: my-site\nname: My Site\nlinks:\n  - https://my-site.invalid/\n" },
+    });
+    fireEvent.click(within(upload).getByRole("button", { name: /Install definition/ }));
+    await waitFor(() => expect(calls(fake, "POST", "/indexer-sites/definitions")).toHaveLength(1));
+    const drawer = await screen.findByRole("dialog", { name: "My Site" }, WAIT);
+    expect(within(drawer).getByLabelText("Site address")).toHaveValue("https://my-site.invalid/");
+    expect(within(drawer).queryByText(/is not installed/)).toBeNull();
+    expect(within(drawer).getByRole("button", { name: /Test/ })).toBeEnabled();
+  });
+
   it("still adds Newznab and Torznab URLs from the same menu", async () => {
     renderApp("/sources/indexers");
     fireEvent.click(await screen.findByRole("button", { name: /Add indexer/ }, WAIT));
@@ -195,9 +239,7 @@ describe("Sources › Indexers built-in sites", () => {
     renderApp("/sources/indexers");
     const list = await screen.findByRole("region", { name: "Indexers" }, WAIT);
     expect(within(list).queryByText(/Prowlarr/)).toBeNull();
-    expect(screen.getByRole("region", { name: "Built-in sites" })).toHaveTextContent(
-      "Ether ships none",
-    );
+    expect(await screen.findByText(/It ships none/)).toBeInTheDocument();
   });
 });
 
@@ -218,11 +260,12 @@ describe("Sources › Indexers definitions", () => {
     });
   });
 
-  it("lists installed definitions with warnings and updates them from the source", async () => {
+  it("lists unused definitions with warnings and updates them from the source", async () => {
     const { fake } = renderApp("/sources/indexers");
-    const installed = await screen.findByRole("list", { name: "Installed definitions" }, WAIT);
-    expect(within(installed).getByText("Example Tracker")).toBeInTheDocument();
-    expect(within(installed).getByText(/filter "sparkle" is not supported/)).toBeInTheDocument();
+    const unused = await screen.findByRole("list", { name: "Unused definitions" }, WAIT);
+    expect(within(unused).getByText("Example Tracker")).toBeInTheDocument();
+    expect(within(unused).getByText(/filter "sparkle" is not supported/)).toBeInTheDocument();
+    expect(screen.getByText("2 definitions installed.")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: /Update definitions/ }));
     await waitFor(() => expect(calls(fake, "POST", "/indexer-sites/update")).toHaveLength(1));
     expect(await screen.findByText(/1 updated · 0 unchanged/)).toBeInTheDocument();
@@ -247,23 +290,40 @@ describe("Sources › Indexers definitions", () => {
     expect(calls(fake, "POST", "/indexer-sites/definitions")[1]!.body).toMatchObject({
       yaml: expect.stringContaining("id: my-site"),
     });
-    const installed = await screen.findByRole("list", { name: "Installed definitions" });
-    expect(await within(installed).findByText("My Site", {}, WAIT)).toBeInTheDocument();
+    const unused = await screen.findByRole("list", { name: "Unused definitions" });
+    expect(await within(unused).findByText("My Site", {}, WAIT)).toBeInTheDocument();
+    // Uploading from the page installs only; no indexer drawer opens.
+    expect(screen.queryByRole("dialog", { name: "My Site" })).toBeNull();
   });
 
-  it("removes an unused definition and protects ones in use", async () => {
+  it("adds an unused definition as an indexer", async () => {
+    renderApp("/sources/indexers");
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Add Example Tracker as an indexer" }, WAIT),
+    );
+    const drawer = await screen.findByRole("dialog", { name: "Example Tracker" });
+    expect(within(drawer).getByRole("button", { name: "Save indexer" })).toBeInTheDocument();
+    expect(within(drawer).getByLabelText("Site address")).toHaveValue(
+      "https://example-tracker.invalid/",
+    );
+  });
+
+  it("removes an unused definition and keeps ones in use off the list", async () => {
     const { fake } = renderApp("/sources/indexers", {}, (f) => {
       f.state.config.indexers = [...(f.state.config.indexers ?? []), builtinIndexer];
     });
-    const installed = await screen.findByRole("list", { name: "Installed definitions" }, WAIT);
-    expect(
-      within(installed).getByRole("button", { name: "Remove Example Private" }),
-    ).toBeDisabled();
+    const installed = await screen.findByRole("list", { name: "Unused definitions" }, WAIT);
+    expect(within(installed).queryByRole("button", { name: "Remove Example Private" })).toBeNull();
     fireEvent.click(within(installed).getByRole("button", { name: "Remove Example Tracker" }));
     fireEvent.click(await screen.findByRole("button", { name: "Remove" }));
     await waitFor(() =>
       expect(calls(fake, "DELETE", "/indexer-sites/definitions/example-tracker")).toHaveLength(1),
     );
-    await waitFor(() => expect(within(installed).queryByText("Example Tracker")).toBeNull());
+    await waitFor(() =>
+      expect(screen.queryByRole("list", { name: "Unused definitions" })).toBeNull(),
+    );
+    expect(
+      screen.getByText("1 definition installed, all used by your indexers above."),
+    ).toBeInTheDocument();
   });
 });

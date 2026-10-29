@@ -60,8 +60,7 @@ export function ProwlarrImport({ onImported }: { onImported?: () => void }) {
       <p className="text-sm text-fg-muted">
         Bring in the Usenet (Newznab) and torrent (Torznab) indexers a Prowlarr instance manages.
         Ether handles their service limits automatically. Torrent indexers stream through a debrid
-        account. You don't need Prowlarr: built-in sites and Newznab/Torznab URLs can be added
-        directly.
+        account. You don't need Prowlarr: sites and Newznab/Torznab URLs can be added directly.
       </p>
       <SettingsSection title="Prowlarr">
         <SettingsRow
