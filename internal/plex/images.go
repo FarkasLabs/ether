@@ -214,7 +214,7 @@ func (s *Server) artPath(ctx context.Context, key core.RatingKey, element string
 	if err != nil {
 		return "", 0, err
 	}
-	if !s.visibleTitle(ctx, FromContext(ctx).User, t) {
+	if (!t.Released.IsZero() && t.Released.After(s.now())) || !s.visibleTitle(ctx, FromContext(ctx).User, t) {
 		return "", 0, core.ErrNotFound
 	}
 	parent := func() *core.Title {
@@ -290,12 +290,36 @@ func (s *Server) serveItemImage(w http.ResponseWriter, r *http.Request, key core
 	if element == "composite" || element == "squareArt" {
 		element = "thumb"
 	}
-	if s.serveCollectionArtwork(w, r, key, element, width) {
+	raw := r.URL.Query().Get("collection")
+	if raw == "" && s.serveCollectionArtwork(w, r, key, element, width) {
 		return
 	}
 	path, defWidth, err := s.artPath(r.Context(), key, element)
-	if err != nil || path == "" {
-		writeHTTPError(w, http.StatusNotFound)
+	if raw != "" || err != nil || path == "" {
+		t, _, e := s.lookupPlaceholder(r.Context(), FromContext(r.Context()), key, raw)
+		if e != nil {
+			writeHTTPError(w, http.StatusNotFound)
+			return
+		}
+		path := t.PosterPath
+		if element == "art" || element == "background" {
+			path = t.BackdropPath
+		}
+		if element != "thumb" && element != "poster" && element != "art" && element != "background" {
+			path = ""
+		}
+		if path == "" {
+			writeHTTPError(w, http.StatusNotFound)
+			return
+		}
+		if width <= 0 {
+			if element == "art" || element == "background" {
+				width = 1280
+			} else {
+				width = 500
+			}
+		}
+		s.serveRemoteImage(w, r, s.d.ImageURL(path, tmdbSize(width)))
 		return
 	}
 	if width <= 0 {
@@ -384,6 +408,12 @@ func (s *Server) handlePhotoTranscode(w http.ResponseWriter, r *http.Request) {
 			if err != nil {
 				writeHTTPError(w, http.StatusNotFound)
 				return
+			}
+			if collection := u.Query().Get("collection"); collection != "" {
+				r = r.Clone(r.Context())
+				q := r.URL.Query()
+				q.Set("collection", collection)
+				r.URL.RawQuery = q.Encode()
 			}
 			s.serveItemImage(w, r, key, m[2], width)
 			return

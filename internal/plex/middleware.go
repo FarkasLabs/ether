@@ -321,7 +321,7 @@ func (s *Server) writeErr(w http.ResponseWriter, r *http.Request, err error) {
 		writeHTTPError(w, http.StatusUnauthorized)
 	case errors.Is(err, core.ErrStreamLimit):
 		writeHTTPError(w, http.StatusServiceUnavailable)
-	case errors.Is(err, core.ErrNotAvailable), errors.Is(err, core.ErrDebridAuth):
+	case errors.Is(err, core.ErrNotAvailable), errors.Is(err, core.ErrUnreleased), errors.Is(err, core.ErrDebridAuth):
 		// The title exists; nothing can play it right now (no release yet,
 		// nothing cached, no sources, a rejected debrid key). A 404 here
 		// reads as "this item is gone" and Plex apps show a bare "404

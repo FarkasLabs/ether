@@ -63,6 +63,14 @@ func (c *Catalog) Get(ctx context.Context, key core.RatingKey) (*core.Title, err
 	return t, err
 }
 
+func (c *Catalog) StoredTitle(ctx context.Context, key core.RatingKey) (*core.Title, error) {
+	st, err := c.loadByKey(ctx, key)
+	if err != nil {
+		return nil, err
+	}
+	return &st.t, nil
+}
+
 func (c *Catalog) get(ctx context.Context, key core.RatingKey) (*core.Title, error) {
 	switch key.Kind() {
 	case core.KindMovie:

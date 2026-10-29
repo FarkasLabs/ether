@@ -76,6 +76,12 @@ type Catalog interface {
 	ByExternalID(ctx context.Context, source, id string) (*Title, error)
 }
 
+// StoredTitleLookup reads local metadata without remote discovery. Callers
+// must apply their own authorization before exposing the returned title.
+type StoredTitleLookup interface {
+	StoredTitle(context.Context, RatingKey) (*Title, error)
+}
+
 type FacetValue struct {
 	Key   string `json:"key"`
 	Title string `json:"title"`
@@ -116,6 +122,7 @@ type Collection struct {
 	PosterPath   string    `json:"posterPath,omitempty"`
 	BackdropPath string    `json:"backdropPath,omitempty"`
 	ChildCount   int       `json:"childCount"`
+	Upcoming     bool      `json:"upcoming,omitempty"` // admits scoped future placeholders
 	// UpdatedAt changes when the collection's members or artwork change, so
 	// Plex clients refetch artwork (additive).
 	UpdatedAt time.Time `json:"updatedAt,omitempty"`
@@ -127,6 +134,14 @@ type Collections interface {
 	Items(ctx context.Context, user *User, key RatingKey, offset, limit int) (Page, error)
 	CreateSmart(ctx context.Context, c Collection) (*Collection, error)
 	DeleteSmart(ctx context.Context, key RatingKey) error
+}
+
+// CollectionPlaceholder resolves a future title only through a visible,
+// enabled collection in which it is currently a member for this viewer.
+type CollectionPlaceholder interface {
+	AllowsPlaceholders(context.Context, *User, RatingKey, string) bool
+	Placeholder(context.Context, *User, RatingKey, RatingKey, string) (*Title, error)
+	FindPlaceholder(context.Context, *User, RatingKey, string) (*Title, RatingKey, error)
 }
 
 // Recommender produces per-user Home and section rows.

@@ -10,6 +10,16 @@ import (
 // Titles returns hydrated, released, non-adult mirror entries in requested order. It never
 // fetches remote metadata, so collection serving stays bounded and offline.
 func (m *Mirror) Titles(ctx context.Context, keys []core.RatingKey) ([]core.Title, error) {
+	return m.titles(ctx, keys, false)
+}
+
+// TitlesIncludingFuture is a local metadata read for collection-scoped
+// authorization. Its caller must enforce membership and viewer policy.
+func (m *Mirror) TitlesIncludingFuture(ctx context.Context, keys []core.RatingKey) ([]core.Title, error) {
+	return m.titles(ctx, keys, true)
+}
+
+func (m *Mirror) titles(ctx context.Context, keys []core.RatingKey, includeFuture bool) ([]core.Title, error) {
 	if len(keys) == 0 {
 		return []core.Title{}, nil
 	}
@@ -133,7 +143,7 @@ func (m *Mirror) Titles(ctx context.Context, keys []core.RatingKey) ([]core.Titl
 	}
 	out := make([]core.Title, 0, len(keys))
 	for _, k := range keys {
-		if t := byKey[k]; t != nil && !t.Adult && t.IsReleased(m.now()) {
+		if t := byKey[k]; t != nil && !t.Adult && (t.IsReleased(m.now()) || includeFuture && !t.Released.IsZero()) {
 			out = append(out, *t)
 		}
 	}

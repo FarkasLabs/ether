@@ -454,7 +454,38 @@ func (s *Service) serve(ctx context.Context, row *specRow, user *core.User, wait
 			return nil, err
 		}
 	}
+	if row.spec.ReleaseMode == "upcoming" || row.spec.ReleaseMode == "mixed" {
+		titles, err := loadCollectionTitles(ctx, s.db, ms.keys)
+		if err != nil {
+			return nil, err
+		}
+		in := newInterner()
+		entries := make([]*entry, 0, len(titles))
+		for _, t := range titles {
+			entries = append(entries, entryFromTitle(t, in))
+		}
+		snap = mergeEntries(snap, entries)
+	}
 	keys := s.filterForUser(ctx, ms.keys, ms.personalRules(), user, snap)
+	if row.spec.ReleaseMode == "upcoming" || row.spec.ReleaseMode == "mixed" {
+		now := s.now()
+		filtered := make([]core.RatingKey, 0, len(keys))
+		for _, k := range keys {
+			e := snap.entries[k]
+			if e == nil || e.released == 0 {
+				continue
+			}
+			future := e.released > now.Unix()
+			if row.spec.ReleaseMode == "upcoming" && !future {
+				continue
+			}
+			if future && e.released > now.AddDate(0, 0, row.spec.LookaheadDays).Unix() {
+				continue
+			}
+			filtered = append(filtered, k)
+		}
+		keys = filtered
+	}
 	sp := ms.spec
 	if sp.Sort == "personal" && user != nil {
 		keys = s.personalOrder(ctx, row.id, ms.hash, user, keys)
@@ -546,7 +577,7 @@ func typeMatches(sp core.CollectionSpec, t core.MediaType) bool {
 
 func (s *Service) collectionFor(ctx context.Context, row *specRow, user *core.User, t core.MediaType, keys []core.RatingKey) core.Collection {
 	c := core.Collection{Key: row.key(), Title: row.spec.Name, Summary: row.spec.Description, Kind: "smart",
-		OwnerUserID: row.owner, ChildCount: len(keys)}
+		OwnerUserID: row.owner, ChildCount: len(keys), Upcoming: row.spec.ReleaseMode == "upcoming" || row.spec.ReleaseMode == "mixed"}
 	if row.builtin {
 		c.Kind = "trending"
 	}
@@ -684,13 +715,87 @@ func (s *Service) Items(ctx context.Context, user *core.User, key core.RatingKey
 		if offset >= total {
 			return core.Page{Items: []core.Title{}, Total: total}, nil
 		}
-		items, err := loadTitles(ctx, s.db, keys[offset:pageEnd(offset, limit, total)])
+		var items []core.Title
+		if row.spec.ReleaseMode == "upcoming" || row.spec.ReleaseMode == "mixed" {
+			items, err = loadCollectionTitles(ctx, s.db, keys[offset:pageEnd(offset, limit, total)])
+		} else {
+			items, err = loadTitles(ctx, s.db, keys[offset:pageEnd(offset, limit, total)])
+		}
 		if err != nil {
 			return core.Page{}, err
 		}
 		return core.Page{Items: items, Total: total}, nil
 	}
 	return core.Page{}, core.ErrNotFound
+}
+
+func (s *Service) AllowsPlaceholders(ctx context.Context, user *core.User, collection core.RatingKey, device string) bool {
+	if collection.Kind() != core.KindSmart || collection.IsEphemeral() {
+		return false
+	}
+	row, err := s.rowByKey(ctx, collection)
+	return err == nil && visible(row, user) && row.spec.Targets.CollectionsTab && scheduleAllows(row.spec.Targets.Schedule, device, s.now()) && (row.spec.ReleaseMode == "upcoming" || row.spec.ReleaseMode == "mixed")
+}
+
+func (s *Service) Placeholder(ctx context.Context, user *core.User, collection, key core.RatingKey, device string) (*core.Title, error) {
+	if collection.Kind() != core.KindSmart || collection.IsEphemeral() {
+		return nil, core.ErrNotFound
+	}
+	row, err := s.rowByKey(ctx, collection)
+	if err != nil || !visible(row, user) || !row.spec.Targets.CollectionsTab || !scheduleAllows(row.spec.Targets.Schedule, device, s.now()) || (row.spec.ReleaseMode != "upcoming" && row.spec.ReleaseMode != "mixed") {
+		return nil, core.ErrNotFound
+	}
+	keys, err := s.serve(ctx, row, user, true)
+	if err != nil {
+		return nil, err
+	}
+	for _, k := range keys {
+		if k == key {
+			titles, err := loadCollectionTitles(ctx, s.db, []core.RatingKey{k})
+			if err != nil {
+				return nil, err
+			}
+			if len(titles) == 1 && !titles[0].Released.IsZero() && titles[0].Released.After(s.now()) {
+				return &titles[0], nil
+			}
+		}
+	}
+	return nil, core.ErrNotFound
+}
+
+func (s *Service) FindPlaceholder(ctx context.Context, user *core.User, key core.RatingKey, device string) (*core.Title, core.RatingKey, error) {
+	rows, err := s.db.QueryContext(ctx, `SELECT DISTINCT spec_id FROM collections_members WHERE key=? ORDER BY spec_id LIMIT 256`, int64(key))
+	if err != nil {
+		return nil, 0, err
+	}
+	var ids []int64
+	for rows.Next() {
+		var id int64
+		if err := rows.Scan(&id); err != nil {
+			rows.Close()
+			return nil, 0, err
+		}
+		ids = append(ids, id)
+	}
+	err = rows.Err()
+	rows.Close()
+	if err != nil {
+		return nil, 0, err
+	}
+	for _, id := range ids {
+		if err := ctx.Err(); err != nil {
+			return nil, 0, err
+		}
+		ck := core.SmartKey(id)
+		t, err := s.Placeholder(ctx, user, ck, key, device)
+		if err == nil {
+			return t, ck, nil
+		}
+		if !errors.Is(err, core.ErrNotFound) {
+			return nil, 0, err
+		}
+	}
+	return nil, 0, core.ErrNotFound
 }
 
 // CreateSmart persists a filter-based smart collection (core.Filter) as a spec.

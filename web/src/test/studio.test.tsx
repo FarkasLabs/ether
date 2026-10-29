@@ -14,6 +14,31 @@ function hasRule(spec: CollectionSpec, pred: (r: Rule) => boolean) {
 }
 
 describe("Collection Studio editor", () => {
+  it("saves an explicit upcoming window without changing the default", async () => {
+    const { fake } = renderApp("/collections/new?draft=test-upcoming");
+    const name = await screen.findByLabelText("Collection name", {}, { timeout: 10000 });
+    fireEvent.change(name, { target: { value: "Look Ahead" } });
+    expect(screen.queryByLabelText("Look ahead (days)")).toBeNull();
+    fireEvent.click(screen.getByRole("radio", { name: "Upcoming" }));
+    fireEvent.change(screen.getByLabelText("Look ahead (days)"), { target: { value: "45" } });
+    await waitFor(
+      () =>
+        expect(
+          previewBodies(fake).some((s) => s.releaseMode === "upcoming" && s.lookaheadDays === 45),
+        ).toBe(true),
+      WAIT,
+    );
+    fireEvent.click(screen.getByRole("button", { name: /^Save$/ }));
+    await waitFor(
+      () =>
+        expect(
+          calls(fake, "POST", "/collections").some(
+            (c) => (c.body as CollectionSpec).lookaheadDays === 45,
+          ),
+        ).toBe(true),
+      WAIT,
+    );
+  });
   it("creates a collection in a drawer over the gallery", async () => {
     renderApp("/collections/new?draft=test-drawer");
     const drawer = await screen.findByRole("dialog", { name: "New collection" }, WAIT);

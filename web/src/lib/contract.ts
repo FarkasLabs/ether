@@ -127,6 +127,8 @@ export interface TargetSchedule {
 
 export interface CollectionSpec {
   localOnly?: boolean;
+  releaseMode?: "released" | "upcoming" | "mixed";
+  lookaheadDays?: number;
   id?: string;
   name: string;
   description?: string;
