@@ -281,11 +281,19 @@ export function plexDirectHealth(v: unknown, now = new Date()): HealthItem {
   const expires = parseTime(cert.notAfter);
   const details = [str(cert.subject)].filter(Boolean);
   if (cert.custom === true) details.push("Custom certificate");
+  if (str(v.certError)) {
+    details.push(str(v.certError));
+    return { ...base, level: "warn", summary: "Certificate check failed", details };
+  }
+  if (cert.reissueRequired === true) {
+    return { ...base, level: "warn", summary: "Certificate reissue pending", details };
+  }
   if (cert.selfSigned === true) {
     details.push("Plex apps do not normally trust a self-signed certificate.");
     return { ...base, level: "warn", summary: "Self-signed certificate", details };
   }
-  if (!expires) return { ...base, level: "ok", summary: "Certificate installed", details };
+  details.push("Expiry alone does not verify certificate trust or device association.");
+  if (!expires) return { ...base, level: "unknown", summary: "Certificate installed", details };
   const days = (expires.getTime() - now.getTime()) / 86400000;
   details.push(`Expires ${formatDate(expires)}`);
   if (days < 0) return { ...base, level: "error", summary: "Certificate expired", details };
@@ -296,7 +304,7 @@ export function plexDirectHealth(v: unknown, now = new Date()): HealthItem {
       summary: `Certificate renews ${relativeTime(expires, now)}`,
       details,
     };
-  return { ...base, level: "ok", summary: `Expires ${formatDate(expires)}`, details };
+  return { ...base, level: "unknown", summary: `Expires ${formatDate(expires)}`, details };
 }
 
 export function computeHealth(

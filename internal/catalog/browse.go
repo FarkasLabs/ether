@@ -135,6 +135,8 @@ func browseOrder(q core.BrowseQuery) string {
 	return col + " " + dir
 }
 
+// Browse filters share one SQL statement; their combined parameters remain subject
+// to the database's statement-wide variable limit.
 func (c *Catalog) browseWhere(f core.Filter) (string, []any, error) {
 	var conds []string
 	var args []any

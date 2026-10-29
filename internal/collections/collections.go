@@ -22,6 +22,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"slices"
 	"sort"
 	"strconv"
 	"sync"
@@ -61,6 +62,7 @@ type Service struct {
 	idx      *index
 	web      *webClient
 	bases    ExternalBases
+	anime    animeIDCache
 	depsMu   sync.RWMutex
 	state    core.State
 	auth     core.Auth
@@ -81,8 +83,9 @@ type Service struct {
 	buildBudget time.Duration
 
 	mu       sync.Mutex
+	airGate  chan struct{} // context-aware admission to serialized air-date refreshes
 	members  map[int64]*memberSet
-	flights  flight.Group[int64, *memberSet]
+	flights  flight.Group[buildKey, *memberSet]
 	personal map[string]personalEntry
 
 	invalMu sync.Mutex
@@ -138,7 +141,7 @@ func WithCatalogConfig(fn func() config.Catalog) Option { return func(s *Service
 // WithTraktConfig supplies the Trakt client id used to read public lists.
 func WithTraktConfig(fn func() config.Trakt) Option { return func(s *Service) { s.traktCfg = fn } }
 
-// WithHTTPClient sets the client for Letterboxd, MDBList and Trakt.
+// WithHTTPClient sets the client for the external list sites.
 func WithHTTPClient(c *http.Client) Option { return func(s *Service) { s.opts.httpClient = c } }
 
 // WithUserAgent identifies Ether to list sites.
@@ -175,7 +178,7 @@ func New(db *sql.DB, cat core.Catalog, log *slog.Logger, opts ...Option) (*Servi
 	}
 	s := &Service{db: db, cat: cat, log: log, now: time.Now,
 		liveTTL: 2 * time.Minute, tick: time.Minute, buildBudget: 20 * time.Second,
-		members: map[int64]*memberSet{}, personal: map[string]personalEntry{},
+		members: map[int64]*memberSet{}, personal: map[string]personalEntry{}, airGate: make(chan struct{}, 1),
 		opts: options{indexTTL: 2 * time.Minute}}
 	for _, fn := range opts {
 		fn(s)
@@ -194,7 +197,7 @@ func New(db *sql.DB, cat core.Catalog, log *slog.Logger, opts ...Option) (*Servi
 	s.web = newWebClient(s.opts.httpClient, ua, s.now)
 	s.bases = defaultBases()
 	if s.opts.bases != nil {
-		s.bases = *s.opts.bases
+		s.bases = s.opts.bases.withDefaults()
 	}
 	ctx := context.Background()
 	if err := s.seedBuiltins(ctx); err != nil {
@@ -316,9 +319,9 @@ func (s *Service) membersFor(ctx context.Context, row *specRow, wait bool) (*mem
 		return s.newMemberSet(row.spec, keys, nil, snap.builtAt, "local-facet"), nil
 	}
 	ms := s.cached(row.id)
-	fresh := ms != nil && ms.builtAt.Equal(row.lastBuilt) && row.buildHash != ""
+	fresh := ms != nil && ms.builtAt.Equal(row.lastBuilt) && row.buildHash != "" && ms.hash == row.buildHash
 	if row.spec.Refresh == RefreshLive {
-		fresh = ms != nil && s.now().Sub(ms.loadedAt) < s.liveTTL
+		fresh = ms != nil && row.buildHash != "" && ms.hash == row.buildHash && s.now().Sub(ms.loadedAt) < s.liveTTL
 	}
 	if fresh {
 		return ms, nil
@@ -366,11 +369,18 @@ func (s *Service) newMemberSet(sp core.CollectionSpec, keys []core.RatingKey, un
 	return ms
 }
 
+type buildKey struct {
+	id   int64
+	spec string
+}
+
+var errBuildSuperseded = errors.New("collection changed during build")
+
 // build evaluates a row and persists the result. Concurrent builds of the
 // same row share one evaluation.
 func (s *Service) build(ctx context.Context, row *specRow) (*memberSet, error) {
 	// The evaluation is shared, so it must not die with the first caller.
-	return s.flights.DoDetached(ctx, row.id, func(ctx context.Context) (*memberSet, error) {
+	return s.flights.DoDetached(ctx, buildKey{row.id, row.rawSpec}, func(ctx context.Context) (*memberSet, error) {
 		ctx, cancel := context.WithTimeout(ctx, 2*time.Minute)
 		defer cancel()
 		ms, err := s.buildNow(ctx, row)
@@ -385,20 +395,18 @@ func (s *Service) build(ctx context.Context, row *specRow) (*memberSet, error) {
 
 func (s *Service) buildNow(ctx context.Context, row *specRow) (*memberSet, error) {
 	started := time.Now()
-	res, err := s.evaluate(ctx, row.spec, evalOptions{seed: row.publicID(), persist: true})
+	res, err := s.evaluate(ctx, row.spec, evalOptions{seed: row.spec.Name, persist: true})
 	if err != nil {
 		return nil, err
 	}
-	// Remember what labels resolved to, so the Studio shows real ids.
+	resolved := row.rawSpec
 	if !row.builtin && resolvedChanged(row.spec, res.resolved) {
 		if js, err := specJSON(res.resolved); err == nil {
-			if _, err := s.db.ExecContext(ctx, `UPDATE collections_specs SET spec_json=? WHERE id=?`, js, row.id); err != nil {
-				s.log.Debug("collections: save resolved spec", "id", row.publicID(), "err", err)
-			}
+			resolved = js
 		}
 	}
 	at := s.now().UTC().Truncate(time.Second)
-	if err := s.saveBuild(ctx, row.id, res.keys, res.unshared, res.itemCount(), res.warnings, res.hash, at); err != nil {
+	if err := s.saveBuild(ctx, row.id, row.rawSpec, resolved, res.keys, res.unshared, res.itemCount(), res.warnings, res.hash, at); err != nil {
 		return nil, err
 	}
 	s.log.Debug("collections: built", "id", row.publicID(), "name", row.spec.Name, "items", res.itemCount(),
@@ -426,10 +434,11 @@ func resolvedChanged(a, b core.CollectionSpec) bool {
 
 // personalEntry caches a user's personal ordering of a collection.
 type personalEntry struct {
-	id   int64
-	hash string
-	keys []core.RatingKey
-	at   time.Time
+	id    int64
+	hash  string
+	keys  []core.RatingKey
+	input []core.RatingKey
+	at    time.Time
 }
 
 // serve returns the members a user sees: content-rating and personal
@@ -469,7 +478,7 @@ func (s *Service) personalOrder(ctx context.Context, id int64, hash string, user
 	}
 	ck := fmt.Sprintf("%d|%d", id, user.ID)
 	s.mu.Lock()
-	if pe, ok := s.personal[ck]; ok && pe.hash == hash && s.now().Sub(pe.at) < personalTTL && len(pe.keys) == len(keys) {
+	if pe, ok := s.personal[ck]; ok && pe.hash == hash && s.now().Sub(pe.at) < personalTTL && slices.Equal(pe.input, keys) {
 		s.mu.Unlock()
 		return pe.keys
 	}
@@ -504,7 +513,7 @@ func (s *Service) personalOrder(ctx context.Context, id int64, hash string, user
 	if len(s.personal) > 2000 {
 		s.personal = map[string]personalEntry{}
 	}
-	s.personal[ck] = personalEntry{id: id, hash: hash, keys: out, at: s.now()}
+	s.personal[ck] = personalEntry{id: id, hash: hash, keys: out, input: append([]core.RatingKey(nil), keys...), at: s.now()}
 	s.mu.Unlock()
 	return out
 }

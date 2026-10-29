@@ -2,6 +2,7 @@ package availability
 
 import (
 	"context"
+	"github.com/braedonsaunders/ether/internal/config"
 	"github.com/braedonsaunders/ether/internal/core"
 	"github.com/braedonsaunders/ether/internal/releaseparse"
 	"strings"
@@ -11,13 +12,17 @@ import (
 // EvidenceWindow is a proof window, not a delay: an eligible observed release
 // unlocks a title immediately. Older catalogue entries do not need a scan.
 func EvidenceWindow(t core.Title, now time.Time) bool {
+	return evidenceWindow(t, now, config.Availability{})
+}
+
+func evidenceWindow(t core.Title, now time.Time, cfg config.Availability) bool {
 	if t.Released.IsZero() || t.Key.Kind() == core.KindLocal {
 		return false
 	}
 	age := now.Sub(t.Released)
 	switch t.Type {
 	case core.TypeMovie:
-		return age < 60*24*time.Hour
+		return !cfg.DisableMovieEvidenceGate && age < time.Duration(cfg.EffectiveMovieEvidenceDays())*24*time.Hour
 	case core.TypeEpisode, core.TypeShow:
 		return age < 24*time.Hour
 	}
@@ -31,7 +36,7 @@ func (s *Service) filterReleaseDiscovery(ctx context.Context, items []core.Title
 	keys := []core.RatingKey{}
 	for i := range items {
 		t := &items[i]
-		if EvidenceWindow(*t, s.now()) && titles[t.Key] == nil {
+		if evidenceWindow(*t, s.now(), s.cfg().Availability) && titles[t.Key] == nil {
 			keys = append(keys, t.Key)
 			titles[t.Key] = t
 		}
@@ -66,7 +71,7 @@ func (s *Service) filterReleaseDiscovery(ctx context.Context, items []core.Title
 			marks[i] = "?"
 			args = append(args, k)
 		}
-		args = append(args, s.now().Add(-61*24*time.Hour).Unix())
+		args = append(args, s.retentionCutoff().Unix())
 		rows, err := s.db.QueryContext(ctx, `SELECT rating_key,source_id,generation,payload,state,first_seen,revision FROM availability_releases WHERE rating_key IN (`+strings.Join(marks, ",")+`) AND last_seen>=?`, args...)
 		if err != nil {
 			continue
@@ -116,13 +121,16 @@ func (s *Service) filterReleaseDiscovery(ctx context.Context, items []core.Title
 // HiddenMovies supplies SQL pagination with exclusions from the recent local
 // mirror only. No per-title provider lookup or historical catalogue walk occurs.
 func (s *Service) HiddenMovies(ctx context.Context) []core.RatingKey {
+	if s.cfg().Availability.DisableMovieEvidenceGate {
+		return nil
+	}
 	c, ok := s.d.Catalog.(interface {
 		RecentMovies(context.Context, time.Time) ([]core.Title, error)
 	})
 	if !ok {
 		return nil
 	}
-	items, err := c.RecentMovies(ctx, s.now().Add(-60*24*time.Hour))
+	items, err := c.RecentMovies(ctx, s.now().Add(-time.Duration(s.cfg().Availability.EffectiveMovieEvidenceDays())*24*time.Hour))
 	if err != nil {
 		return nil
 	}

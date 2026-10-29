@@ -380,7 +380,7 @@ describe("health", () => {
       ["cache", "ok"],
       ["catalog", "ok"],
       ["remote", "off"],
-      ["plexdirect", "ok"],
+      ["plexdirect", "unknown"],
     ]);
     expect(usenetHealth(LIVE.providers).fill).toBeCloseTo(4 / 32);
     expect(indexersHealth(LIVE.indexers).summary).toBe("1 of 2 indexers out of searches today");
@@ -428,6 +428,12 @@ describe("health", () => {
       now,
     );
     expect([fallback.level, fallback.summary]).toEqual(["warn", "Self-signed certificate"]);
+    expect(plexDirectHealth({ cert: { present: true, reissueRequired: true } }, now).summary).toBe(
+      "Certificate reissue pending",
+    );
+    expect(
+      plexDirectHealth({ cert: { present: true }, certError: "check failed" }, now).level,
+    ).toBe("warn");
     expect(
       plexDirectHealth({ cert: { present: true, notAfter: "2028-01-01T00:00:00Z" } }, now).summary,
     ).toMatch(/^Expires /);

@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -338,41 +339,50 @@ func (c *Catalog) CrowdGraphBatch(ctx context.Context, keys []core.RatingKey, ma
 	if len(args) == 0 {
 		return edges, nil, nil
 	}
-	rows, err := c.db.QueryContext(ctx, `SELECT key, recs FROM catalog_crowd WHERE key IN (`+placeholders(len(args))+`)`, args...)
-	if err != nil {
-		return nil, nil, err
-	}
+	// The original query had no guaranteed row order. Sort source keys and
+	// query each chunk in that order so the target cap is independent of
+	// input permutation and database row order. Each recommendation list
+	// retains its stored ranking.
+	sort.Slice(args, func(i, j int) bool { return args[i].(int64) < args[j].(int64) })
 	var targetKeys []core.RatingKey
 	seenTarget := map[core.RatingKey]bool{}
-	for rows.Next() {
-		var k int64
-		var recs string
-		if err := rows.Scan(&k, &recs); err != nil {
-			rows.Close()
+	const batch = 200
+	for start := 0; start < len(args); start += batch {
+		part := args[start:min(start+batch, len(args))]
+		rows, err := c.db.QueryContext(ctx, `SELECT key, recs FROM catalog_crowd WHERE key IN (`+placeholders(len(part))+`) ORDER BY key`, part...)
+		if err != nil {
 			return nil, nil, err
 		}
-		src := core.RatingKey(k)
-		var list []core.RatingKey
-		for _, s := range strings.Split(recs, ",") {
-			if len(list) >= maxPerKey {
-				break
+		for rows.Next() {
+			var k int64
+			var recs string
+			if err := rows.Scan(&k, &recs); err != nil {
+				rows.Close()
+				return nil, nil, err
 			}
-			if n, perr := strconv.ParseInt(s, 10, 64); perr == nil && n != 0 {
-				tk := core.RatingKey(n)
-				list = append(list, tk)
-				if !seenTarget[tk] && len(targetKeys) < maxTargets {
-					seenTarget[tk] = true
-					targetKeys = append(targetKeys, tk)
+			src := core.RatingKey(k)
+			var list []core.RatingKey
+			for _, s := range strings.Split(recs, ",") {
+				if len(list) >= maxPerKey {
+					break
+				}
+				if n, perr := strconv.ParseInt(s, 10, 64); perr == nil && n != 0 {
+					tk := core.RatingKey(n)
+					list = append(list, tk)
+					if !seenTarget[tk] && len(targetKeys) < maxTargets {
+						seenTarget[tk] = true
+						targetKeys = append(targetKeys, tk)
+					}
 				}
 			}
+			if len(list) > 0 {
+				edges[src] = list
+			}
 		}
-		if len(list) > 0 {
-			edges[src] = list
+		rows.Close()
+		if err := rows.Err(); err != nil {
+			return nil, nil, err
 		}
-	}
-	rows.Close()
-	if err := rows.Err(); err != nil {
-		return nil, nil, err
 	}
 	loaded, err := c.titlesByKeys(ctx, targetKeys)
 	if err != nil {

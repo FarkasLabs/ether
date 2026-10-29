@@ -65,18 +65,18 @@ func (f fakeHealth) Check(ctx context.Context, nzb []byte) (bool, error) {
 }
 
 type parallelHealth struct {
-	active atomic.Int64
-	peak   atomic.Int64
-	delay  time.Duration
+	entered chan struct{}
+	release chan struct{}
 }
 
 func (f *parallelHealth) Check(ctx context.Context, _ []byte) (bool, error) {
-	n := f.active.Add(1)
-	for p := f.peak.Load(); n > p && !f.peak.CompareAndSwap(p, n); p = f.peak.Load() {
-	}
-	defer f.active.Add(-1)
 	select {
-	case <-time.After(f.delay):
+	case f.entered <- struct{}{}:
+	case <-ctx.Done():
+		return false, ctx.Err()
+	}
+	select {
+	case <-f.release:
 		return true, nil
 	case <-ctx.Done():
 		return false, ctx.Err()
@@ -218,22 +218,49 @@ func TestResolveFetchFailureDoesNotReportHealthCheck(t *testing.T) {
 
 func TestResolveValidatesLeadingCandidatesConcurrentlyInRankOrder(t *testing.T) {
 	idx := &fakeIndexer{releases: movieReleases()}
-	h := &parallelHealth{delay: 40 * time.Millisecond}
+	h := &parallelHealth{entered: make(chan struct{}, 2), release: make(chan struct{})}
 	svc := New(idx, h, nil, testCfg(), Options{})
-	started := time.Now()
-	got, err := svc.Resolve(context.Background(), core.ResolveRequest{Title: matrixTitle(), Client: appleTVCaps()})
-	if err != nil {
-		t.Fatal(err)
+	ctx, cancel := context.WithCancel(context.Background())
+	type result struct {
+		release *core.Resolution
+		err     error
 	}
-	if got.Release.ID != "uhd" {
-		t.Fatalf("winner %q; want highest-ranked uhd", got.Release.ID)
+	done := make(chan result, 1)
+	go func() {
+		got, err := svc.Resolve(ctx, core.ResolveRequest{Title: matrixTitle(), Client: appleTVCaps()})
+		done <- result{got, err}
+	}()
+	t.Cleanup(func() {
+		cancel()
+		select {
+		case <-done:
+		case <-time.After(5 * time.Second):
+			t.Error("Resolve did not stop after cancellation")
+		}
+		_ = svc.Close()
+	})
+	for i := 0; i < 2; i++ {
+		select {
+		case <-h.entered:
+		case <-time.After(5 * time.Second):
+			t.Fatal("two health checks did not enter concurrently")
+		}
 	}
-	if h.peak.Load() < 2 {
-		t.Fatalf("health checks were not concurrent (peak=%d)", h.peak.Load())
+	close(h.release)
+	select {
+	case got := <-done:
+		// Restore the result for cleanup to observe completion.
+		done <- got
+		if got.err != nil {
+			t.Fatal(got.err)
+		}
+		if got.release.Release.ID != "uhd" {
+			t.Fatalf("winner %q; want highest-ranked uhd", got.release.Release.ID)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("Resolve did not finish")
 	}
-	if time.Since(started) > 100*time.Millisecond {
-		t.Fatalf("validation took %s; candidates likely serialized", time.Since(started))
-	}
+
 }
 
 func TestResolveCamGating(t *testing.T) {

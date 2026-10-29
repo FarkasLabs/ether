@@ -73,6 +73,17 @@ export type TmdbListName =
   | "airing_today"
   | "on_the_air";
 
+export type StevenLuList =
+  | "movies"
+  | "movies-imdb-min7"
+  | "movies-imdb-min8"
+  | "movies-metacritic-min50"
+  | "movies-metacritic-min60"
+  | "movies-metacritic-min70"
+  | "movies-metacritic-min80"
+  | "movies-rottentomatoes-min70"
+  | "movies-rottentomatoes-min80";
+
 export type LookupSourceKind = "tmdbKeyword" | "tmdbCompany" | "tmdbNetwork" | "tmdbPerson";
 
 export type Source =
@@ -81,10 +92,12 @@ export type Source =
   | { kind: "tmdbCollection"; id: number; label?: string }
   | { kind: "tmdbDiscover"; params: Record<string, string> }
   | { kind: LookupSourceKind; id: number; label?: string }
-  | { kind: "watchProvider"; id: number; region: string; label?: string }
+  | { kind: "watchProvider"; id: number; region?: string; label?: string }
   | { kind: "traktList"; url: string }
   | { kind: "letterboxdList"; url: string }
   | { kind: "mdblist"; url: string }
+  | { kind: "anilistList"; url: string }
+  | { kind: "stevenlu"; list: StevenLuList }
   | { kind: "titles"; keys: string[] };
 
 export type SourceKind = Source["kind"];

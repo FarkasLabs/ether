@@ -340,6 +340,8 @@ func TestValidationErrors(t *testing.T) {
 		"source":   {spec("x", "movie", []core.CollectionSource{{Kind: "netflixScrape"}}), "sources[0].kind"},
 		"list":     {spec("x", "movie", []core.CollectionSource{{Kind: "tmdbList", List: "best"}}), "sources[0].list"},
 		"trakt":    {spec("x", "movie", []core.CollectionSource{{Kind: "traktList", URL: "https://example.com/list"}}), "sources[0].url"},
+		"anilist":  {spec("x", "show", []core.CollectionSource{{Kind: "anilistList", URL: "https://anilist.co/user/kai/mangalist"}}), "sources[0].url"},
+		"stevenlu": {spec("x", "movie", []core.CollectionSource{{Kind: "stevenlu", List: "movies-imdb-min9"}}), "sources[0].list"},
 		"field":    {spec("x", "movie", catalogSource(), rl("vibes", "is", "good")), "rules[0]"},
 		"op":       {spec("x", "movie", catalogSource(), rl("genre", "gte", "Drama")), "rules[0]"},
 		"between":  {spec("x", "movie", catalogSource(), rl("year", "between", 1990)), "rules[0]"},
@@ -482,5 +484,63 @@ func TestPreviewAcceptsUnnamedDraft(t *testing.T) {
 	}
 	if err := collections.Validate(&sp); err == nil {
 		t.Fatal("saving an unnamed collection must still be rejected")
+	}
+}
+
+func TestRandomDraftPreviewMatchesPublishedCollection(t *testing.T) {
+	e := newEnv(t)
+	sp := spec("Random draft", "movie", catalogSource())
+	sp.Sort, sp.Limit = "random", 5
+	preview, err := e.svc.Preview(e.ctx, sp, 60)
+	if err != nil {
+		t.Fatal(err)
+	}
+	created, err := e.svc.CreateSpec(e.ctx, sp)
+	if err != nil {
+		t.Fatal(err)
+	}
+	page, err := e.svc.Items(e.ctx, owner, core.SmartKey(mustInt(t, created.ID)), 0, 60)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i, item := range preview.Items {
+		if i >= len(page.Items) || item.Key != page.Items[i].Key {
+			t.Fatalf("draft random preview differs from published items")
+		}
+	}
+}
+
+func TestOfflineUnionRulesExclusionPreviewAndPublishedPaging(t *testing.T) {
+	e := newEnv(t)
+	sp := spec("Union audit", "movie", []core.CollectionSource{
+		{Kind: "titles", Keys: []string{core.MovieKey(101).String(), core.MovieKey(102).String()}},
+		{Kind: "titles", Keys: []string{core.MovieKey(102).String(), core.MovieKey(103).String(), core.MovieKey(105).String()}},
+	}, rl("genre", "is", "Drama"), rl("genre", "is", "Comedy"))
+	sp.Match = "any"
+	sp.Exclude = []core.CollectionRule{rl("year", "lte", 1980)}
+	sp.Sort = "source"
+	sp.SortDesc = false
+	preview, err := e.svc.Preview(e.ctx, sp, 60)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := strings.Join(titlesOf(preview), ","); got != "Time Car,Prison Hope" {
+		t.Fatalf("preview: %s", got)
+	}
+	created, err := e.svc.CreateSpec(e.ctx, sp)
+	if err != nil {
+		t.Fatal(err)
+	}
+	key := core.SmartKey(mustInt(t, created.ID))
+	a, err := e.svc.Items(e.ctx, owner, key, 0, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	b, err := e.svc.Items(e.ctx, owner, key, 1, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if a.Total != 2 || b.Total != 2 || len(a.Items) != 1 || len(b.Items) != 1 || a.Items[0].Key != preview.Items[0].Key || b.Items[0].Key != preview.Items[1].Key {
+		t.Fatalf("published pages do not match preview: %+v %+v", a, b)
 	}
 }

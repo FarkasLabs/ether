@@ -20,21 +20,22 @@ import (
 
 // CertInfo describes the certificate Ether serves.
 type CertInfo struct {
-	Present     bool          `json:"present"`
-	SelfSigned  bool          `json:"selfSigned"`
-	Custom      bool          `json:"custom"` // owner-supplied files, never replaced
-	Hash        string        `json:"hash,omitempty"`
-	Subject     string        `json:"subject,omitempty"`
-	DNSNames    []string      `json:"dnsNames,omitempty"`
-	NotBefore   time.Time     `json:"notBefore,omitempty"`
-	NotAfter    time.Time     `json:"notAfter,omitempty"`
-	Fingerprint string        `json:"fingerprint,omitempty"`
-	CertFile    string        `json:"certFile,omitempty"`
-	KeyFile     string        `json:"keyFile,omitempty"`
-	LastAttempt time.Time     `json:"lastAttempt,omitempty"` // last plex.tv request
-	NextAttempt time.Time     `json:"nextAttempt,omitempty"`
-	RetryAfter  time.Duration `json:"retryAfter,omitempty"`
-	LastError   string        `json:"lastError,omitempty"`
+	Present         bool          `json:"present"`
+	SelfSigned      bool          `json:"selfSigned"`
+	Custom          bool          `json:"custom"` // owner-supplied files, never replaced
+	Hash            string        `json:"hash,omitempty"`
+	Subject         string        `json:"subject,omitempty"`
+	DNSNames        []string      `json:"dnsNames,omitempty"`
+	NotBefore       time.Time     `json:"notBefore,omitempty"`
+	NotAfter        time.Time     `json:"notAfter,omitempty"`
+	Fingerprint     string        `json:"fingerprint,omitempty"`
+	CertFile        string        `json:"certFile,omitempty"`
+	KeyFile         string        `json:"keyFile,omitempty"`
+	LastAttempt     time.Time     `json:"lastAttempt,omitempty"` // last plex.tv request
+	NextAttempt     time.Time     `json:"nextAttempt,omitempty"`
+	RetryAfter      time.Duration `json:"retryAfter,omitempty"`
+	ReissueRequired bool          `json:"reissueRequired,omitempty"`
+	LastError       string        `json:"lastError,omitempty"`
 }
 
 // CertManagerOptions configures a CertManager.
@@ -89,10 +90,11 @@ type CertManager struct {
 }
 
 type certState struct {
-	LastAttempt time.Time     `json:"lastAttempt"`
-	LastError   string        `json:"lastError"`
-	Hash        string        `json:"hash"`
-	RetryAfter  time.Duration `json:"retryAfter,omitempty"`
+	LastAttempt     time.Time     `json:"lastAttempt"`
+	LastError       string        `json:"lastError"`
+	Hash            string        `json:"hash"`
+	RetryAfter      time.Duration `json:"retryAfter,omitempty"`
+	ReissueRequired bool          `json:"reissueRequired,omitempty"`
 }
 
 // NewCertManager returns a manager and loads any certificate on disk.
@@ -163,6 +165,7 @@ func (m *CertManager) load() error {
 	}
 	m.mu.Lock()
 	m.info.LastAttempt, m.info.LastError, m.info.RetryAfter = st.LastAttempt, st.LastError, st.RetryAfter
+	m.info.ReissueRequired = st.ReissueRequired
 	m.mu.Unlock()
 	pair, err := tls.LoadX509KeyPair(certFile, keyFile)
 	if err != nil {
@@ -198,6 +201,7 @@ func (m *CertManager) install(pair *tls.Certificate, leaf *x509.Certificate, cer
 	}
 	m.mu.Lock()
 	info.LastAttempt, info.LastError, info.RetryAfter = m.info.LastAttempt, m.info.LastError, m.info.RetryAfter
+	info.ReissueRequired = m.info.ReissueRequired
 	m.cert = pair
 	m.info = info
 	m.mu.Unlock()
@@ -259,6 +263,9 @@ func (m *CertManager) NeedsRenewal() bool {
 	if info.Custom {
 		return false
 	}
+	if info.ReissueRequired {
+		return true
+	}
 	if info.SelfSigned {
 		return true // always prefer a plex.direct certificate when one becomes available
 	}
@@ -290,7 +297,16 @@ func (m *CertManager) Ensure(ctx context.Context, serverToken string, hosts []st
 	now := m.o.Now()
 	cur := m.Info()
 	var reqErr error
-	needPlex := !cur.Present || cur.SelfSigned || now.After(cur.NotAfter.Add(-m.renewBefore(cur)))
+	needPlex := cur.ReissueRequired || !cur.Present || cur.SelfSigned || now.After(cur.NotAfter.Add(-m.renewBefore(cur)))
+	// Local expiry does not establish that the current device record owns the
+	// certificate. A claim may have recreated that record since issuance.
+	if !needPlex && serverToken != "" && m.o.Client != nil {
+		_, hash, err := m.o.Client.CertificateSubject(ctx, serverToken)
+		if err != nil {
+			return cur, fmt.Errorf("plextv: check device certificate subject: %w", err)
+		}
+		needPlex = cur.Hash == "" || !strings.EqualFold(cur.Hash, hash)
+	}
 	retryAfter := cur.RetryAfter
 	if retryAfter <= 0 {
 		retryAfter = m.o.RetryAfter
@@ -331,7 +347,7 @@ func (m *CertManager) requestPlexDirect(ctx context.Context, token string, cur C
 	}
 	m.o.Logger.Info("requesting plex.direct certificate", "reason", req.Reason)
 	bundle, err := m.o.Client.RequestPlexDirectCertificate(ctx, token, req)
-	st := certState{LastAttempt: now, Hash: cur.Hash, RetryAfter: m.o.RetryAfter}
+	st := certState{LastAttempt: now, Hash: cur.Hash, RetryAfter: m.o.RetryAfter, ReissueRequired: cur.ReissueRequired}
 	if err != nil {
 		if ctx.Err() != nil {
 			return err
@@ -353,13 +369,21 @@ func (m *CertManager) requestPlexDirect(ctx context.Context, token string, cur C
 	if err := m.write(bundle); err != nil {
 		st.LastError = err.Error()
 		m.saveState(st)
+		m.mu.Lock()
+		m.info.LastAttempt, m.info.LastError, m.info.RetryAfter = st.LastAttempt, st.LastError, st.RetryAfter
+		m.mu.Unlock()
+		m.shareState(ctx, st)
 		return err
 	}
-	m.saveState(st)
+	st.ReissueRequired = false
+	if err := m.persistState(st); err != nil {
+		return fmt.Errorf("plextv: persist certificate reissue state: %w", err)
+	}
 	m.mu.Lock()
 	m.info.LastAttempt, m.info.LastError, m.info.RetryAfter = st.LastAttempt, "", 0
+	m.info.ReissueRequired = false
 	m.mu.Unlock()
-	m.shareState(ctx, certState{LastAttempt: st.LastAttempt, Hash: st.Hash})
+	m.shareState(ctx, st)
 	m.o.Logger.Info("plex.direct certificate installed", "subject", bundle.Subject, "expires", bundle.Leaf.NotAfter)
 	return nil
 }
@@ -418,13 +442,44 @@ func (m *CertManager) write(b *CertBundle) error {
 }
 
 func (m *CertManager) saveState(st certState) {
-	if m.o.Dir == "" {
-		return
-	}
-	b, _ := json.MarshalIndent(st, "", "  ")
-	if err := writeFileAtomic(m.statePath(), b, 0o600); err != nil {
+	if err := m.persistState(st); err != nil {
 		m.o.Logger.Warn("save certificate state", "err", err)
 	}
+}
+
+func (m *CertManager) persistState(st certState) error {
+	if m.o.Dir == "" {
+		return errors.New("plextv: no certificate state directory")
+	}
+	b, _ := json.MarshalIndent(st, "", "  ")
+	return writeFileAtomic(m.statePath(), b, 0o600)
+}
+
+// RequireReissue records a claim lifecycle change without touching certificate files.
+func (m *CertManager) RequireReissue(ctx context.Context) error {
+	m.opMu.Lock()
+	defer m.opMu.Unlock()
+	if m.custom() {
+		return nil
+	}
+	if m.o.Shared != nil {
+		if _, err := m.syncSharedLocked(ctx); err != nil {
+			return err
+		}
+	}
+	st := m.currentState()
+	st.ReissueRequired = true
+	st.LastError = ""
+	st.LastAttempt = time.Time{}
+	if err := m.persistState(st); err != nil {
+		return err
+	}
+	m.mu.Lock()
+	m.info.ReissueRequired = true
+	m.info.LastError = ""
+	m.info.LastAttempt = time.Time{}
+	m.mu.Unlock()
+	return m.pushSharedLocked(ctx, st)
 }
 
 func writeFileAtomic(path string, data []byte, perm os.FileMode) error {

@@ -115,14 +115,14 @@ func (s *Service) remember(ctx context.Context, f core.ReleaseFeed, t core.Title
 	return err
 }
 func (s *Service) prune(ctx context.Context) error {
-	if _, err := s.db.ExecContext(ctx, `DELETE FROM availability_feed_items WHERE seen_at<?`, s.now().Add(-61*24*time.Hour).Unix()); err != nil {
+	if _, err := s.db.ExecContext(ctx, `DELETE FROM availability_feed_items WHERE seen_at<?`, s.retentionCutoff().Unix()); err != nil {
 		return err
 	}
 	if _, err := s.db.ExecContext(ctx, `DELETE FROM availability_feed_items WHERE (id,source_id) IN (SELECT id,source_id FROM availability_feed_items ORDER BY seen_at DESC LIMIT 2147483647 OFFSET 30000)`); err != nil {
 		return err
 	}
 
-	cutoff := s.now().Add(-61 * 24 * time.Hour).Unix()
+	cutoff := s.retentionCutoff().Unix()
 	if _, err := s.db.ExecContext(ctx, `DELETE FROM availability_releases WHERE last_seen<?`, cutoff); err != nil {
 		return err
 	}
@@ -170,3 +170,6 @@ func safeReason(err error) string {
 		return "Source could not be checked; it will be retried"
 	}
 }
+
+// Keep enough history for the largest supported window even if settings change later.
+func (s *Service) retentionCutoff() time.Time { return s.now().Add(-367 * 24 * time.Hour) }

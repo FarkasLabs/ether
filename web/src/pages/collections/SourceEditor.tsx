@@ -7,7 +7,13 @@ import { LookupPicker, TitleSearch } from "../../components/pickers";
 import { titleSubtitle } from "../../components/Poster";
 import { DragHandle, SortableList, arrayMove } from "../../components/Sortable";
 import type { Source, TitleCard } from "../../lib/contract";
-import { TMDB_LISTS, describeSource, isSourceComplete, sourceMeta } from "../../lib/rules";
+import {
+  STEVENLU_LISTS,
+  TMDB_LISTS,
+  describeSource,
+  isSourceComplete,
+  sourceMeta,
+} from "../../lib/rules";
 import { useTitle } from "../../lib/titles";
 
 export function SourceEditor({
@@ -120,7 +126,7 @@ function SourceBody({
           <LookupPicker
             kind={lookup}
             multiple={false}
-            region={source.kind === "watchProvider" ? source.region : region}
+            region={source.kind === "watchProvider" ? source.region || region : region}
             value={picked}
             ariaLabel={`${label} search`}
             onChange={(p) =>
@@ -131,7 +137,8 @@ function SourceBody({
             <label className="flex items-center gap-2 text-xs text-fg-muted">
               Region
               <Input
-                value={source.region}
+                value={source.region ?? ""}
+                placeholder={region}
                 maxLength={2}
                 className="h-8 w-16 uppercase"
                 aria-label={`${label} region`}
@@ -146,13 +153,14 @@ function SourceBody({
     }
     case "traktList":
     case "letterboxdList":
-    case "mdblist": {
-      const placeholder =
-        source.kind === "traktList"
-          ? "https://trakt.tv/users/…/lists/…"
-          : source.kind === "letterboxdList"
-            ? "https://letterboxd.com/…/list/…"
-            : "https://mdblist.com/lists/…";
+    case "mdblist":
+    case "anilistList": {
+      const placeholder = {
+        traktList: "https://trakt.tv/users/…/lists/…",
+        letterboxdList: "https://letterboxd.com/…/list/…",
+        mdblist: "https://mdblist.com/lists/…",
+        anilistList: "https://anilist.co/user/…/animelist/Completed",
+      }[source.kind];
       const bad = source.url.trim() !== "" && !isSourceComplete(source);
       return (
         <div className="space-y-1">
@@ -170,6 +178,16 @@ function SourceBody({
         </div>
       );
     }
+    case "stevenlu":
+      return (
+        <SearchSelect
+          value={source.list}
+          onChange={(v) => v && onChange({ ...source, list: v as typeof source.list })}
+          options={STEVENLU_LISTS}
+          ariaLabel={`${label} list`}
+          searchable={false}
+        />
+      );
     case "tmdbDiscover":
       return (
         <DiscoverParams

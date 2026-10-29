@@ -29,41 +29,44 @@ type fakePlexTV struct {
 	t   *testing.T
 	srv *httptest.Server
 
-	mu           sync.Mutex
-	users        map[string]Account // token -> account
-	pins         map[int64]*PIN
-	nextPIN      int64
-	claims       map[string]int64 // claim token -> account id
-	exchangeErr  int              // status to fail claim exchange with
-	machineID    string
-	published    []string
-	putCount     int
-	registered   []string // servers.xml bodies
-	connectivity int
-	certHash     string
-	csrStatus    int    // status to fail CSR upload with
-	csrUploads   int    // CSR PUTs received
-	subjectAttr  string // overrides the base64 DER "subject" attribute
-	lastCSR      *x509.CertificateRequest
-	pendingDL    int // 202s before the certificate is ready
-	issued       []byte
-	caKey        *ecdsa.PrivateKey
-	caCert       *x509.Certificate
-	certTTL      time.Duration
-	accessXML    string
-	accessFail   int // fail access_tokens.xml this many times with 500
-	sharedXML    string
-	usersXML     string
-	userXML      string
-	features     []Feature
-	featuresErr  int
-	requests     []string
-	headers      map[string]http.Header // path -> last headers
-	resources    map[string][]Resource  // token -> extra resources
+	mu            sync.Mutex
+	users         map[string]Account // token -> account
+	pins          map[int64]*PIN
+	nextPIN       int64
+	claims        map[string]int64 // claim token -> account id
+	exchangeErr   int              // status to fail claim exchange with
+	machineID     string
+	published     []string
+	httpsRequired string
+	putCount      int
+	registered    []string // servers.xml bodies
+	connectivity  int
+	certHash      string
+	csrStatus     int    // status to fail CSR upload with
+	csrUploads    int    // CSR PUTs received
+	subjectAttr   string // overrides the base64 DER "subject" attribute
+	lastCSR       *x509.CertificateRequest
+	pendingDL     int // 202s before the certificate is ready
+	issued        []byte
+	caKey         *ecdsa.PrivateKey
+	caCert        *x509.Certificate
+	certTTL       time.Duration
+	accessXML     string
+	accessFail    int // fail access_tokens.xml this many times with 500
+	sharedXML     string
+	usersXML      string
+	userXML       string
+	features      []Feature
+	featuresErr   int
+	requests      []string
+	headers       map[string]http.Header // path -> last headers
+	resources     map[string][]Resource  // token -> extra resources
 	// deviceOwner is the account holding this server's device record (0 =
 	// none). Like plex.tv, publishing for another account is refused.
-	deviceOwner   int64
-	deviceDeletes int
+	deviceOwner      int64
+	modelAssociation bool
+	associated       bool
+	deviceDeletes    int
 }
 
 const fakeHash = "0a1b2c3d4e5f60718293a4b5c6d7e8f9"
@@ -258,6 +261,7 @@ func (f *fakePlexTV) handle(w http.ResponseWriter, r *http.Request) {
 		f.deviceOwner = acct.ID
 		f.putCount++
 		f.published = r.URL.Query()["Connection[][uri]"]
+		f.httpsRequired = r.URL.Query().Get("httpsRequired")
 		io.WriteString(w, `<?xml version="1.0" encoding="UTF-8"?><Device/>`)
 	case r.Method == http.MethodGet && r.URL.Path == "/devices.xml":
 		if !authed {
@@ -276,6 +280,9 @@ func (f *fakePlexTV) handle(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		f.deviceOwner = 0
+		if f.modelAssociation {
+			f.associated = false
+		}
 		f.deviceDeletes++
 	case r.Method == http.MethodPost && r.URL.Path == "/servers.xml":
 		// PMS: token only as auth_token, no other query parameters, XML body.
@@ -327,13 +334,18 @@ func (f *fakePlexTV) handle(w http.ResponseWriter, r *http.Request) {
 				if u == "" {
 					continue
 				}
+				if strings.HasPrefix(u, "https://") {
+					conns = append(conns, ResourceConnection{Protocol: "https", URI: u})
+					continue
+				}
 				hostport := strings.TrimPrefix(u, "http://")
 				host, port, _ := strings.Cut(hostport, ":")
 				p, _ := strconv.Atoi(port)
-				conns = append(conns,
-					ResourceConnection{Protocol: "https", Address: host, Port: p, Local: strings.HasPrefix(host, "192.168."),
-						URI: "https://" + strings.ReplaceAll(host, ".", "-") + "." + f.certHash + ".plex.direct:" + port},
-					ResourceConnection{Protocol: "http", Address: host, Port: p, URI: u, Local: strings.HasPrefix(host, "192.168.")})
+				if !f.modelAssociation || f.associated {
+					conns = append(conns, ResourceConnection{Protocol: "https", Address: host, Port: p, Local: strings.HasPrefix(host, "192.168."),
+						URI: "https://" + strings.ReplaceAll(host, ".", "-") + "." + f.certHash + ".plex.direct:" + port})
+				}
+				conns = append(conns, ResourceConnection{Protocol: "http", Address: host, Port: p, URI: u, Local: strings.HasPrefix(host, "192.168.")})
 			}
 			out = append(out, Resource{Name: "Ether", Product: ServerProduct, ClientIdentifier: f.machineID, Provides: "server",
 				Owned: true, PublicAddress: "203.0.113.7", Connections: conns})
@@ -455,6 +467,9 @@ func (f *fakePlexTV) handle(w http.ResponseWriter, r *http.Request) {
 		}
 		f.issued = append(pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: der}),
 			pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: f.caCert.Raw})...)
+		if f.modelAssociation {
+			f.associated = true
+		}
 		w.WriteHeader(204)
 	case r.URL.Path == devPrefix+"download":
 		if !authed {

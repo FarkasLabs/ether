@@ -5,13 +5,12 @@ import (
 	"github.com/braedonsaunders/ether/internal/core"
 	"github.com/braedonsaunders/ether/internal/releaseparse"
 	"strings"
-	"time"
 )
 
 // RecordSearch retains descriptors from an actual requested search. It does not
 // initiate searches, grab media or claim health. Policy is reevaluated on reads.
 func (s *Service) RecordSearch(ctx context.Context, t *core.Title, rs []core.Release) {
-	if t == nil || !EvidenceWindow(*t, s.now()) || !t.IsReleased(s.now()) {
+	if t == nil || !evidenceWindow(*t, s.now(), s.cfg().Availability) || !t.IsReleased(s.now()) {
 		return
 	}
 	feeds := map[string]core.ReleaseFeed{}
@@ -134,7 +133,7 @@ func (s *Service) attachRetained(ctx context.Context, titles map[core.RatingKey]
 			marks[i] = "?"
 			args = append(args, n)
 		}
-		args = append(args, s.now().Add(-61*24*time.Hour).Unix())
+		args = append(args, s.retentionCutoff().Unix())
 		rows, err := s.db.QueryContext(ctx, `SELECT source_id,generation,payload,seen_at FROM availability_feed_items WHERE match_title IN (`+strings.Join(marks, ",")+`) AND seen_at>=? ORDER BY seen_at DESC LIMIT 2000`, args...)
 		if err != nil {
 			continue
