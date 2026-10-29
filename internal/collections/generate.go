@@ -188,7 +188,7 @@ func (s *Service) parseDraft(ctx context.Context, content, mediaType string) (*c
 			src.Label = named.Name
 		}
 		src.URL, src.Keys = "", nil // never let a model point at URLs or pick keys
-		if src.Kind == "titles" || src.Kind == "traktList" || src.Kind == "letterboxdList" || src.Kind == "mdblist" {
+		if src.Kind == "titles" || src.Kind == "traktList" || src.Kind == "letterboxdList" || src.Kind == "mdblist" || src.Kind == "anilistList" {
 			notes = append(notes, fmt.Sprintf("Dropped a %s source; add lists yourself.", src.Kind))
 			continue
 		}
