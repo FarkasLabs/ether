@@ -18,10 +18,12 @@ export function CacheExplorer({
   snapshot,
   busy,
   onPin,
+  onClearBlock,
 }: {
   snapshot?: CacheSnapshot;
   busy: boolean;
   onPin: (id: string, pinned: boolean) => void;
+  onClearBlock: (id: string, title: string) => void;
 }) {
   const [search, setSearch] = useState("");
   const [filter, setFilter] = useState("all");
@@ -75,7 +77,7 @@ export function CacheExplorer({
               <TableHead>Retained</TableHead>
               <TableHead className="hidden md:table-cell">Plays</TableHead>
               <TableHead className="hidden lg:table-cell">Last used</TableHead>
-              <TableHead className="w-12">
+              <TableHead className="w-40">
                 <span className="sr-only">Owner pin</span>
               </TableHead>
             </TableRow>
@@ -146,6 +148,14 @@ export function CacheExplorer({
                       size={14}
                       className={r.Pins?.includes("owner") ? "fill-primary text-primary" : ""}
                     />
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    disabled={busy}
+                    onClick={() => onClearBlock(r.ReleaseID, r.Title || r.ReleaseID)}
+                  >
+                    Clear &amp; block
                   </Button>
                 </TableCell>
               </TableRow>

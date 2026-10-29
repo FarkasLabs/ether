@@ -310,6 +310,29 @@ export default function Cache() {
       setBusy(null);
     }
   }
+  async function clearBlock(releaseId: string, title: string) {
+    if (
+      !window.confirm(
+        `Clear cached bytes for ${title} and block this release from future playback? Active or paused playback must be stopped first. Protected bytes may remain until background work ends. You can unblock it in the release controls.`,
+      )
+    )
+      return;
+    setBusy("clear-block");
+    setError(null);
+    try {
+      const result = await apiFetch<{ cleared: boolean; message: string }>("/cache/clear-block", {
+        method: "POST",
+        body: JSON.stringify({ releaseId }),
+      });
+      await live.reload();
+      if (result.cleared) toast.success(result.message);
+      else setError(new Error(result.message));
+    } catch (e) {
+      setError(e);
+    } finally {
+      setBusy(null);
+    }
+  }
   if (!draft)
     return (
       <Workspace title="Cache">
@@ -428,6 +451,7 @@ export default function Cache() {
                 snapshot={snap}
                 busy={busy !== null}
                 onPin={(releaseId, pinned) => void action("pin", { releaseId, pinned })}
+                onClearBlock={(id, title) => void clearBlock(id, title)}
               />
             </div>
           ) : (

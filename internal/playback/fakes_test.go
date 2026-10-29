@@ -685,3 +685,7 @@ func (h *harness) prepare(user *core.User, key core.RatingKey, client string) *c
 func mkv(id string, size int64, dur time.Duration) *fakeRelease {
 	return &fakeRelease{ID: id, Name: id + ".mkv", Size: size, Duration: dur}
 }
+
+func (r *fakeResolver) ReleaseBlocked(_ context.Context, id string) (bool, error) {
+	return r.isBad(id), nil
+}

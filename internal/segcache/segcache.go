@@ -50,6 +50,9 @@ var (
 
 // Cache implements core.SegmentCache.
 type Cache struct {
+	ownerMu    sync.RWMutex // orders owner clearing against writes and new pins
+	blockCheck func(string) bool
+
 	shared  *sharedCache
 	dir     string
 	dataDir string
@@ -262,6 +265,11 @@ func (c *Cache) Has(releaseID string, segment int) bool {
 // rejected with ErrTooLarge and nothing is stored. Note that a stored segment
 // may be evicted again immediately if everything else is pinned/protected.
 func (c *Cache) Put(releaseID string, segment int, data []byte) error {
+	c.ownerMu.RLock()
+	defer c.ownerMu.RUnlock()
+	if c.blockCheck != nil && c.blockCheck(releaseID) {
+		return nil // playback may continue without retaining blocked bytes
+	}
 	if c.shared != nil {
 		return c.shared.put(releaseID, segment, data)
 	}
@@ -916,4 +924,31 @@ func (c *Cache) loadReleaseDir(dir, rel string, all []*entry) []*entry {
 	c.segCount += len(r.segs)
 	c.mu.Unlock()
 	return all
+}
+
+// SetBlockCheck prevents background writers from refilling owner-blocked releases.
+func (c *Cache) SetBlockCheck(check func(string) bool) {
+	c.ownerMu.Lock()
+	defer c.ownerMu.Unlock()
+	c.blockCheck = check
+}
+
+// ClearUnpinned refuses protected data on both backends and waits for local
+// writers before removing bytes. Shared pins are also checked transactionally.
+func (c *Cache) ClearUnpinned(id string) error {
+	c.ownerMu.Lock()
+	defer c.ownerMu.Unlock()
+	if len(c.Pins()[id]) > 0 {
+		return errors.New("release still pinned")
+	}
+	if protected, _ := c.protected(); protected[id] {
+		return errors.New("release still in use")
+	}
+	if err := c.Remove(id); err != nil {
+		return err
+	}
+	if c.ReleaseBytes(id) != 0 {
+		return errors.New("cached bytes remain")
+	}
+	return nil
 }

@@ -8,7 +8,9 @@ import (
 
 	"github.com/braedonsaunders/ether/internal/config"
 	"github.com/braedonsaunders/ether/internal/core"
+	"github.com/braedonsaunders/ether/internal/resolver"
 	"github.com/braedonsaunders/ether/internal/segcache"
+	"strings"
 )
 
 // cacheNodeID identifies the NAS writer. Standalone metadata stays in this
@@ -33,7 +35,14 @@ func (a *App) configureCache(c config.Cache) {
 
 // This extension is mounted behind the owner API's authentication and CSRF guard.
 func (a *App) cacheHandler() http.Handler {
+	a.cache.SetBlockCheck(func(id string) bool {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		blocked, err := a.resolver.ReleaseBlocked(ctx, id)
+		return blocked || err != nil
+	})
 	mux := http.NewServeMux()
+	mux.HandleFunc("POST /clear-block", a.clearBlockCache)
 	mux.HandleFunc("GET /", func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/" {
 			http.NotFound(w, r)
@@ -146,4 +155,67 @@ func (a *App) runningCacheConfig() config.Cache {
 func (a *App) cacheRestartRequired() bool {
 	p := a.cfg.Get().EffectiveCache()
 	return p.Dir != a.cache.Directory() || (p.Storage == "shared") != a.cache.Shared()
+}
+
+// clearBlockCache is mounted only under the authenticated owner extension.
+func (a *App) clearBlockCache(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		ReleaseID string `json:"releaseId"`
+	}
+	dec := json.NewDecoder(http.MaxBytesReader(w, r.Body, 4096))
+	dec.DisallowUnknownFields()
+	if dec.Decode(&body) != nil || strings.TrimSpace(body.ReleaseID) == "" {
+		http.Error(w, "Invalid release", 400)
+		return
+	}
+	sessions := append(a.playback.Sessions(), a.playback.RemoteSessions(r.Context())...)
+	for _, s := range sessions {
+		if s.Resolution != nil && s.Resolution.Release.ID == body.ReleaseID {
+			cacheConflict(w)
+			return
+		}
+	}
+	var found *segcache.ReleaseUsage
+	for _, item := range a.cache.Releases() {
+		if item.ReleaseID == body.ReleaseID {
+			copy := item
+			found = &copy
+			break
+		}
+	}
+	if found == nil {
+		http.Error(w, "Release no longer cached", 404)
+		return
+	}
+	for _, pin := range found.Pins {
+		if pin == "playback:live" {
+			cacheConflict(w)
+			return
+		}
+	}
+	if _, err := a.resolver.Block(r.Context(), resolver.BlockRequest{ReleaseID: body.ReleaseID, Name: found.Title}, "Cleared and blocked from Cache by owner"); err != nil {
+		http.Error(w, "Could not persist release block", 500)
+		return
+	}
+	// Owner pins can be explicitly discarded; background and playback pins must
+	// retain their lifetime ownership, including pins on other nodes.
+	err := a.cache.Unpin(body.ReleaseID, "owner")
+	if err == nil {
+		err = a.cache.ClearUnpinned(body.ReleaseID)
+	}
+	message := "Release blocked for future playback and cached bytes cleared on this cache."
+	if err != nil {
+		message = "Release blocked for future playback. Cached bytes remain protected or could not be removed; stop background warming and retry clearing."
+	}
+	if a.cache.Shared() && err == nil {
+		message = "Release blocked for future playback. Current shared cache bytes cleared; writes already running on another node may still finish."
+	}
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(map[string]any{"blocked": true, "cleared": err == nil, "message": message})
+}
+
+func cacheConflict(w http.ResponseWriter) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusConflict)
+	_ = json.NewEncoder(w).Encode(map[string]any{"error": map[string]string{"code": "playback_active", "message": "Stop active or paused playback before clearing this release."}})
 }

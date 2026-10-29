@@ -959,7 +959,7 @@ func (m *Manager) resumeResolution(ctx context.Context, userID int64, key core.R
 		m.log.Warn("resume lookup failed", "err", err)
 		return nil
 	}
-	if rec == nil || rec.profile != profile || !m.resumeSourceAllowed(rec.release) || !sourceFitsBitrate(rec.size, rec.duration, 0, caps.MaxBitrateKbps) {
+	if rec == nil || m.releaseBlocked(ctx, rec.releaseID) || rec.profile != profile || !m.resumeSourceAllowed(rec.release) || !sourceFitsBitrate(rec.size, rec.duration, 0, caps.MaxBitrateKbps) {
 		return nil
 	}
 	nzb, err := m.resume.readNZB(rec.nzbHash)
@@ -1006,6 +1006,9 @@ func (m *Manager) ResumePoint(ctx context.Context, userID int64, key core.Rating
 	rec, err := m.resume.get(ctx, userID, key)
 	if err != nil || rec == nil {
 		return nil, err
+	}
+	if m.releaseBlocked(ctx, rec.releaseID) {
+		return nil, nil
 	}
 	nzb, err := m.resume.readNZB(rec.nzbHash)
 	if err != nil {

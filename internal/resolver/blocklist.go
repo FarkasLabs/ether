@@ -316,3 +316,22 @@ func (s *Service) memBlocklist(f BlockFilter) []BlockEntry {
 }
 
 func (s *Service) memBlocklistTotal(f BlockFilter) int { return len(s.memBlocklistAll(f)) }
+
+var _ core.ReleaseBlockChecker = (*Service)(nil)
+
+func (s *Service) ReleaseBlocked(ctx context.Context, id string) (bool, error) {
+	if s.isBad(id) {
+		return true, nil
+	}
+	if s.db == nil {
+		return false, nil
+	}
+	e, err := s.blockEntry(ctx, id)
+	if errors.Is(err, core.ErrNotFound) {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	return e.Manual || s.now().Sub(e.UpdatedAt) < badRetention, nil
+}

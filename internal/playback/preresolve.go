@@ -390,7 +390,7 @@ func (m *Manager) takeWarmResolution(ctx context.Context, id identity, profile c
 	if prefer != "" && (e.res == nil || e.res.Release.ID != prefer) {
 		return nil // keep it: a plain Prepare may still use it
 	}
-	if !warmAcceptable(e, profile, caps) {
+	if !warmAcceptable(e, profile, caps) || (e.res != nil && m.releaseBlocked(ctx, e.res.Release.ID)) {
 		delete(m.warm, id)
 		return nil
 	}
@@ -440,6 +440,14 @@ func titleIncludes(parent, key core.RatingKey) bool {
 		return key.TMDB() == parent.TMDB()
 	case parent.Kind() == core.KindSeason:
 		return key.Parent() == parent
+	}
+	return false
+}
+
+func (m *Manager) releaseBlocked(ctx context.Context, id string) bool {
+	if checker, ok := m.deps.Resolver.(core.ReleaseBlockChecker); ok {
+		blocked, err := checker.ReleaseBlocked(ctx, id)
+		return blocked || err != nil
 	}
 	return false
 }

@@ -650,3 +650,25 @@ func TestWarmCachesKeyframes(t *testing.T) {
 		t.Fatalf("warm keyframes missing on Prepare: %+v", ps.Info.Keyframes)
 	}
 }
+
+func TestBlockedWarmAndPersistedResumeResolveAgain(t *testing.T) {
+	ctx := context.Background()
+	h := newHarness(t, []*fakeRelease{mkv("A", 10000, time.Minute), mkv("B", 10000, time.Minute)}, []string{"A", "B"})
+	ps := h.prepare(owner, movieKey, "first")
+	h.m.Stop(ps.ID)
+	if !h.m.PreResolve(ctx, owner, movieKey, defaultCaps("warm")) {
+		t.Fatal("warm skipped")
+	}
+	waitWarm(t, h, owner.ID, "warm", movieKey)
+	if err := h.resolver.MarkBad(ctx, "A", "owner"); err != nil {
+		t.Fatal(err)
+	}
+	if p, err := h.m.ResumePoint(ctx, owner.ID, movieKey); err != nil || p != nil {
+		t.Fatalf("blocked resume point: %v %v", p, err)
+	}
+	ps = h.prepare(owner, movieKey, "warm")
+	if ps.Resolution.Release.ID != "B" {
+		t.Fatalf("blocked warm reused: %s", ps.Resolution.Release.ID)
+	}
+	h.m.Stop(ps.ID)
+}
