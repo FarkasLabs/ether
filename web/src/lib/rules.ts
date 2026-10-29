@@ -470,6 +470,7 @@ export const SOURCE_KINDS: SourceMeta[] = [
   { kind: "traktList", label: "Trakt list", description: "A public Trakt list URL" },
   { kind: "letterboxdList", label: "Letterboxd list", description: "A public Letterboxd list URL" },
   { kind: "mdblist", label: "MDBList", description: "A public MDBList URL" },
+  { kind: "anilistList", label: "AniList list", description: "A public AniList anime list URL" },
   {
     kind: "stevenlu",
     label: "StevenLu popular movies",
@@ -528,6 +529,7 @@ export function newSource(
     case "traktList":
     case "letterboxdList":
     case "mdblist":
+    case "anilistList":
       return { kind, url: "" };
     case "stevenlu":
       return { kind, list: "movies" };
@@ -548,6 +550,7 @@ export function isSourceComplete(s: Source): boolean {
     case "traktList":
     case "letterboxdList":
     case "mdblist":
+    case "anilistList":
       return /^https?:\/\/\S+$/.test(s.url.trim());
     case "titles":
       return s.keys.length > 0;
@@ -575,6 +578,7 @@ export function describeSource(s: Source): string {
     case "traktList":
     case "letterboxdList":
     case "mdblist":
+    case "anilistList":
       return `${sourceMeta(s.kind)?.label}: ${s.url || "no URL"}`;
     case "stevenlu":
       return `StevenLu: ${STEVENLU_LISTS.find((l) => l.value === s.list)?.label ?? s.list}`;

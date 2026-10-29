@@ -53,6 +53,7 @@ type CollectionSpec struct {
 //	tmdbKeyword | tmdbCompany | tmdbNetwork | tmdbPerson   ID, Label (Role for people)
 //	watchProvider   ID, Region, Label         what's streaming on a service
 //	traktList | letterboxdList | mdblist      URL
+//	anilistList                               URL (an AniList anime list; optionally one named list)
 //	stevenlu                                  List: movies (default) or a score-filtered variant
 //	titles          Keys                      hand-picked rating keys
 //

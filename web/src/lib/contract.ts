@@ -96,6 +96,7 @@ export type Source =
   | { kind: "traktList"; url: string }
   | { kind: "letterboxdList"; url: string }
   | { kind: "mdblist"; url: string }
+  | { kind: "anilistList"; url: string }
   | { kind: "stevenlu"; list: StevenLuList }
   | { kind: "titles"; keys: string[] };
 

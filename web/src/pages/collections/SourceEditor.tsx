@@ -152,13 +152,14 @@ function SourceBody({
     }
     case "traktList":
     case "letterboxdList":
-    case "mdblist": {
-      const placeholder =
-        source.kind === "traktList"
-          ? "https://trakt.tv/users/…/lists/…"
-          : source.kind === "letterboxdList"
-            ? "https://letterboxd.com/…/list/…"
-            : "https://mdblist.com/lists/…";
+    case "mdblist":
+    case "anilistList": {
+      const placeholder = {
+        traktList: "https://trakt.tv/users/…/lists/…",
+        letterboxdList: "https://letterboxd.com/…/list/…",
+        mdblist: "https://mdblist.com/lists/…",
+        anilistList: "https://anilist.co/user/…/animelist/Completed",
+      }[source.kind];
       const bad = source.url.trim() !== "" && !isSourceComplete(source);
       return (
         <div className="space-y-1">

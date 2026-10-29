@@ -61,6 +61,7 @@ type Service struct {
 	idx      *index
 	web      *webClient
 	bases    ExternalBases
+	anime    animeIDCache
 	depsMu   sync.RWMutex
 	state    core.State
 	auth     core.Auth

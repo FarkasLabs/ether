@@ -340,6 +340,7 @@ func TestValidationErrors(t *testing.T) {
 		"source":   {spec("x", "movie", []core.CollectionSource{{Kind: "netflixScrape"}}), "sources[0].kind"},
 		"list":     {spec("x", "movie", []core.CollectionSource{{Kind: "tmdbList", List: "best"}}), "sources[0].list"},
 		"trakt":    {spec("x", "movie", []core.CollectionSource{{Kind: "traktList", URL: "https://example.com/list"}}), "sources[0].url"},
+		"anilist":  {spec("x", "show", []core.CollectionSource{{Kind: "anilistList", URL: "https://anilist.co/user/kai/mangalist"}}), "sources[0].url"},
 		"stevenlu": {spec("x", "movie", []core.CollectionSource{{Kind: "stevenlu", List: "movies-imdb-min9"}}), "sources[0].list"},
 		"field":    {spec("x", "movie", catalogSource(), rl("vibes", "is", "good")), "rules[0]"},
 		"op":       {spec("x", "movie", catalogSource(), rl("genre", "gte", "Drama")), "rules[0]"},
