@@ -207,6 +207,7 @@ export interface PosterProviderConfig {
   baseUrl: string;
   apiKey: string;
   urlTemplate: string;
+  profile?: string;
 }
 
 export interface EtherConfig {

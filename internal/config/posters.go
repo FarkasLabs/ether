@@ -14,10 +14,11 @@ type Posters struct {
 	BaseURL     string `json:"baseUrl"`
 	APIKey      string `json:"apiKey"`
 	URLTemplate string `json:"urlTemplate"`
+	Profile     string `json:"profile"`
 }
 
 func (p Posters) Validate() error {
-	if len(p.URLTemplate) > 8192 || len(p.APIKey) > 2048 || len(p.BaseURL) > 2048 {
+	if len(p.URLTemplate) > 8192 || len(p.APIKey) > 2048 || len(p.BaseURL) > 2048 || len(p.Profile) > 256 {
 		return errors.New("poster settings exceed length limit")
 	}
 	if !p.Enabled {
@@ -28,10 +29,10 @@ func (p Posters) Validate() error {
 		if p.APIKey == "" {
 			return errors.New("RPDB requires an API key")
 		}
-	case "postersplus":
+	case "postersplus", "xrdb":
 		u, e := url.Parse(p.BaseURL)
 		if e != nil || !posterURL(u) || u.RawQuery != "" || strings.ContainsAny(p.BaseURL, "{}") {
-			return errors.New("PostersPlus requires an HTTP(S) base URL without credentials or query")
+			return errors.New("poster provider requires an HTTP(S) base URL without credentials or query")
 		}
 	case "betterposters", "custom":
 		template := p.URLTemplate

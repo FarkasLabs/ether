@@ -214,7 +214,7 @@ export function RecordItem({
 }) {
   return (
     <li className="flex flex-wrap items-center gap-3 px-5 py-3">
-      <div className="min-w-0 flex-1">
+      <div className="min-w-0 flex-1 basis-48">
         <p className="truncate text-sm font-medium text-fg">{title}</p>
         {description ? <p className="text-xs text-fg-muted">{description}</p> : null}
       </div>

@@ -43,12 +43,15 @@ import {
   type Errors,
 } from "./form";
 import {
-  BuiltinSites,
   MissingDefinition,
+  SiteDefinitionRow,
+  SiteDefinitions,
   SitePicker,
   SiteSettingsFields,
+  UploadDrawer,
   blankSiteIndexer,
   isBuiltin,
+  siteKindLabel,
   siteProtocolLabel,
 } from "./IndexerSites";
 
@@ -143,11 +146,20 @@ export function protocolLabel(ix: { protocol?: string }) {
   return isTorrent(ix) ? "Torznab" : "Newznab";
 }
 
+/** The host of an address, or the address as typed when it is not a URL. */
+function hostOf(url: string): string {
+  try {
+    return new URL(url).host;
+  } catch {
+    return url;
+  }
+}
+
 function indexerName(ix: Indexer, i: number) {
   return ix.name || (isStremio(ix) && ix.url ? addonHost(ix.url) : ix.url) || `Indexer ${i + 1}`;
 }
 
-/** A built-in site's test: result count and a few sample titles, or the error. */
+/** A site's test: result count and a few sample titles, or the error. */
 function SiteTestResults({ result }: { result: SiteTestResult }) {
   if (!result.ok) return null;
   const titles = result.titles ?? [];
@@ -171,8 +183,8 @@ function SiteTestResults({ result }: { result: SiteTestResult }) {
 }
 
 /**
- * Indexers in search order: built-in sites and Newznab/Torznab URLs, each
- * edited in a drawer, followed by the built-in sites' definitions and
+ * Indexers in search order: sites, Newznab/Torznab URLs and Stremio addons,
+ * each edited in a drawer, followed by the site definitions and their
  * settings edited in place. `version` changes when indexers were added
  * elsewhere (Prowlarr import).
  */
@@ -184,6 +196,8 @@ export function IndexerList({ version = 0 }: { version?: number }) {
   const statuses = useAsync(() => api.sites.status().catch(() => []), [version, sitesVersion]);
   const [editing, setEditing] = useState<{ index: number; draft: Indexer } | null>(null);
   const [picking, setPicking] = useState(false);
+  /** Uploading a definition: "add" continues to a new indexer for it. */
+  const [uploading, setUploading] = useState<"add" | "install" | null>(null);
   const [errors, setErrors] = useState<Errors>({});
   const [error, setError] = useState<unknown>(null);
   const [saving, setSaving] = useState(false);
@@ -195,8 +209,11 @@ export function IndexerList({ version = 0 }: { version?: number }) {
   const cfg = config.data;
   const indexers = cfg?.indexers ?? [];
   const definitions = sites.data ?? null;
+  // A definition installed a moment ago, until the reloaded list includes it.
+  const [installed, setInstalled] = useState<SiteDefinition | null>(null);
   const defFor = (ix: Indexer): SiteDefinition | undefined =>
-    definitions?.find((d) => d.id === ix.definition);
+    definitions?.find((d) => d.id === ix.definition) ??
+    (installed && installed.id === ix.definition ? installed : undefined);
   const statusFor = (ix: Indexer) => statuses.data?.find((s) => s.indexerId === ix.id);
   const inUse = useMemo(
     () => new Set(indexers.filter(isBuiltin).map((ix) => ix.definition ?? "")),
@@ -204,7 +221,6 @@ export function IndexerList({ version = 0 }: { version?: number }) {
   );
   const status = dashboard?.sections?.indexers;
   const live = Array.isArray(status) ? status.filter(isPlainObject) : [];
-  const mixed = indexers.some(isTorrent) && indexers.some((ix) => !isTorrent(ix));
   const statFor = (ix: Indexer) => live.find((s) => s.indexer === ix.name || s.id === ix.id);
 
   async function commit(list: Indexer[], message: string) {
@@ -228,6 +244,10 @@ export function IndexerList({ version = 0 }: { version?: number }) {
   };
   const close = () => {
     if (!saving) setEditing(null);
+  };
+  const addSite = (def: SiteDefinition) => {
+    setInstalled(def);
+    open(indexers.length, blankSiteIndexer(def, indexers.length));
   };
 
   async function save() {
@@ -344,7 +364,7 @@ export function IndexerList({ version = 0 }: { version?: number }) {
             items={[
               {
                 key: "site",
-                label: "Built-in site…",
+                label: "Site…",
                 icon: Globe,
                 onSelect: () => {
                   setEditing(null);
@@ -374,7 +394,7 @@ export function IndexerList({ version = 0 }: { version?: number }) {
           <EmptyState
             icon={<Search />}
             title="No indexers"
-            description="Add a built-in site, a Newznab/Torznab indexer or a Stremio addon so Ether can find releases."
+            description="Add a site, a Newznab or Torznab indexer, or a Stremio addon so Ether can find releases."
           />
         ) : (
           <ul className="divide-y divide-border">
@@ -385,19 +405,25 @@ export function IndexerList({ version = 0 }: { version?: number }) {
               const site = isBuiltin(ix);
               const def = site ? defFor(ix) : undefined;
               const tested = site ? statusFor(ix) : undefined;
+              const countsSearches = site || isStremio(ix);
               return (
                 <RecordItem
                   key={ix.id}
                   title={label}
                   description={[
                     i === 0 ? "Searched first" : `Priority ${i + 1}`,
-                    site ? `Built-in site: ${def?.name ?? ix.definition ?? "unknown"}` : "",
+                    site && ix.url ? hostOf(ix.url) : "",
+                    site && def && def.name !== label ? `${def.name} definition` : "",
                     ix.dailyLimit > 0
                       ? s
-                        ? `${hits} of ${ix.dailyLimit} API requests used today`
-                        : `${ix.dailyLimit} API requests a day`
-                      : "Automatic limits",
-                    ix.dailyGrabs > 0 ? `${ix.dailyGrabs} NZB downloads a day` : "",
+                        ? `${hits} of ${ix.dailyLimit} ${countsSearches ? "searches" : "API requests"} used today`
+                        : `${ix.dailyLimit} ${countsSearches ? "searches" : "API requests"} a day`
+                      : site
+                        ? ""
+                        : "Automatic limits",
+                    ix.dailyGrabs > 0
+                      ? `${ix.dailyGrabs} ${isTorrent(ix) ? "torrent" : "NZB"} downloads a day`
+                      : "",
                   ]
                     .filter(Boolean)
                     .join(" · ")}
@@ -405,8 +431,7 @@ export function IndexerList({ version = 0 }: { version?: number }) {
                     <>
                       {site ? (
                         <>
-                          <Badge variant="info">Built-in</Badge>
-                          <Badge variant="outline">{siteProtocolLabel(ix.protocol)}</Badge>
+                          <Badge variant="outline">{siteKindLabel(ix.protocol)}</Badge>
                           {definitions && !def ? (
                             <Badge variant="destructive">Definition missing</Badge>
                           ) : null}
@@ -421,9 +446,9 @@ export function IndexerList({ version = 0 }: { version?: number }) {
                         </>
                       ) : isStremio(ix) ? (
                         <Badge variant="outline">Stremio addon</Badge>
-                      ) : isTorrent(ix) || mixed ? (
+                      ) : (
                         <Badge variant="outline">{protocolLabel(ix)}</Badge>
-                      ) : null}
+                      )}
                       {!ix.enabled ? <Badge variant="secondary">Off</Badge> : null}
                       {s && Number(s.retryAt ?? 0) > Date.now() / 1000 ? (
                         <Badge variant="warning">Waiting for service · retries automatically</Badge>
@@ -451,20 +476,33 @@ export function IndexerList({ version = 0 }: { version?: number }) {
         )}
       </Section>
 
-      <BuiltinSites
+      <SiteDefinitions
         cfg={cfg}
         definitions={definitions}
         definitionsError={sites.error}
         inUse={inUse}
+        onAdd={addSite}
+        onUpload={() => setUploading("install")}
         onConfigSaved={() => config.reload()}
         onDefinitionsChanged={() => setSitesVersion((v) => v + 1)}
+      />
+
+      <UploadDrawer
+        open={uploading !== null}
+        onClose={() => setUploading(null)}
+        onInstalled={(def) => {
+          const next = uploading;
+          setUploading(null);
+          setSitesVersion((v) => v + 1);
+          if (next === "add") addSite(def);
+        }}
       />
 
       <Drawer
         open={picking}
         onClose={() => setPicking(false)}
-        title="Add a built-in site"
-        description="Choose the site's definition. Its settings come next."
+        title="Add a site"
+        description="Pick the site's definition. Its settings come next."
         size="lg"
       >
         {sites.error ? (
@@ -474,8 +512,13 @@ export function IndexerList({ version = 0 }: { version?: number }) {
         ) : (
           <SitePicker
             definitions={definitions}
+            inUse={inUse}
             onInstalled={() => setSitesVersion((v) => v + 1)}
-            onPick={(def) => open(indexers.length, blankSiteIndexer(def, indexers.length))}
+            onPick={addSite}
+            onUpload={() => {
+              setPicking(false);
+              setUploading("add");
+            }}
           />
         )}
       </Drawer>
@@ -486,7 +529,7 @@ export function IndexerList({ version = 0 }: { version?: number }) {
         title={
           isNew
             ? builtin
-              ? (draftDef?.name ?? "New built-in site")
+              ? (draftDef?.name ?? "New site")
               : stremio
                 ? "New Stremio addon"
                 : "New indexer"
@@ -497,7 +540,7 @@ export function IndexerList({ version = 0 }: { version?: number }) {
         description={
           draft
             ? builtin
-              ? `Built-in site · ${siteProtocolLabel(draft.protocol)}`
+              ? siteKindLabel(draft.protocol)
               : stremio
                 ? "Stremio addon · Torrent"
                 : isTorrent(draft)
@@ -573,6 +616,7 @@ export function IndexerList({ version = 0 }: { version?: number }) {
                   error={errors.url}
                   onChange={(v) => set({ url: v })}
                 />
+                {draftDef ? <SiteDefinitionRow def={draftDef} /> : null}
                 <SettingsRow
                   title="Protocol"
                   description={

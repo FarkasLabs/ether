@@ -3,7 +3,6 @@ import {
   AlertDescription,
   Badge,
   Button,
-  EmptyState,
   Input,
   SearchSelect,
   SettingsSection,
@@ -11,15 +10,15 @@ import {
   confirmDialog,
   toast,
 } from "@braedonsaunders/appkit-ui";
-import { Download, Globe, RefreshCw, Upload } from "lucide-react";
+import { Download, Plus, RefreshCw, Upload } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { Drawer } from "../../components/Drawer";
 import { ErrorPanel, LoadingRows, MutationError } from "../../components/feedback";
 import { ChipGroup, SecretInput } from "../../components/fields";
-import { Section } from "../../components/layout";
 import { SaveBar, useDraft } from "../../components/SaveBar";
 import { SettingsRow } from "../../components/SettingsRow";
 import { api, ApiError, newId } from "../../lib/api";
+import { formatDate, plural } from "../../lib/format";
 import type {
   CatalogEntry,
   EtherConfig,
@@ -30,7 +29,7 @@ import type {
 } from "../../lib/types";
 import { BoolRow, TextRow, recordErrors, toastError } from "./form";
 
-/** Built-in sites: indexers Ether searches itself from an installed definition. */
+/** Sites: indexers Ether searches itself from an installed definition. */
 export function isBuiltin(ix: { kind?: string }) {
   return ix.kind === "cardigann";
 }
@@ -82,9 +81,18 @@ export function blankSiteIndexer(def: SiteDefinition, priority: number): Indexer
   };
 }
 
-/** "Torrent" or "Usenet", as shown on built-in site badges. */
+/** "Torrent" or "Usenet", as shown on definition badges. */
 export function siteProtocolLabel(protocol?: string) {
   return protocol === "usenet" || protocol === "" ? "Usenet" : "Torrent";
+}
+
+/** "Torrent site" or "Usenet site": a site indexer's type, as shown on its badge. */
+export function siteKindLabel(protocol?: string) {
+  return siteProtocolLabel(protocol) === "Usenet" ? "Usenet site" : "Torrent site";
+}
+
+function definitionOrigin(def: SiteDefinition) {
+  return def.source === "source" ? "From your definitions source" : "Uploaded";
 }
 
 function plainText(html: string) {
@@ -95,13 +103,48 @@ function plainText(html: string) {
     .trim();
 }
 
-function DefinitionBadges({ def }: { def: SiteDefinition }) {
+function DefinitionBadges({ def, protocol = true }: { def: SiteDefinition; protocol?: boolean }) {
   return (
     <>
-      <Badge variant="outline">{siteProtocolLabel(def.protocol)}</Badge>
+      {protocol ? <Badge variant="outline">{siteProtocolLabel(def.protocol)}</Badge> : null}
       {def.type ? <Badge variant="secondary">{def.type}</Badge> : null}
       {def.language ? <Badge variant="secondary">{def.language}</Badge> : null}
     </>
+  );
+}
+
+function DefinitionWarnings({ def }: { def: SiteDefinition }) {
+  if (!def.warnings?.length) return null;
+  return <p className="text-xs text-warning">{def.warnings.join(" · ")}</p>;
+}
+
+/**
+ * The definition behind a site indexer, in its drawer: the one place an
+ * in-use definition is shown, with where it came from and any warnings.
+ */
+export function SiteDefinitionRow({ def }: { def: SiteDefinition }) {
+  return (
+    <SettingsRow
+      title="Definition"
+      description={
+        <>
+          <span className="block">
+            {def.name} ({def.id})
+          </span>
+          <span className="block">
+            {def.source === "source"
+              ? `From your definitions source, updated ${formatDate(def.updatedAt)}`
+              : `Uploaded ${formatDate(def.updatedAt)}`}
+          </span>
+          <DefinitionWarnings def={def} />
+        </>
+      }
+      control={
+        <span className="flex flex-wrap gap-2">
+          <DefinitionBadges def={def} protocol={false} />
+        </span>
+      }
+    />
   );
 }
 
@@ -211,17 +254,23 @@ export function SiteSettingsFields({
 }
 
 /**
- * Pick the site for a new built-in indexer: an installed definition, or one
- * from the owner's definitions source (installed on pick).
+ * Pick the site for a new site indexer: an installed definition, one from the
+ * owner's definitions source (installed on pick), or an uploaded file.
  */
 export function SitePicker({
   definitions,
   onPick,
   onInstalled,
+  onUpload,
+  inUse,
 }: {
   definitions: SiteDefinition[];
+  /** Definition ids configured indexers use. */
+  inUse: Set<string>;
   onPick: (def: SiteDefinition) => void;
   onInstalled: () => void;
+  /** Upload a definition file, then add it. */
+  onUpload: () => void;
 }) {
   const [query, setQuery] = useState("");
   const [catalog, setCatalog] = useState<CatalogEntry[] | null>(null);
@@ -276,18 +325,23 @@ export function SitePicker({
 
   return (
     <div className="space-y-4">
-      <Input
-        aria-label="Search sites"
-        placeholder="Search sites"
-        value={query}
-        onChange={(e) => setQuery(e.currentTarget.value)}
-      />
+      <div className="flex gap-2">
+        <Input
+          aria-label="Search sites"
+          placeholder="Search sites"
+          value={query}
+          onChange={(e) => setQuery(e.currentTarget.value)}
+        />
+        <Button variant="outline" onClick={onUpload} className="shrink-0">
+          <Upload size={14} /> Upload definition
+        </Button>
+      </div>
       <section aria-label="Installed sites" className="space-y-2">
         <h3 className="text-sm font-semibold text-fg">Installed</h3>
         {definitions.length === 0 ? (
           <p className="text-sm text-fg-muted">
-            No site definitions installed yet. Upload one under Built-in sites, or pick one from
-            your definitions source below.
+            No site definitions installed yet. Upload one, or install one from your definitions
+            source below.
           </p>
         ) : installed.length === 0 ? (
           <p className="text-sm text-fg-muted">No installed site matches.</p>
@@ -295,12 +349,13 @@ export function SitePicker({
           <ul className="divide-y divide-border rounded-xl border border-border">
             {installed.map((d) => (
               <li key={d.id} className="flex flex-wrap items-center gap-3 px-4 py-2.5">
-                <div className="min-w-0 flex-1">
+                <div className="min-w-0 flex-1 basis-48">
                   <p className="text-sm font-medium text-fg">{d.name}</p>
                   {d.description ? (
                     <p className="truncate text-xs text-fg-muted">{d.description}</p>
                   ) : null}
                 </div>
+                {inUse.has(d.id) ? <Badge variant="success">Added</Badge> : null}
                 <DefinitionBadges def={d} />
                 <Button
                   size="sm"
@@ -331,8 +386,8 @@ export function SitePicker({
         </div>
         {catalogState === "none" ? (
           <p className="text-sm text-fg-muted">
-            No definitions source is set. Add one under Built-in sites to browse its definitions
-            here.
+            No definitions source is set. Add one under Site definitions, below your indexers, to
+            browse it here.
           </p>
         ) : catalogState === "error" ? (
           <MutationError error={catalogError} />
@@ -366,7 +421,7 @@ export function SitePicker({
 }
 
 /** Upload or paste one definition. */
-function UploadDrawer({
+export function UploadDrawer({
   open,
   onClose,
   onInstalled,
@@ -443,15 +498,19 @@ function UploadDrawer({
 }
 
 /**
- * Built-in sites, edited in place: where definitions come from (an optional
- * source the owner trusts), FlareSolverr for sites behind a browser
- * challenge, and the installed definitions.
+ * Site definitions, edited in place: what is installed, the definitions no
+ * indexer uses yet (each can be added or removed), where definitions come
+ * from, and FlareSolverr for sites behind a browser challenge. A definition
+ * an indexer uses is shown in that indexer's drawer instead, so a site is
+ * never listed twice on the page.
  */
-export function BuiltinSites({
+export function SiteDefinitions({
   cfg,
   definitions,
   definitionsError,
   inUse,
+  onAdd,
+  onUpload,
   onConfigSaved,
   onDefinitionsChanged,
 }: {
@@ -460,6 +519,9 @@ export function BuiltinSites({
   definitionsError: unknown;
   /** Definition ids configured indexers use. */
   inUse: Set<string>;
+  /** Start a new indexer from an installed definition. */
+  onAdd: (def: SiteDefinition) => void;
+  onUpload: () => void;
   onConfigSaved: () => Promise<void> | void;
   onDefinitionsChanged: () => void;
 }) {
@@ -474,7 +536,6 @@ export function BuiltinSites({
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<unknown>(null);
   const [errors, setErrors] = useState<Record<string, string>>({});
-  const [uploading, setUploading] = useState(false);
   const [updating, setUpdating] = useState(false);
 
   async function save() {
@@ -484,7 +545,7 @@ export function BuiltinSites({
     setErrors({});
     try {
       await api.putSection("indexerSites", draft);
-      toast.success("Settings saved", { description: "Built-in sites" });
+      toast.success("Settings saved", { description: "Site definitions" });
       await onConfigSaved();
     } catch (e) {
       setError(e);
@@ -534,92 +595,106 @@ export function BuiltinSites({
   }
 
   if (!draft) return null;
-  const fromSource = (definitions ?? []).some((d) => d.source === "source");
+  const installed = definitions ?? [];
+  const fromSource = installed.some((d) => d.source === "source");
+  const used = installed.filter((d) => inUse.has(d.id)).length;
+  const unused = installed.filter((d) => !inUse.has(d.id));
+  const count = `${plural(installed.length, "definition")} installed`;
+  const summary =
+    definitions === null
+      ? "Checking installed definitions…"
+      : installed.length === 0
+        ? "None installed yet. Upload one, or set a definitions source and pick a site when you add an indexer."
+        : used === 0
+          ? `${count}.`
+          : used === installed.length
+            ? `${count}, all used by your indexers above.`
+            : `${count}, ${used} used by your indexers above.`;
   return (
     <>
-      <Section
-        title="Built-in sites"
-        description="Sites Ether searches itself, using definitions you install. Ether ships none: add only definitions for sites you have the right to use."
-        actions={
-          <>
-            <Button size="sm" variant="outline" onClick={() => setUploading(true)}>
-              <Upload size={14} /> Upload definition
-            </Button>
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={() => void update()}
-              disabled={updating || !fromSource}
-              title={fromSource ? undefined : "No installed definition came from a source"}
-            >
-              <RefreshCw size={14} /> {updating ? "Updating…" : "Update definitions"}
-            </Button>
-          </>
-        }
-        bodyClassName=""
-      >
-        {definitionsError ? (
-          <div className="px-5 py-4">
-            <ErrorPanel error={definitionsError} onRetry={onDefinitionsChanged} />
-          </div>
-        ) : definitions === null ? (
-          <div className="px-5 py-4">
-            <LoadingRows rows={2} />
-          </div>
-        ) : definitions.length === 0 ? (
-          <EmptyState
-            icon={<Globe />}
-            title="No site definitions"
-            description="Upload a definition, or set a definitions source and pick sites when you add an indexer."
-          />
-        ) : (
-          <ul aria-label="Installed definitions" className="divide-y divide-border">
-            {definitions.map((d) => (
-              <li key={d.id} className="flex flex-wrap items-center gap-3 px-5 py-3">
-                <div className="min-w-0 flex-1">
-                  <p className="truncate text-sm font-medium text-fg">{d.name}</p>
-                  <p className="text-xs text-fg-muted">
-                    {[
-                      d.id,
-                      d.source === "source" ? "From your source" : "Uploaded",
-                      d.login ? "Needs an account" : "",
-                      inUse.has(d.id) ? "In use" : "",
-                    ]
-                      .filter(Boolean)
-                      .join(" · ")}
-                  </p>
-                  {d.warnings?.length ? (
-                    <p className="text-xs text-warning">{d.warnings.join(" · ")}</p>
-                  ) : null}
-                </div>
-                <DefinitionBadges def={d} />
-                <Button
-                  size="sm"
-                  variant="ghost"
-                  className="text-danger"
-                  disabled={inUse.has(d.id)}
-                  title={inUse.has(d.id) ? "Remove the indexers that use it first" : undefined}
-                  onClick={() => void remove(d)}
-                  aria-label={`Remove ${d.name}`}
-                >
-                  Remove
-                </Button>
-              </li>
-            ))}
-          </ul>
-        )}
-      </Section>
       <SettingsSection
-        title="Definitions and challenges"
-        description="Both are optional services you run or trust yourself."
+        title="Site definitions"
+        description="Ether searches the sites you add as indexers using Cardigann-format definitions you install. It ships none: install only definitions for sites you have the right to use."
       >
+        <SettingsRow
+          title="Installed"
+          description={summary}
+          control={
+            <span className="flex flex-wrap gap-2">
+              <Button size="sm" variant="outline" onClick={onUpload}>
+                <Upload size={14} /> Upload definition
+              </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => void update()}
+                disabled={updating || !fromSource}
+                title={fromSource ? undefined : "No installed definition came from a source"}
+              >
+                <RefreshCw size={14} /> {updating ? "Updating…" : "Update definitions"}
+              </Button>
+            </span>
+          }
+        />
+        {definitionsError ? (
+          <SettingsRow stacked title="Couldn't load definitions">
+            <ErrorPanel error={definitionsError} onRetry={onDefinitionsChanged} />
+          </SettingsRow>
+        ) : unused.length ? (
+          <SettingsRow
+            stacked
+            title="Not added as an indexer"
+            description="Installed, but not searched until you add them."
+          >
+            <ul
+              aria-label="Unused definitions"
+              className="divide-y divide-border rounded-xl border border-border"
+            >
+              {unused.map((d) => (
+                <li key={d.id} className="flex flex-wrap items-center gap-3 px-4 py-2.5">
+                  <div className="min-w-0 flex-1 basis-48">
+                    <p className="truncate text-sm font-medium text-fg">{d.name}</p>
+                    <p className="text-xs text-fg-muted">
+                      {[d.id, definitionOrigin(d), d.login ? "Needs an account" : ""]
+                        .filter(Boolean)
+                        .join(" · ")}
+                    </p>
+                    <DefinitionWarnings def={d} />
+                  </div>
+                  <span className="flex flex-wrap items-center gap-2">
+                    <DefinitionBadges def={d} />
+                  </span>
+                  <span className="flex items-center gap-1">
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => onAdd(d)}
+                      aria-label={`Add ${d.name} as an indexer`}
+                    >
+                      <Plus size={13} /> Add as indexer
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      className="text-danger"
+                      onClick={() => void remove(d)}
+                      aria-label={`Remove ${d.name}`}
+                    >
+                      Remove
+                    </Button>
+                  </span>
+                </li>
+              ))}
+            </ul>
+          </SettingsRow>
+        ) : null}
         <TextRow
           label="Definitions source"
           type="url"
           value={draft.definitionsUrl ?? ""}
           placeholder="https://…/definitions/"
           error={errors.definitionsUrl}
-          help="A folder of Cardigann-format definitions (a GitHub folder or raw folder URL, a GitHub contents API URL, or a plain list of definition URLs). Ether lists it when you add a site and refreshes installed definitions from it."
+          help="Optional. A folder of Cardigann-format definitions you trust: a GitHub folder or raw folder URL, a GitHub contents API URL, or a plain list of definition URLs. Ether lists it when you add a site and updates installed definitions from it."
           onChange={(v) => setDraft({ ...draft, definitionsUrl: v })}
         />
         <TextRow
@@ -628,7 +703,7 @@ export function BuiltinSites({
           value={draft.flareSolverrUrl ?? ""}
           placeholder="http://localhost:8191"
           error={errors.flareSolverrUrl}
-          help="Passes Cloudflare browser challenges for sites that use them. Without it, those sites report that they need FlareSolverr."
+          help="Optional. Passes Cloudflare browser challenges for sites that use them. Without it, those sites report that they need FlareSolverr."
           onChange={(v) => setDraft({ ...draft, flareSolverrUrl: v })}
         />
       </SettingsSection>
@@ -643,25 +718,17 @@ export function BuiltinSites({
           setErrors({});
         }}
       />
-      <UploadDrawer
-        open={uploading}
-        onClose={() => setUploading(false)}
-        onInstalled={() => {
-          setUploading(false);
-          onDefinitionsChanged();
-        }}
-      />
     </>
   );
 }
 
-/** Shown in a built-in indexer's drawer when its definition is gone. */
+/** Shown in a site indexer's drawer when its definition is gone. */
 export function MissingDefinition({ id }: { id?: string }) {
   return (
     <Alert variant="warning" role="status">
       <AlertDescription>
-        The definition “{id || "unknown"}” is not installed, so this site cannot be searched.
-        Install it again under Built-in sites, or remove this indexer.
+        The definition “{id || "unknown"}” is not installed, so this site cannot be searched. Upload
+        it again under Site definitions, or remove this indexer.
       </AlertDescription>
     </Alert>
   );
