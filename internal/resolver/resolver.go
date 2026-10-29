@@ -130,10 +130,13 @@ type TraceLimits struct {
 	// ProfileMaxHeight is the effective (client-clamped) ceiling;
 	// ProfileConfiguredMaxHeight is the profile's own ceiling before
 	// that clamp, so a rejection can name whoever actually limited it.
-	ProfileMaxHeight           int `json:"profileMaxHeight"`
-	ProfileConfiguredMaxHeight int `json:"profileConfiguredMaxHeight"`
-	ClientMaxHeight            int `json:"clientMaxHeight"`
-	ClientMaxBitrateKbps       int `json:"clientMaxBitrateKbps"`
+	ProfileMaxHeight int `json:"profileMaxHeight"`
+	// ProfileConfiguredMaxHeight carries presence: nil means the
+	// trace predates the field (configured ceiling unknown), while a
+	// pointer to 0 is an explicitly unlimited ("Any") profile.
+	ProfileConfiguredMaxHeight *int `json:"profileConfiguredMaxHeight,omitempty"`
+	ClientMaxHeight            int  `json:"clientMaxHeight"`
+	ClientMaxBitrateKbps       int  `json:"clientMaxBitrateKbps"`
 }
 
 type searchCacheEntry struct {
@@ -550,7 +553,7 @@ func (s *Service) resolve(ctx context.Context, req core.ResolveRequest, profile 
 	started := time.Now()
 	t := req.Title
 	trace := Trace{TitleKey: t.Key, TitleName: consoleTitleName(t), Profile: profile.Name, At: s.now(), Failover: len(req.Exclude) > 0}
-	trace.Limits = &TraceLimits{ProfileMinHeight: profile.MinHeight, ProfileMaxHeight: profile.MaxHeight, ProfileConfiguredMaxHeight: configuredMaxHeight(profile), ClientMaxHeight: req.Client.MaxHeight, ClientMaxBitrateKbps: req.Client.MaxBitrateKbps}
+	trace.Limits = &TraceLimits{ProfileMinHeight: profile.MinHeight, ProfileMaxHeight: profile.MaxHeight, ProfileConfiguredMaxHeight: traceConfiguredMaxHeight(profile), ClientMaxHeight: req.Client.MaxHeight, ClientMaxBitrateKbps: req.Client.MaxBitrateKbps}
 	defer func() {
 		trace.TotalDuration = time.Since(started)
 		s.addTrace(trace)
@@ -1261,9 +1264,12 @@ func rejectPolicy(rel core.Release, t *core.Title, profile core.QualityProfile, 
 	}
 	if !preferred && profile.MaxHeight > 0 && rel.Info.Height > profile.MaxHeight {
 		// The effective ceiling is min(configured profile, client caps):
-		// name the strictly lower one as the limiter. A tie keeps the
-		// profile wording, as before.
-		if caps.MaxHeight > 0 && caps.MaxHeight < configuredMaxHeight(profile) && rel.Info.Height > caps.MaxHeight {
+		// name the strictly lower one as the limiter. An unlimited
+		// configured profile leaves the client as the only limiter. A
+		// tie keeps the profile wording, as before.
+		if configured := configuredMaxHeight(profile); caps.MaxHeight > 0 &&
+			(configured == configuredUnlimited || caps.MaxHeight < configured) &&
+			rel.Info.Height > caps.MaxHeight {
 			return "above client max height"
 		}
 		return "above profile max height"

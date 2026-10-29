@@ -109,8 +109,12 @@ type QualityProfile struct {
 	MinCustomFormatScore *int           `json:"minCustomFormatScore,omitempty"`
 	Name                 string         `json:"name"`
 	MaxHeight            int            `json:"maxHeight"` // cap, e.g. 1080
-	// ConfiguredMaxHeight is MaxHeight before SelectProfile clamped it
-	// to a client's caps; runtime-only, never persisted with the profile.
+	// ConfiguredMaxHeight is MaxHeight as the owner configured it,
+	// before download reshaping or a client's caps clamped the
+	// effective MaxHeight. -1 means the owner set no ceiling ("Any");
+	// 0 means unset (a profile built outside SelectProfile), in which
+	// case MaxHeight itself is the configured value. Runtime-only,
+	// never persisted with the profile.
 	ConfiguredMaxHeight int      `json:"-"`
 	MinHeight           int      `json:"minHeight"` // floor, e.g. 720
 	AllowHDR            bool     `json:"allowHdr"`  // only applied when the client also supports it
