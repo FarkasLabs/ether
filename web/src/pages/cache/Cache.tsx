@@ -10,7 +10,7 @@ import {
   Sparkles,
   Zap,
 } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useRouteTab } from "../../components/layout";
 import { CacheOverview } from "./CacheOverview";
@@ -259,7 +259,18 @@ function Toggle({
 export default function Cache() {
   const config = useAsync(() => api.getConfig(), []);
   const live = useAsync((signal) => apiFetch<CacheSnapshot>("/cache/", { signal }), []);
-  useInterval(() => void live.reload(), 5000);
+  const tab = useRouteTab(CACHE_TABS);
+  // Não refaz o GET /cache/ completo enquanto o dono filtra/pagina no Explorer;
+  // nas demais abas, dobra o intervalo a cada falha (teto 60s) e reseta no sucesso.
+  const [pollFailures, setPollFailures] = useState(0);
+  useEffect(() => {
+    if (live.error) setPollFailures((n) => Math.min(n + 1, 4));
+    else if (live.data) setPollFailures(0);
+  }, [live.error, live.data]);
+  useInterval(
+    () => void live.reload(),
+    tab === "explorer" ? null : Math.min(5000 * 2 ** pollFailures, 60_000),
+  );
   const { draft, setDraft, dirty, reset } = useDraft<Policy>(config.data?.cache);
   useUnsavedGuard(dirty);
   const [saving, setSaving] = useState(false),
@@ -270,7 +281,6 @@ export default function Cache() {
     name: string;
     values: Partial<Policy>;
   } | null>(null);
-  const tab = useRouteTab(CACHE_TABS);
   const navigate = useNavigate();
   const [unit, setUnit] = useState<"GiB" | "TiB">("GiB");
   const [busy, setBusy] = useState<string | null>(null);
