@@ -479,7 +479,7 @@ func (c *Catalog) Collection(ctx context.Context, tmdbCollection int64) (string,
 	if name == "" && len(items) > 0 {
 		name = items[0].CollectionName
 	}
-	return name, items, nil
+	return name, c.releasedTitles(items), nil
 }
 
 func isNotFound(err error) bool {

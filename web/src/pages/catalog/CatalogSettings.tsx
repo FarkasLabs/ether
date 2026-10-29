@@ -7,6 +7,7 @@ import { TestButton, type TestState } from "../../components/fields";
 import { SettingsRow } from "../../components/SettingsRow";
 import { LevelBadge } from "../../components/status";
 import { api } from "../../lib/api";
+import { HomeReleaseSettings, HomeReleaseStatus } from "./HomeReleaseSettings";
 import { TrendingStatus } from "./TrendingStatus";
 import { CATALOG } from "../settings/schema";
 
@@ -40,7 +41,7 @@ export function CatalogSettings() {
           <ConfigSection
             configKey="catalog"
             endpoint="catalog"
-            groups={CATALOG}
+            groups={[...CATALOG, HomeReleaseSettings]}
             label="Catalog"
             test={(draft) => (
               <TestButton
@@ -52,6 +53,7 @@ export function CatalogSettings() {
           />
         </div>
         <aside className="space-y-5" aria-label="Catalog status">
+          <HomeReleaseStatus />
           <TrendingStatus />
           {item ? (
             <SettingsSection title="Catalog health">

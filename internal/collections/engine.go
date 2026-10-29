@@ -60,6 +60,7 @@ type evalOptions struct {
 type cand struct {
 	e       *entry
 	order   int
+	airDate int64 // selected TV date, 0 when unknown
 	assured map[*rule]bool
 }
 
@@ -273,6 +274,11 @@ func (s *Service) evaluate(ctx context.Context, spIn core.CollectionSpec, opt ev
 		}
 	}
 
+	if sp.Sort == "latestEpisode" || sp.Sort == "latestSeasonPremiere" {
+		if err := s.loadAirDates(ctx, kept, sp.Sort, ec.now); err != nil {
+			return nil, fmt.Errorf("collections: air dates: %w", err)
+		}
+	}
 	sortCands(kept, sp.Sort, sp.SortDesc, randomSeed(opt.seed, sp, ec.now))
 	res.total = len(kept)
 	if anyPersonal {
@@ -366,6 +372,19 @@ func randomSeed(seed string, sp core.CollectionSpec, now time.Time) uint64 {
 	return h.Sum64()
 }
 
+func (s *Service) loadAirDates(ctx context.Context, cs []*cand, mode string, now time.Time) error {
+	dates, err := catalog.NewMirror(s.db, nil).AirDates(ctx, now, mode == "latestSeasonPremiere")
+	if err != nil {
+		return err
+	}
+	for _, c := range cs {
+		if c.e.typ == core.TypeShow {
+			c.airDate = dates[c.e.key]
+		}
+	}
+	return nil
+}
+
 func sortCands(cs []*cand, mode string, desc bool, seed uint64) {
 	if mode == "random" {
 		sort.SliceStable(cs, func(i, j int) bool { return cs[i].e.key < cs[j].e.key })
@@ -380,6 +399,8 @@ func sortCands(cs []*cand, mode string, desc bool, seed uint64) {
 				return a.e.rating < b.e.rating, false
 			}
 			return a.e.votes < b.e.votes, a.e.votes == b.e.votes
+		case "latestEpisode", "latestSeasonPremiere":
+			return a.airDate < b.airDate, a.airDate == b.airDate
 		case "released":
 			return a.e.released < b.e.released, a.e.released == b.e.released
 		case "title":
@@ -396,6 +417,11 @@ func sortCands(cs []*cand, mode string, desc bool, seed uint64) {
 		desc = true
 	}
 	sort.SliceStable(cs, func(i, j int) bool {
+		if mode == "latestEpisode" || mode == "latestSeasonPremiere" {
+			if (cs[i].airDate == 0) != (cs[j].airDate == 0) {
+				return cs[i].airDate != 0
+			}
+		}
 		l, eq := less(cs[i], cs[j])
 		if eq {
 			// Ties: popularity, then key, for a stable result.

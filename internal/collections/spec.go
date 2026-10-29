@@ -38,7 +38,7 @@ var (
 	}
 	sortModes = map[string]bool{
 		"popularity": true, "rating": true, "released": true, "title": true, "added": true,
-		"random": true, "personal": true, "source": true,
+		"random": true, "personal": true, "source": true, "latestEpisode": true, "latestSeasonPremiere": true,
 	}
 	artworkModes = map[string]bool{"auto": true, "collage": true, "backdrop": true, "tmdb": true, "custom": true}
 	deviceNames  = map[string]bool{core.DeviceTV: true, core.DeviceMobile: true, core.DeviceWeb: true, core.DeviceDesktop: true}

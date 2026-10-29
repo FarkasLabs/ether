@@ -9,6 +9,7 @@ import (
 	"net/url"
 	"regexp"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/braedonsaunders/ether/internal/core"
@@ -49,14 +50,16 @@ const (
 var reInfoHash = regexp.MustCompile(`^[0-9a-fA-F]{40}$`)
 
 type debridLink struct {
-	key    string
-	opts   ProviderOptions
-	list   listCache
-	recent recentLinks
+	key     string
+	opts    ProviderOptions
+	list    listCache
+	recent  recentLinks
+	knownMu sync.Mutex
+	known   map[string]string // validated owned ids; no network lock on Play
 }
 
 func newDebridLink(key string, opts ProviderOptions) *debridLink {
-	return &debridLink{key: key, opts: opts.withDefaults(debridLinkBase)}
+	return &debridLink{key: key, opts: opts.withDefaults(debridLinkBase), known: make(map[string]string)}
 }
 
 func (p *debridLink) Kind() string { return "debridlink" }
@@ -132,6 +135,11 @@ func dlClassify(status int, env dlEnvelope) error {
 	if msg == "" {
 		msg = env.Error
 	}
+	if lower := strings.ToLower(env.Error + " " + msg); strings.Contains(lower, "duplicate") || strings.Contains(lower, "already exists") || strings.Contains(lower, "already added") {
+		// The torrent is already on the account; Acquire recovers it by
+		// hash (findFresh) instead of adding a second entry.
+		return errDuplicateTorrent
+	}
 	switch env.Error {
 	case "badToken", "unverifiedEmail", "access_denied", "invalid_client", "unauthorized_client", "invalid_grant", "notFreeHost",
 		"maxData", "maxDataHost", "maxLink", "maxLinkHost":
@@ -168,6 +176,9 @@ func (p *debridLink) CheckCached(context.Context, []string) (map[string]bool, er
 
 // Find looks the hash up in the account's most recent torrents.
 func (p *debridLink) Find(ctx context.Context, hash string) (string, error) {
+	if id := p.findKnown(hash); id != "" {
+		return id, nil
+	}
 	return p.list.find(ctx, p.opts.Now(), hash, func(ctx context.Context) (map[string]string, error) {
 		data, err := p.do(ctx, apiRequest{method: http.MethodGet, path: "/seedbox/list", query: url.Values{"perPage": {"100"}}})
 		if err != nil {
@@ -235,7 +246,18 @@ func (p *debridLink) Acquire(ctx context.Context, req AcquireRequest) (*Acquired
 			src, hashOnly = strings.ToLower(req.InfoHash), true
 		}
 		data, err := p.do(ctx, apiRequest{method: http.MethodPost, path: "/seedbox/add", form: url.Values{"url": {src}}})
-		if err != nil {
+		if errors.Is(err, errDuplicateTorrent) {
+			// The account already holds this hash (added by another app
+			// or node). Only this collision needs a fresh account-wide
+			// hash lookup; never delete the existing item.
+			id, err = p.findFresh(ctx, req.InfoHash)
+			if err != nil {
+				return nil, err
+			}
+			if id == "" {
+				return nil, fmt.Errorf("debrid-link: duplicate torrent not listed: %w", core.ErrSourceUnavailable)
+			}
+		} else if err != nil {
 			switch {
 			case errors.Is(err, ErrBlocked):
 				return nil, fmt.Errorf("debrid-link: add refused: %w", ErrAddRefused)
@@ -243,14 +265,15 @@ func (p *debridLink) Acquire(ctx context.Context, req AcquireRequest) (*Acquired
 				return nil, fmt.Errorf("debrid-link: hash not cached: %w", core.ErrNotCached)
 			}
 			return nil, err
-		}
-		var out dlTorrent
-		if err := json.Unmarshal(data, &out); err != nil || out.ID == "" {
-			return nil, errors.New("debrid-link: add returned no torrent id")
-		}
-		id, added = out.ID, true
-		if !out.IsZip && len(out.Files) > 0 {
-			t = &out
+		} else {
+			var out dlTorrent
+			if err := json.Unmarshal(data, &out); err != nil || out.ID == "" {
+				return nil, errors.New("debrid-link: add returned no torrent id")
+			}
+			id, added = out.ID, true
+			if !out.IsZip && len(out.Files) > 0 {
+				t = &out
+			}
 		}
 	}
 	cleanup := func() {
@@ -295,8 +318,9 @@ func (p *debridLink) Acquire(ctx context.Context, req AcquireRequest) (*Acquired
 		return nil, fmt.Errorf("debrid-link: torrent is not ready: %w", core.ErrNotCached)
 	}
 	if t.SrvMaint {
-		return nil, errors.New("debrid-link: the torrent's server is under maintenance")
+		return nil, fmt.Errorf("debrid-link: the torrent's server is under maintenance: %w", core.ErrSourceUnavailable)
 	}
+	p.rememberKnown(req.InfoHash, id)
 	p.list.remember(req.InfoHash, id)
 	p.recent.put(id, chosen.ID, chosen.Link, p.opts.Now())
 	return &Acquired{TorrentID: id, File: chosen, Added: added}, nil
@@ -322,7 +346,7 @@ func (p *debridLink) Link(ctx context.Context, h Handle) (DirectLink, error) {
 		return DirectLink{}, fmt.Errorf("debrid-link: file is not ready: %w", ErrGone)
 	}
 	if t.SrvMaint {
-		return DirectLink{}, errors.New("debrid-link: the torrent's server is under maintenance")
+		return DirectLink{}, fmt.Errorf("debrid-link: the torrent's server is under maintenance: %w", core.ErrSourceUnavailable)
 	}
 	size := f.Size
 	if size <= 0 {
@@ -336,6 +360,7 @@ func (p *debridLink) Remove(ctx context.Context, torrentID string) error {
 		return nil
 	}
 	p.list.forget(torrentID)
+	p.forgetKnown(torrentID)
 	p.recent.forget(torrentID)
 	_, err := p.do(ctx, apiRequest{method: http.MethodDelete, path: "/seedbox/" + url.PathEscape(torrentID) + "/remove"})
 	return err

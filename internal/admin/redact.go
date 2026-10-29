@@ -24,6 +24,8 @@ func isRedacted(s string) bool { return s == RedactedSecret }
 // "unset" from "set". The input is not modified.
 func RedactConfig(cfg config.Config) config.Config {
 	out := cfg
+	out.Posters.APIKey = redact(out.Posters.APIKey)
+	out.Posters.URLTemplate = redact(out.Posters.URLTemplate)
 	out.Markers.APIKey = redact(out.Markers.APIKey)
 	out.Plex.Token = redact(out.Plex.Token)
 	out.Catalog.TMDBKey = redact(out.Catalog.TMDBKey)
@@ -197,6 +199,9 @@ func llmIdentity(l config.LLM) string {
 func UnredactConfig(next, prev config.Config) (config.Config, []FieldError) {
 	var errs placeholderErrors
 	out := next
+	samePosterDestination := next.Posters.Source == prev.Posters.Source && next.Posters.BaseURL == prev.Posters.BaseURL
+	out.Posters.URLTemplate = errs.restore("posters.urlTemplate", next.Posters.URLTemplate, prev.Posters.URLTemplate, samePosterDestination)
+	out.Posters.APIKey = errs.restore("posters.apiKey", next.Posters.APIKey, prev.Posters.APIKey, samePosterDestination && out.Posters.URLTemplate == prev.Posters.URLTemplate)
 	out.Markers.APIKey = errs.restore("markers.apiKey", next.Markers.APIKey, prev.Markers.APIKey, true)
 	out.Plex.Token = errs.restore("plex.token", next.Plex.Token, prev.Plex.Token, true)
 	out.Catalog.TMDBKey = errs.restore("catalog.tmdbKey", next.Catalog.TMDBKey, prev.Catalog.TMDBKey, true)

@@ -423,6 +423,14 @@ describe("health", () => {
       plexDirectHealth({ cert: { present: true, notAfter: "2026-10-25T00:00:00Z" } }, now).level,
     ).toBe("warn");
     expect(plexDirectHealth({ cert: { present: false } }, now).level).toBe("warn");
+    const fallback = plexDirectHealth(
+      { cert: { present: true, selfSigned: true, notAfter: "2028-01-01T00:00:00Z" } },
+      now,
+    );
+    expect([fallback.level, fallback.summary]).toEqual(["warn", "Self-signed certificate"]);
+    expect(
+      plexDirectHealth({ cert: { present: true, notAfter: "2028-01-01T00:00:00Z" } }, now).summary,
+    ).toMatch(/^Expires /);
     expect(
       computeHealth(undefined, now).every((x) => x.level === "unknown" || x.level === "warn"),
     ).toBe(true);

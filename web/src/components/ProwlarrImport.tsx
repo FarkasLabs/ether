@@ -1,4 +1,13 @@
-import { Badge, Button, Input, SettingsSection, toast } from "@braedonsaunders/appkit-ui";
+import {
+  Alert,
+  AlertDescription,
+  AlertTitle,
+  Badge,
+  Button,
+  Input,
+  SettingsSection,
+  toast,
+} from "@braedonsaunders/appkit-ui";
 import { useState } from "react";
 import { apiFetch, errorMessage } from "../lib/api";
 import { SettingsRow } from "./SettingsRow";
@@ -13,6 +22,9 @@ type Result = {
     protocol?: string;
   }[];
   imported: boolean;
+  /** Enabled source indexers skipped for an unsupported protocol. Import is additive: nothing is ever removed. */
+  skippedUnknownProtocol?: number;
+  warnings?: string[];
 };
 
 /** Preview and import the Usenet and torrent indexers a Prowlarr instance already manages. */
@@ -106,6 +118,23 @@ export function ProwlarrImport({ onImported }: { onImported?: () => void }) {
           ))}
         </ul>
       )}
+      {result?.skippedUnknownProtocol ? (
+        <p className="text-sm text-fg-muted">
+          {`Skipped ${result.skippedUnknownProtocol} indexer${result.skippedUnknownProtocol === 1 ? "" : "s"} with an unsupported protocol`}
+        </p>
+      ) : null}
+      {result?.warnings?.length ? (
+        <Alert variant="warning">
+          <AlertTitle>Worth knowing</AlertTitle>
+          <AlertDescription>
+            <ul className="mt-1 list-disc space-y-1 pl-5">
+              {result.warnings.map((w) => (
+                <li key={w}>{w}</li>
+              ))}
+            </ul>
+          </AlertDescription>
+        </Alert>
+      ) : null}
     </div>
   );
 }

@@ -716,6 +716,7 @@ type fakeDL struct {
 	mu       sync.Mutex
 	cached   bool // the hash is cached on Debrid-Link
 	stalls   bool // an accepted torrent never reaches 100%
+	srvMaint bool // the torrent's server reports maintenance
 	torrents map[string]bool
 	adds     []string // url= of each add
 	deleted  []string
@@ -742,8 +743,8 @@ func (f *fakeDL) torrentJSON(id string, zip bool) string {
 	if pct == 100 {
 		status = 100
 	}
-	return fmt.Sprintf(`{"id":"%s","name":"Show.S01","hashString":"%s","status":%d,"downloadPercent":%d,"isZip":%v,"files":[%s]}`,
-		id, testHash, status, pct, zip, strings.Join(files, ","))
+	return fmt.Sprintf(`{"id":"%s","name":"Show.S01","hashString":"%s","status":%d,"downloadPercent":%d,"isZip":%v,"srvMaint":%v,"files":[%s]}`,
+		id, testHash, status, pct, zip, f.srvMaint, strings.Join(files, ","))
 }
 
 func (f *fakeDL) handler(t *testing.T) http.Handler {

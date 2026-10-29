@@ -70,6 +70,19 @@ type Facts struct {
 type ImageSource interface {
 	Get(context.Context, string, int) ([]byte, string, error)
 }
+type posterSource interface {
+	GetPoster(context.Context, *core.Title, string, int) ([]byte, string, error)
+	PosterVersion() string
+}
+
+func (s *Service) CustomPostersEnabled() bool { return s.posterVersion() != "" }
+func (s *Service) posterVersion() string {
+	if p, ok := s.o.Images.(posterSource); ok {
+		return p.PosterVersion()
+	}
+	return ""
+}
+
 type Options struct {
 	// CacheDir contains disposable generated variants only. Empty disables disk caching.
 	CacheDir string
@@ -236,7 +249,7 @@ func (s *Service) Version(ctx context.Context, u *core.User, t *core.Title, lang
 	p, b := s.Paths(ctx, u, t, lang)
 	labels := visibleLabels(s.presentation(ctx, u, t, cfg).Labels)
 	// Viewer identity and unrelated catalogue updates do not change pixels.
-	raw, _ := json.Marshal([]any{p, b, t.LogoPath, labels, pixelStyle(cfg, len(labels) > 0), "compositor-v4"})
+	raw, _ := json.Marshal([]any{s.posterVersion(), p, b, t.LogoPath, labels, pixelStyle(cfg, len(labels) > 0), "compositor-v4"})
 	hash := sha256.Sum256(raw)
 	return hex.EncodeToString(hash[:8])
 }
@@ -252,7 +265,13 @@ func (s *Service) Poster(ctx context.Context, u *core.User, t *core.Title, lang 
 	}
 	ctx = context.WithValue(ctx, previewSettingsKey{}, cfg)
 	path, _ := s.Paths(ctx, u, t, lang)
-	data, ct, err := s.o.Images.Get(ctx, path, 500)
+	var data []byte
+	var ct string
+	if p, ok := s.o.Images.(posterSource); ok {
+		data, ct, err = p.GetPoster(ctx, t, path, 500)
+	} else {
+		data, ct, err = s.o.Images.Get(ctx, path, 500)
+	}
 	if err != nil {
 		return nil, "", err
 	}

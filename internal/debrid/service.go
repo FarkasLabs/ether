@@ -334,8 +334,10 @@ func (e *entry) observe(now time.Time, err error) *backoffEvent {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 	e.stats.Requests++
-	if err == nil || errors.Is(err, core.ErrNotCached) || errors.Is(err, ErrGone) || errors.Is(err, core.ErrReleaseRejected) {
-		// The provider answered; release-level outcomes are not outages.
+	if err == nil || errors.Is(err, core.ErrNotCached) || errors.Is(err, ErrGone) || errors.Is(err, core.ErrReleaseRejected) || errors.Is(err, core.ErrSourceUnavailable) {
+		// The provider answered; release-level outcomes and explicitly
+		// transient ones (a link still being generated, a torrent's
+		// server under maintenance) are not outages.
 		was := e.state
 		e.failures = 0
 		if !now.Before(e.until) {
@@ -893,13 +895,36 @@ func (s *Service) acquireOn(ctx context.Context, e *entry, base Payload, choose 
 		}
 	}
 	// Background validation never creates torrents or starts downloads. An
-	// existing account item can be inspected; unknown remains unknown.
+	// existing account item can be inspected; unknown remains unknown. The
+	// one exception is a provider that serves cached content without
+	// adding anything (Premiumize): a positive bulk CheckCached — a
+	// read-only GET — stands in for the account lookup it does not have,
+	// and its cached-only Acquire can then only read, never add.
+	cacheOnlyBackground := false
 	if core.IsBackgroundCheck(ctx) && torrentID == "" {
-		return Payload{}, ErrUnsupported
+		fast, ok := e.p.(backgroundCacheOnlyProvider)
+		if !ok || !fast.supportsBackgroundCacheOnly() {
+			return Payload{}, ErrUnsupported
+		}
+		cached, err := e.p.CheckCached(ctx, []string{hash})
+		if err != nil {
+			if errors.Is(err, ErrUnsupported) {
+				return Payload{}, ErrUnsupported
+			}
+			observe(err)
+			if errors.Is(err, ErrAuth) {
+				return Payload{}, err
+			}
+			return Payload{}, ErrUnsupported // availability stays unknown
+		}
+		if !cached[strings.ToLower(hash)] {
+			return Payload{}, ErrUnsupported
+		}
+		cacheOnlyBackground = true
 	}
 	findDuration = time.Since(findStarted)
 	readyStarted := time.Now()
-	if torrentID == "" {
+	if torrentID == "" && !cacheOnlyBackground {
 		if err := e.addsPaused(s.now()); err != nil {
 			return Payload{}, err
 		}
@@ -915,7 +940,7 @@ func (s *Service) acquireOn(ctx context.Context, e *entry, base Payload, choose 
 	req := AcquireRequest{InfoHash: hash, Magnet: base.Magnet, TorrentID: torrentID, Choose: choose, CachedOnly: cfg.CachedOnly || core.IsBackgroundCheck(ctx),
 		RemoveUncached: cfg.RemoveUncached, MayRemove: s.mayRemove(e.cfg.ID)}
 	acquire := func() (*Acquired, error) {
-		if req.TorrentID == "" {
+		if req.TorrentID == "" && !cacheOnlyBackground {
 			if err := e.addsPaused(s.now()); err != nil {
 				return nil, err
 			}

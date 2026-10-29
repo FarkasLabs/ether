@@ -72,7 +72,7 @@ func credentialKey(dir string, existing []byte) ([]byte, error) {
 }
 func secretField(k string) bool {
 	switch strings.ToLower(k) {
-	case "token", "apikey", "password", "clientsecret", "username", "tmdbkey":
+	case "urltemplate", "token", "apikey", "password", "clientsecret", "username", "tmdbkey":
 		return true
 	}
 	return false
@@ -276,6 +276,12 @@ func (w *credentialWalker) value(text, name string, path []string, dest string) 
 // destination is the canonical form of an object's destination members.
 func destination(m map[string]any, parent string) string {
 	var b strings.Builder
+	if parent == "posters" {
+		enc, _ := json.Marshal(m["source"])
+		b.WriteString("source=")
+		b.Write(enc)
+		b.WriteByte(0)
+	}
 	for _, k := range destinationFields {
 		v, ok := m[k]
 		if !ok || v == nil || secretField(k) || secretChild(parent, k) {

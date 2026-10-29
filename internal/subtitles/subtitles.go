@@ -37,6 +37,7 @@ import (
 	"github.com/braedonsaunders/ether/internal/config"
 	"github.com/braedonsaunders/ether/internal/core"
 	"github.com/braedonsaunders/ether/internal/flight"
+	"github.com/braedonsaunders/ether/internal/langtag"
 	"github.com/braedonsaunders/ether/internal/retryafter"
 )
 
@@ -130,7 +131,7 @@ func New(opts Options) *Service {
 		alignLangs = alignLangs[:0]
 		seenLang := map[string]bool{}
 		for _, l := range opts.AlignLanguages {
-			if n := normLang(l); n != "" && !seenLang[n] && len(alignLangs) < 3 {
+			if n := langtag.Normalize(l); n != "" && !seenLang[n] && len(alignLangs) < 3 {
 				seenLang[n] = true
 				alignLangs = append(alignLangs, n)
 			}
@@ -207,8 +208,10 @@ type Candidate struct {
 	HearingImp    bool
 	AITranslated  bool
 	HashMatch     bool
-	// Forced marks a foreign-parts-only track (OpenSubtitles'
-	// foreign_parts_only), which Plex calls forced.
+	// Forced marks a real forced track: OpenSubtitles'
+	// foreign_parts_only and NOT hearing_impaired (a HI
+	// foreign-parts track is SDH, not forced; HearingImp
+	// carries that signal separately).
 	Forced bool
 	Score  float64 // filled by Rank
 }
@@ -345,14 +348,14 @@ func (s *Service) SearchWithHash(ctx context.Context, title *core.Title, lang, r
 		if len(a.Files) == 0 {
 			continue
 		}
-		if lang != "" && a.Language != "" && normLang(a.Language) != normLang(lang) {
+		if lang != "" && a.Language != "" && langtag.MatchTier(lang, a.Language) == 0 {
 			continue // the API matched a different language variant
 		}
 		out = append(out, Candidate{
 			HashMatch: a.HashMatch, FileID: a.Files[0].FileID, FileName: a.Files[0].FileName, Language: a.Language,
 			Release: a.Release, DownloadCount: a.DownloadCount, Ratings: a.Ratings,
 			Uploader: a.Uploader.Name, UploaderRank: a.Uploader.Rank,
-			HearingImp: a.HearingImp, AITranslated: a.AITranslated, Forced: a.ForeignOnly,
+			HearingImp: a.HearingImp, AITranslated: a.AITranslated, Forced: a.ForeignOnly && !a.HearingImp,
 		})
 	}
 	Rank(out, releaseName)
@@ -614,7 +617,7 @@ func (s *Service) cached(id, format string) bool {
 // fetchAndCache downloads + normalises a candidate, single-flighted per id.
 // Downloads count against the account's quota, so the work stays with the
 // caller that started it.
-func (s *Service) fetchAndCache(ctx context.Context, id string, c Candidate) (string, error) {
+func (s *Service) fetchAndCache(ctx context.Context, id string, c Candidate, key core.RatingKey) (string, error) {
 	if s.dir != "" && s.cached(id, "srt") && s.cached(id, "vtt") {
 		return id, nil
 	}
@@ -631,7 +634,7 @@ func (s *Service) fetchAndCache(ctx context.Context, id string, c Candidate) (st
 			if err := os.MkdirAll(s.dir, 0o755); err != nil {
 				return "", err
 			}
-			meta, _ := json.Marshal(map[string]any{"fileId": c.FileID, "language": c.Language, "release": c.Release, "fetchedAt": s.now().UTC()})
+			meta, _ := json.Marshal(map[string]any{"titleKey": key.String(), "fileId": c.FileID, "language": c.Language, "release": c.Release, "fetchedAt": s.now().UTC()})
 			// .json first and .srt last: cached() checks srt+vtt, so a crash
 			// mid-write never leaves a half-visible entry.
 			for _, w := range []struct{ name, data string }{{id + ".json", string(meta)}, {id + ".vtt", vtt}, {id + ".srt", srt}} {
@@ -644,71 +647,10 @@ func (s *Service) fetchAndCache(ctx context.Context, id string, c Candidate) (st
 	})
 }
 
-// normLang folds "en"/"eng"/"EN"/"en-US" to a comparable 2-letter code
-// (keeping pt-br distinct, as OpenSubtitles does).
-func normLang(l string) string {
-	l = strings.ReplaceAll(strings.ToLower(strings.TrimSpace(l)), "_", "-")
-	switch l {
-	case "pt-br", "zh-tw", "pob":
-		if l == "pob" {
-			return "pt-br"
-		}
-		return l
-	}
-	if i := strings.IndexAny(l, "-_"); i > 0 {
-		l = l[:i]
-	}
-	// ISO 639-2 -> 639-1 for common embedded-track codes.
-	switch l {
-	case "eng":
-		return "en"
-	case "spa":
-		return "es"
-	case "fre", "fra":
-		return "fr"
-	case "ger", "deu":
-		return "de"
-	case "ita":
-		return "it"
-	case "por":
-		return "pt"
-	case "dut", "nld":
-		return "nl"
-	case "jpn":
-		return "ja"
-	case "kor":
-		return "ko"
-	case "chi", "zho":
-		return "zh"
-	case "rus":
-		return "ru"
-	case "ara":
-		return "ar"
-	case "hin":
-		return "hi"
-	case "swe":
-		return "sv"
-	case "nor":
-		return "no"
-	case "dan":
-		return "da"
-	case "fin":
-		return "fi"
-	case "pol":
-		return "pl"
-	case "tur":
-		return "tr"
-	}
-	if len(l) > 2 {
-		return l[:2]
-	}
-	return l
-}
-
 // queryLang maps a normalised language to the code OpenSubtitles expects in
 // the languages parameter (it splits Portuguese and Chinese by region).
 func queryLang(l string) string {
-	switch n := normLang(l); n {
+	switch n := langtag.Normalize(l); n {
 	case "pt":
 		return "pt-pt"
 	case "zh":
@@ -724,21 +666,126 @@ func MissingLanguages(user *core.User, embedded []core.StreamInfo) []string {
 	if user == nil {
 		return nil
 	}
-	have := map[string]bool{}
+	var have []string
 	for _, st := range embedded {
 		if st.Type == "subtitle" && st.Language != "" {
-			have[normLang(st.Language)] = true
+			have = append(have, langtag.Normalize(st.Language))
 		}
 	}
 	var out []string
 	seen := map[string]bool{}
 	for _, l := range user.SubtitleLanguages {
-		n := normLang(l)
-		if n == "" || have[n] || seen[n] {
+		n := langtag.Normalize(l)
+		if n == "" || seen[n] {
 			continue
 		}
 		seen[n] = true
-		out = append(out, n)
+		// Directional coverage (langtag.MatchTier): a regional embedded
+		// track satisfies a generic want (tier 2), but a generic embedded
+		// track does not satisfy a regional want (tier 1) — download it.
+		covered := false
+		for _, h := range have {
+			if langtag.MatchTier(n, h) >= 2 {
+				covered = true
+				break
+			}
+		}
+		if !covered {
+			out = append(out, n)
+		}
+	}
+	return out
+}
+
+// Preferences is the viewer's subtitle mode/style (trackprefs vocabulary)
+// for automatic fetching. Empty means no preference: best-ranked wins.
+type Preferences struct {
+	Mode  string // off, forced-only, foreign-only, always
+	Style string // normal, sdh, forced
+}
+
+func firstPrefs(prefs []Preferences) Preferences {
+	if len(prefs) > 0 {
+		return prefs[0]
+	}
+	return Preferences{}
+}
+
+// prefSig identifies a preference set for the negative cache, so a
+// "nothing found" for one mode/style never blocks another.
+func prefSig(p Preferences) string { return p.Mode + "/" + p.Style }
+
+// selectionSatisfies reports whether a persisted selection may serve as
+// the fast path for p: forced-only and style forced need a real forced
+// track, style sdh needs an SDH track. Unconstrained prefs accept any.
+func selectionSatisfies(sel selection, p Preferences) bool {
+	if p.Mode == "forced-only" {
+		return sel.Forced
+	}
+	switch p.Style {
+	case "sdh":
+		return sel.SDH
+	case "forced":
+		return sel.Forced
+	case "normal":
+		return !sel.Forced && !sel.SDH
+	}
+	return true
+}
+
+// Embedded tracks cover a preference only when their kind is suitable.
+// Keep language coverage in MissingLanguages so shared language matching remains
+// authoritative. SDH is represented in StreamInfo by its title, as in trackprefs.
+func missingForPreferences(user *core.User, embedded []core.StreamInfo, p Preferences) []string {
+	var suitable []core.StreamInfo
+	for _, st := range embedded {
+		title := strings.ToLower(st.Title)
+		hi := strings.Contains(title, "sdh") || strings.Contains(title, "hearing impaired") || strings.Contains(title, "[cc]") || title == "cc"
+		if selectionSatisfies(selection{Forced: st.Forced, SDH: hi}, p) {
+			suitable = append(suitable, st)
+		}
+	}
+	return MissingLanguages(user, suitable)
+}
+
+// candidatesForFetch applies Preferences to ranked candidates: forced-only
+// requires a real forced track (never a full or HI track), style sdh/forced
+// prefers matching tracks via a stable partition that keeps Rank order
+// inside each group. The input slice is not mutated.
+func candidatesForFetch(cands []Candidate, p Preferences) []Candidate {
+	if p.Mode == "forced-only" {
+		out := make([]Candidate, 0, len(cands))
+		for _, c := range cands {
+			if c.Forced {
+				out = append(out, c)
+			}
+		}
+		if len(out) == 0 {
+			return nil
+		}
+		cands = out
+	}
+	var match func(Candidate) bool
+	switch p.Style {
+	case "sdh":
+		match = func(c Candidate) bool { return c.HearingImp }
+	case "forced":
+		match = func(c Candidate) bool { return c.Forced }
+	case "normal":
+		match = func(c Candidate) bool { return !c.Forced && !c.HearingImp }
+	default:
+		return cands
+	}
+	out := make([]Candidate, 0, len(cands))
+	for _, c := range cands {
+		if match(c) {
+			out = append(out, c)
+		}
+	}
+	for _, c := range cands {
+		if !match(c) {
+			out = append(out, c)
+		}
 	}
 	return out
 }
@@ -747,11 +794,11 @@ func MissingLanguages(user *core.User, embedded []core.StreamInfo) []string {
 // languages missing from the embedded tracks. It returns (nil, nil) when
 // the service is disabled or nothing is missing; per-language failures are
 // logged and skipped, never failing playback.
-func (s *Service) Sidecars(ctx context.Context, title *core.Title, user *core.User, embedded []core.StreamInfo) ([]core.StreamInfo, error) {
-	return s.SidecarsForRelease(ctx, title, user, embedded, "")
+func (s *Service) Sidecars(ctx context.Context, title *core.Title, user *core.User, embedded []core.StreamInfo, prefs ...Preferences) ([]core.StreamInfo, error) {
+	return s.SidecarsForRelease(ctx, title, user, embedded, "", prefs...)
 }
 
-// selection is the persisted choice for one title+language+release, so
+// selection is the persisted choice for one title+language+release+preference, so
 // later playbacks skip the search and download entirely.
 type selection struct {
 	ID       string    `json:"id"`
@@ -759,8 +806,15 @@ type selection struct {
 	Language string    `json:"language"`
 	Release  string    `json:"release"`
 	At       time.Time `json:"at"`
-	// Forced is set for a viewer-picked foreign-parts-only track.
+	// Forced is set for a real forced track (foreign-parts-only, not HI).
 	Forced bool `json:"forced,omitempty"`
+	// SDH marks a hearing-impaired track; it is surfaced in the sidecar
+	// title so trackprefs' sdh() detection can match it. Selections
+	// persisted before this field existed load with SDH=false and keep
+	// serving as non-SDH until re-downloaded — SDH is never invented
+	// from a release name.
+	SDH        bool   `json:"sdh,omitempty"`
+	Preference string `json:"preference,omitempty"`
 }
 
 func releaseSig(release string) string {
@@ -777,15 +831,20 @@ func releaseSig(release string) string {
 	return hex.EncodeToString(h[:6])
 }
 
-func (s *Service) indexPath(title *core.Title, lang, release string) string {
-	return filepath.Join(s.dir, "index", fmt.Sprintf("%d.%s.%s.json", int64(title.Key), lang, releaseSig(release)))
+func (s *Service) indexPath(title *core.Title, lang, release string, prefs ...Preferences) string {
+	sig := releaseSig(release)
+	if p := firstPrefs(prefs); p != (Preferences{}) {
+		h := sha1.Sum([]byte(prefSig(p)))
+		sig += "-" + hex.EncodeToString(h[:8])
+	}
+	return filepath.Join(s.dir, "index", fmt.Sprintf("%d.%s.%s.json", int64(title.Key), lang, sig))
 }
 
-func (s *Service) loadSelection(title *core.Title, lang, release string) (selection, bool) {
+func (s *Service) loadSelection(title *core.Title, lang, release string, prefs ...Preferences) (selection, bool) {
 	if s.dir == "" {
 		return selection{}, false
 	}
-	b, err := os.ReadFile(s.indexPath(title, lang, release))
+	b, err := os.ReadFile(s.indexPath(title, lang, release, prefs...))
 	if err != nil {
 		return selection{}, false
 	}
@@ -796,11 +855,11 @@ func (s *Service) loadSelection(title *core.Title, lang, release string) (select
 	return sel, true
 }
 
-func (s *Service) saveSelection(title *core.Title, lang, release string, sel selection) {
+func (s *Service) saveSelection(title *core.Title, lang, release string, sel selection, prefs ...Preferences) {
 	if s.dir == "" {
 		return
 	}
-	p := s.indexPath(title, lang, release)
+	p := s.indexPath(title, lang, release, prefs...)
 	if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
 		s.log.Debug("subtitle index dir", "err", err)
 		return
@@ -833,8 +892,8 @@ func writeFileAtomic(path string, data []byte) error {
 	return nil
 }
 
-func negKey(title *core.Title, lang, release string) string {
-	return fmt.Sprintf("%d|%s|%s", int64(title.Key), lang, releaseSig(release))
+func negKey(title *core.Title, lang, release string, p Preferences) string {
+	return fmt.Sprintf("%d|%s|%s|%s", int64(title.Key), lang, releaseSig(release), prefSig(p))
 }
 
 func sidecarTitle(lang, release string) string {
@@ -853,12 +912,13 @@ func sidecarTitle(lang, release string) string {
 // three candidates are tried in order, and the winner is cached and
 // remembered. "Nothing found" is remembered for NegativeTTL. A quota error
 // stops downloads for the rest of the call.
-func (s *Service) SidecarsForRelease(ctx context.Context, title *core.Title, user *core.User, embedded []core.StreamInfo, releaseName string) ([]core.StreamInfo, error) {
-	return s.SidecarsWithHash(ctx, title, user, embedded, releaseName, "")
+func (s *Service) SidecarsForRelease(ctx context.Context, title *core.Title, user *core.User, embedded []core.StreamInfo, releaseName string, prefs ...Preferences) ([]core.StreamInfo, error) {
+	return s.SidecarsWithHash(ctx, title, user, embedded, releaseName, "", prefs...)
 }
 
 // SidecarsWithHash uses an already-computed cached-source hash for exact release matching.
-func (s *Service) SidecarsWithHash(ctx context.Context, title *core.Title, user *core.User, embedded []core.StreamInfo, releaseName, movieHash string) ([]core.StreamInfo, error) {
+func (s *Service) SidecarsWithHash(ctx context.Context, title *core.Title, user *core.User, embedded []core.StreamInfo, releaseName, movieHash string, prefs ...Preferences) ([]core.StreamInfo, error) {
+	pref := firstPrefs(prefs)
 	cacheRelease := releaseName
 	if movieHash != "" {
 		cacheRelease += " hash-" + movieHash
@@ -873,7 +933,7 @@ func (s *Service) SidecarsWithHash(ctx context.Context, title *core.Title, user 
 	// automatic choices, and are listed even when the release embeds
 	// that language (the viewer asked for this file).
 	manual := s.manualSelections(title.Key)
-	missing := MissingLanguages(user, embedded)
+	missing := missingForPreferences(user, embedded, pref)
 	if len(missing) == 0 && len(manual) == 0 {
 		return nil, nil
 	}
@@ -898,14 +958,17 @@ func (s *Service) SidecarsWithHash(ctx context.Context, title *core.Title, user 
 			delete(manual, lang)
 			continue
 		}
-		if sel, ok := s.loadSelection(title, lang, cacheRelease); ok {
+		// Fast path only when the persisted selection satisfies the
+		// requested preferences. An isolated preference result may include
+		// a ranked fallback when no preferred style was available.
+		if sel, ok := s.loadSelection(title, lang, cacheRelease, pref); ok && (sel.Preference == prefSig(pref) || selectionSatisfies(sel, pref)) {
 			add(lang, sel)
 			continue
 		}
 		if quotaHit {
 			continue
 		}
-		nk := negKey(title, lang, cacheRelease)
+		nk := negKey(title, lang, cacheRelease, pref)
 		s.mu.Lock()
 		negAt, neg := s.negative[nk]
 		s.mu.Unlock()
@@ -917,6 +980,9 @@ func (s *Service) SidecarsWithHash(ctx context.Context, title *core.Title, user 
 			s.log.Debug("subtitle search failed", "lang", lang, "key", title.Key, "err", err)
 			continue
 		}
+		if pref.Mode != "" || pref.Style != "" {
+			cands = candidatesForFetch(cands, pref)
+		}
 		found := false
 		// Try the best few candidates; a dead link should not lose the language.
 		for i, c := range cands {
@@ -924,7 +990,7 @@ func (s *Service) SidecarsWithHash(ctx context.Context, title *core.Title, user 
 				break
 			}
 			id := cacheID(title, lang, c.FileID)
-			if _, err := s.fetchAndCache(ctx, id, c); err != nil {
+			if _, err := s.fetchAndCache(ctx, id, c, title.Key); err != nil {
 				if errors.Is(err, ErrQuota) {
 					quotaHit = true
 					break
@@ -936,8 +1002,10 @@ func (s *Service) SidecarsWithHash(ctx context.Context, title *core.Title, user 
 			if release == "" {
 				release = c.FileName
 			}
-			s.saveSelection(title, lang, cacheRelease, selection{ID: id, FileID: c.FileID, Language: lang, Release: release, At: s.now().UTC()})
-			add(lang, selection{ID: id, Release: release})
+			sel := selection{ID: id, FileID: c.FileID, Language: lang, Release: release, At: s.now().UTC(), Forced: c.Forced, SDH: c.HearingImp}
+			sel.Preference = prefSig(pref)
+			s.saveSelection(title, lang, cacheRelease, sel, pref)
+			add(lang, sel)
 			found = true
 			break
 		}

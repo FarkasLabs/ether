@@ -120,11 +120,22 @@ func TestDASHRedundantSegmentsAreRemoved(t *testing.T) {
 		t.Fatal("producer exited before checking redundant segment cleanup")
 	default:
 	}
-	left, err := filepath.Glob(filepath.Join(r.dash.dir, "seg-*"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(left) != 0 {
-		t.Errorf("redundant assembled segments left in the run directory: %v", left)
+	// Only 0..3 are known to have been published by the earlier run. The
+	// producer can already be assembling the next segment outside s.mu;
+	// globbing every seg-* file mistakes that legitimate work for a leak.
+	// Allow the normal removal retry loop to handle Windows sharing locks.
+	waitFor(t, "redundant segment cleanup", func() bool {
+		for n := 0; n < 4; n++ {
+			_, err := os.Stat(filepath.Join(r.dash.dir, fmt.Sprintf("seg-0-%05d.m4s", n)))
+			if !os.IsNotExist(err) {
+				return false
+			}
+		}
+		return true
+	})
+	select {
+	case <-r.proc.Done():
+		t.Fatal("producer exited before redundant segment cleanup completed")
+	default:
 	}
 }

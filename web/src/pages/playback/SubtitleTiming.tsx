@@ -6,12 +6,38 @@ import { Field, NumberInput } from "../../components/fields";
 import { ErrorPanel, LoadingRows, MutationError } from "../../components/feedback";
 import { Section } from "../../components/layout";
 import { apiFetch } from "../../lib/api";
+import { formatDateTime, relativeTime } from "../../lib/format";
 import { useAsync } from "../../lib/hooks";
 
-type CachedSubtitle = { id: string; language: string; release: string };
+// `title` is the real title resolved by the server from the catalog; it is
+// always present and empty when the server could not identify the title,
+// in which case the UI says "Unknown title" — never a rating key or the
+// cache id (a hash), which are not identification a person can read.
+// `fetchedAt` is when the sidecar was downloaded.
+type CachedSubtitle = {
+  id: string;
+  language: string;
+  release: string;
+  fetchedAt?: string;
+  title: string;
+  showTitle?: string;
+  season?: number;
+  episode?: number;
+};
+
+const episodeCode = (s: CachedSubtitle) =>
+  s.season && s.episode
+    ? `S${String(s.season).padStart(2, "0")}E${String(s.episode).padStart(2, "0")}`
+    : "";
+
+const displayTitle = (s: CachedSubtitle) => {
+  if (!s.title && !s.showTitle) return "Unknown title";
+  if (s.showTitle) return [s.showTitle, episodeCode(s), s.title].filter(Boolean).join(" · ");
+  return s.title;
+};
 
 const subtitleName = (s: CachedSubtitle) =>
-  `${s.release || "Downloaded subtitle"} · ${s.language || "Unknown language"}`;
+  `${displayTitle(s)} · ${s.language || "Unknown language"}`;
 
 /**
  * Fix subtitles that drift: pick a downloaded sidecar and create a corrected
@@ -53,13 +79,18 @@ export function SubtitleTiming() {
           }
           columns={[
             {
-              key: "release",
-              header: "Release",
-              search: (s) => `${s.release} ${s.language}`,
-              sortValue: (s) => (s.release || "").toLowerCase(),
+              key: "title",
+              header: "Title",
+              search: (s) => `${displayTitle(s)} ${s.showTitle ?? ""} ${s.release} ${s.language}`,
+              sortValue: (s) => displayTitle(s).toLowerCase(),
               cell: (s) => (
-                <span className="break-all font-medium text-fg">
-                  {s.release || "Downloaded subtitle"}
+                <span className="block">
+                  <span className="font-medium text-fg">{displayTitle(s)}</span>
+                  {s.release ? (
+                    <span className="mt-0.5 block break-all text-xs text-fg-subtle">
+                      {s.release}
+                    </span>
+                  ) : null}
                 </span>
               ),
             },
@@ -68,6 +99,16 @@ export function SubtitleTiming() {
               header: "Language",
               sortValue: (s) => s.language,
               cell: (s) => <span className="text-fg-muted">{s.language || "Unknown"}</span>,
+            },
+            {
+              key: "fetchedAt",
+              header: "Downloaded",
+              sortValue: (s) => s.fetchedAt ?? "",
+              cell: (s) => (
+                <span className="text-fg-muted" title={formatDateTime(s.fetchedAt)}>
+                  {relativeTime(s.fetchedAt)}
+                </span>
+              ),
             },
             {
               key: "action",

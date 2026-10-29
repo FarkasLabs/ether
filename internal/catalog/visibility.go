@@ -12,12 +12,17 @@ func (c *Catalog) visibilityFilter() *libraryfilter.Filter {
 	defer c.cfgMu.RUnlock()
 	return c.visibility
 }
-func (c *Catalog) Visible(t *core.Title) bool { return !c.visibilityFilter().Hidden(t) }
+func (c *Catalog) Visible(t *core.Title) bool {
+	return !c.visibilityFilter().Hidden(t) && (!c.config().GateMoviesByHomeRelease || c.homeVisible(t))
+}
 
 // FilterVisibility enriches remote summaries with already-known local facets;
 // there are no detail fetches or indexer calls. Unknown metadata stays unknown.
 func (c *Catalog) FilterVisibility(ctx context.Context, ts []core.Title) []core.Title {
-	if len(c.config().Exclusions) == 0 {
+	if err := c.admitFallbacks(ctx); err != nil {
+		return nil
+	}
+	if len(c.config().Exclusions) == 0 && !c.config().GateMoviesByHomeRelease {
 		return ts
 	}
 	if len(ts) == 0 {
@@ -44,10 +49,15 @@ func (c *Catalog) FilterVisibility(ctx context.Context, ts []core.Title) []core.
 			return nil
 		}
 	}
+	if c.config().GateMoviesByHomeRelease {
+		if err := c.hydrateHomeRelease(ctx, out); err != nil {
+			return nil
+		}
+	}
 	keep := out[:0]
 	f := c.visibilityFilter()
 	for i := range out {
-		if !f.Hidden(&out[i]) {
+		if !f.Hidden(&out[i]) && (!c.config().GateMoviesByHomeRelease || homeReleaseVisible(&out[i], c.now())) {
 			keep = append(keep, out[i])
 		}
 	}

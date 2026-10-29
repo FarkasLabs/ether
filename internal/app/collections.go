@@ -19,6 +19,7 @@ func (a *App) collectionOptions(cfg config.Config) []collections.Option {
 		Dir:      filepath.Join(dataDir, "cache", "images"),
 		ImageURL: a.tmdb.ImageURLFunc(),
 		Logger:   a.log.With("component", "images"),
+		Posters:  func() config.Posters { return a.cfg.Get().Posters },
 	})
 	renderer := artwork.NewRenderer(a.images, filepath.Join(dataDir, "cache", "posters"), a.log.With("component", "artwork"))
 	chat := llm.NewClient(llm.ClientOptions{Config: cfg.LLM, Logger: a.log.With("component", "llm")})

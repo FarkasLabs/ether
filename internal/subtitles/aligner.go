@@ -17,6 +17,7 @@ import (
 
 	"github.com/braedonsaunders/ether/internal/core"
 	"github.com/braedonsaunders/ether/internal/flight"
+	"github.com/braedonsaunders/ether/internal/langtag"
 )
 
 // Aligner implements core.TimelineAligner: it maps a moment in one release
@@ -356,7 +357,7 @@ func (a *Aligner) timelines(ctx context.Context, bs *buildState, title *core.Tit
 				break
 			}
 			bs.downloads++
-			if _, err := a.s.fetchAndCache(ctx, id, c); err != nil {
+			if _, err := a.s.fetchAndCache(ctx, id, c, title.Key); err != nil {
 				a.s.log.Debug("alignment subtitle download failed", "file", c.FileID, "err", err)
 				continue
 			}
@@ -365,7 +366,7 @@ func (a *Aligner) timelines(ctx context.Context, bs *buildState, title *core.Tit
 				release = c.FileName
 			}
 			if releaseName != "" {
-				a.s.saveSelection(title, lang, releaseName, selection{ID: id, FileID: c.FileID, Language: lang, Release: release, At: a.s.now().UTC()})
+				a.s.saveSelection(title, lang, releaseName, selection{ID: id, FileID: c.FileID, Language: lang, Release: release, At: a.s.now().UTC(), Forced: c.Forced, SDH: c.HearingImp})
 			}
 		}
 		add(id, c.FileID, c.Release)
@@ -395,7 +396,7 @@ func (s *Service) DialogueTimeline(ctx context.Context, title *core.Title, lang,
 		lang = s.alignLanguages[0]
 	}
 	bs := &buildState{searches: map[string][]Candidate{}}
-	tls := s.TimelineAligner().timelines(ctx, bs, title, normLang(lang), releaseName, dur)
+	tls := s.TimelineAligner().timelines(ctx, bs, title, langtag.Normalize(lang), releaseName, dur)
 	if len(tls) == 0 {
 		return nil, false
 	}

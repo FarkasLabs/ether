@@ -1,6 +1,7 @@
-import { fireEvent, screen, waitFor } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { act, fireEvent, screen, waitFor } from "@testing-library/react";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { calls, renderApp } from "./harness";
+import { renderAppWith } from "./routes";
 
 const WAIT = { timeout: 4000 };
 async function chooseProfile(name: RegExp) {
@@ -9,6 +10,9 @@ async function chooseProfile(name: RegExp) {
   fireEvent.click(screen.getByRole("button", { name: "Review profile" }));
 }
 describe("Cache management", () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
   it("keeps a preset as a draft until saved and discards it without a request", async () => {
     const { fake } = renderApp("/cache");
     expect(await screen.findByRole("main", { name: "Cache overview" }, WAIT)).toBeInTheDocument();
@@ -109,6 +113,61 @@ describe("Cache management", () => {
     fireEvent.click(screen.getByRole("tab", { name: "Preloading" }));
     expect(await screen.findByText(/Severance · S02E04/)).toBeInTheDocument();
     expect(screen.getByText(/next in a household viewing sequence/)).toBeInTheDocument();
+  });
+  it("refreshes explorer releases and totals without losing the filter", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    let count = 0;
+    const { fake } = renderAppWith("/cache/explorer", (method, path) => {
+      if (method !== "GET" || path !== "/cache/") return undefined;
+      count++;
+      return {
+        releases:
+          count === 1
+            ? []
+            : [
+                {
+                  ReleaseID: "new",
+                  Title: "New arrival",
+                  Bytes: 100,
+                  Size: 100,
+                  Plays: 0,
+                  Pins: [],
+                },
+              ],
+        preload: {},
+      };
+    });
+    expect(await screen.findByText("No retained media yet", {}, WAIT)).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText("Search cached releases"), {
+      target: { value: "arrival" },
+    });
+    const before = calls(fake, "GET", "/cache/").length;
+    await act(async () => {
+      vi.advanceTimersByTime(5000);
+    });
+    expect(calls(fake, "GET", "/cache/").length).toBeGreaterThan(before);
+    expect(await screen.findByText("New arrival", {}, WAIT)).toBeInTheDocument();
+    expect(screen.getByText("1 releases")).toBeInTheDocument();
+    expect(screen.getByLabelText("Search cached releases")).toHaveValue("arrival");
+  });
+  it("backs off polling after a cache load fails", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    const { fake } = renderAppWith("/cache", (method, path) =>
+      method === "GET" && path === "/cache/"
+        ? new Response(JSON.stringify({ error: { message: "Cache offline" } }), { status: 503 })
+        : undefined,
+    );
+    expect(await screen.findByText(/Cache offline/, {}, WAIT)).toBeInTheDocument();
+    await act(async () => {});
+    const before = calls(fake, "GET", "/cache/").length;
+    await act(async () => {
+      vi.advanceTimersByTime(5000);
+    });
+    expect(calls(fake, "GET", "/cache/")).toHaveLength(before);
+    await act(async () => {
+      vi.advanceTimersByTime(5000);
+    });
+    expect(calls(fake, "GET", "/cache/").length).toBeGreaterThan(before);
   });
   it("navigates between compact overview and the dedicated explorer", async () => {
     renderApp("/cache");

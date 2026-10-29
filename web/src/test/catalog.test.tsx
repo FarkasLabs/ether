@@ -61,10 +61,16 @@ describe("Catalog workspace", () => {
     expect(screen.getByLabelText("Region")).toBeInTheDocument();
     expect(screen.getByLabelText("Minimum popularity")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Test TMDB key" })).toBeInTheDocument();
+    const gate = screen.getByLabelText("Wait for digital or physical release");
+    expect(gate).not.toBeChecked();
+    fireEvent.click(gate);
     fireEvent.change(language, { target: { value: "fr-FR" } });
     fireEvent.click(screen.getByRole("button", { name: "Save changes" }));
     await waitFor(() => expect(calls(fake, "PUT", "/config/catalog").length).toBe(1));
-    expect(calls(fake, "PUT", "/config/catalog")[0]?.body).toMatchObject({ language: "fr-FR" });
+    expect(calls(fake, "PUT", "/config/catalog")[0]?.body).toMatchObject({
+      language: "fr-FR",
+      gateMoviesByHomeRelease: true,
+    });
   });
 
   it("shows errors with retry and provides an empty-result reset", async () => {

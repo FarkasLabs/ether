@@ -2,7 +2,9 @@ package plex
 
 import (
 	"context"
+	"crypto/sha256"
 	"fmt"
+	"github.com/braedonsaunders/ether/internal/artwork"
 	"github.com/braedonsaunders/ether/internal/core"
 	"github.com/braedonsaunders/ether/internal/llm"
 	"github.com/braedonsaunders/ether/internal/overlays"
@@ -190,7 +192,7 @@ func (s *Server) decorateDiscoveryMetadata(ctx context.Context, pr *Request, t *
 			}
 
 		}
-		if cfg.Enabled && localized.PosterPath != "" {
+		if (cfg.Enabled && localized.PosterPath != "") || (d.Overlays.CustomPostersEnabled() && (localized.Type == core.TypeMovie || localized.Type == core.TypeShow)) {
 			version := d.Overlays.Version(ctx, pr.User, localized, pr.Language)
 			m.Thumb = fmt.Sprintf("/library/metadata/%s/discoveryPoster/%s?lang=%s", t.Key.String(), version, url.QueryEscape(pr.Language))
 		}
@@ -307,7 +309,7 @@ func (s *Server) serveDiscoveryPoster(w http.ResponseWriter, r *http.Request, k 
 	w.Header().Set("Cache-Control", "private, max-age=86400")
 	w.Header().Set("Vary", "X-Plex-Token, X-Plex-Language")
 	w.Header().Set("ETag", etag)
-	if r.Header.Get("If-None-Match") == etag {
+	if !d.Overlays.CustomPostersEnabled() && r.Header.Get("If-None-Match") == etag {
 		w.WriteHeader(http.StatusNotModified)
 		return
 	}
@@ -324,6 +326,21 @@ func (s *Server) serveDiscoveryPoster(w http.ResponseWriter, r *http.Request, k 
 	if e != nil {
 		writeHTTPError(w, 404)
 		return
+	}
+	if d.Overlays.CustomPostersEnabled() {
+		if width, _ := strconv.Atoi(r.URL.Query().Get("width")); width > 0 && (kind == "" || kind == "poster") {
+			if resized, err := artwork.ResizePoster(data, width); err == nil {
+				data = resized
+				ct = "image/jpeg"
+			}
+		}
+		etag = fmt.Sprintf("\"%x\"", sha256.Sum256(data))
+		w.Header().Set("ETag", etag)
+		w.Header().Set("Cache-Control", "private, max-age=0, must-revalidate")
+		if r.Header.Get("If-None-Match") == etag {
+			w.WriteHeader(http.StatusNotModified)
+			return
+		}
 	}
 	setArtworkHeaders(w.Header(), ct)
 	w.Header().Set("Content-Length", strconv.Itoa(len(data)))

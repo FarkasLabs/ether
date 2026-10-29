@@ -1912,6 +1912,26 @@ export function createFakeServer(opts: FakeOptions = {}) {
         }
         return json({ indexers: found, imported: Boolean(req.import) });
       }
+      case "GET /subtitle-sync":
+        return json([
+          {
+            id: "abc123",
+            language: "pt-br",
+            release: "Some.Show.S01E02.720p.WEB-DL-GROUP",
+            fetchedAt: new Date(Date.now() - 3 * 3600_000).toISOString(),
+            title: "The Episode",
+            showTitle: "Some Show",
+            season: 1,
+            episode: 2,
+          },
+          {
+            id: "orphan99",
+            language: "en",
+            release: "Other.Movie.2023.720p",
+            fetchedAt: new Date(Date.now() - 26 * 3600_000).toISOString(),
+            title: "",
+          },
+        ]);
       case "GET /disk":
         return json({
           path: q.get("path") ?? "",

@@ -450,7 +450,10 @@ func (s *sharedCache) evictWhere(id string, expire bool) error {
 			q += ` AND s.release_id=?`
 			args = append(args, id)
 		}
-		q += ` ORDER BY s.touched LIMIT 256`
+		q += ` ORDER BY s.touched`
+		if id == "" {
+			q += ` LIMIT 256`
+		}
 		rows, err := tx.QueryContext(ctx, q, args...)
 		if err != nil {
 			return err

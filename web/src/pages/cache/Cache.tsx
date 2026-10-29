@@ -10,7 +10,7 @@ import {
   Sparkles,
   Zap,
 } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useRouteTab } from "../../components/layout";
 import { CacheOverview } from "./CacheOverview";
@@ -259,7 +259,19 @@ function Toggle({
 export default function Cache() {
   const config = useAsync(() => api.getConfig(), []);
   const live = useAsync((signal) => apiFetch<CacheSnapshot>("/cache/", { signal }), []);
-  useInterval(() => void live.reload(), 5000);
+  const tab = useRouteTab(CACHE_TABS);
+  // Keep the explorer live, and back off after failures.
+  const [pollFailures, setPollFailures] = useState(0);
+  useEffect(() => {
+    if (live.error) setPollFailures((n) => Math.min(n + 1, 4));
+    else if (live.data) setPollFailures(0);
+  }, [live.error, live.data]);
+  useInterval(
+    () => {
+      if (!live.loading) void live.reload();
+    },
+    Math.min(5000 * 2 ** pollFailures, 60_000),
+  );
   const { draft, setDraft, dirty, reset } = useDraft<Policy>(config.data?.cache);
   useUnsavedGuard(dirty);
   const [saving, setSaving] = useState(false),
@@ -270,7 +282,6 @@ export default function Cache() {
     name: string;
     values: Partial<Policy>;
   } | null>(null);
-  const tab = useRouteTab(CACHE_TABS);
   const navigate = useNavigate();
   const [unit, setUnit] = useState<"GiB" | "TiB">("GiB");
   const [busy, setBusy] = useState<string | null>(null);
@@ -304,6 +315,29 @@ export default function Cache() {
       });
       await live.reload();
       if (path === "warm") toast.success("Resume warming requested");
+    } catch (e) {
+      setError(e);
+    } finally {
+      setBusy(null);
+    }
+  }
+  async function clearBlock(releaseId: string, title: string) {
+    if (
+      !window.confirm(
+        `Clear cached bytes for ${title} and block this release from future playback? Active or paused playback must be stopped first. Protected bytes may remain until background work ends. You can unblock it in the release controls.`,
+      )
+    )
+      return;
+    setBusy("clear-block");
+    setError(null);
+    try {
+      const result = await apiFetch<{ cleared: boolean; message: string }>("/cache/clear-block", {
+        method: "POST",
+        body: JSON.stringify({ releaseId }),
+      });
+      await live.reload();
+      if (result.cleared) toast.success(result.message);
+      else setError(new Error(result.message));
     } catch (e) {
       setError(e);
     } finally {
@@ -428,6 +462,7 @@ export default function Cache() {
                 snapshot={snap}
                 busy={busy !== null}
                 onPin={(releaseId, pinned) => void action("pin", { releaseId, pinned })}
+                onClearBlock={(id, title) => void clearBlock(id, title)}
               />
             </div>
           ) : (

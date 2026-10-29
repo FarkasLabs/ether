@@ -372,6 +372,10 @@ func (s *Server) handlePhotoTranscode(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 			params := u.Query()
+			r = r.Clone(r.Context())
+			effective := r.URL.Query()
+			effective.Set("width", strconv.Itoa(width))
+			r.URL.RawQuery = effective.Encode()
 			s.serveDiscoveryPoster(w, r, key, params.Get("kind"), params.Get("lang"))
 			return
 		}

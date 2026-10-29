@@ -9,11 +9,15 @@ import (
 	"time"
 )
 
+// CachedSubtitle identifies a sidecar from its own metadata. Key is internal
+// only; the app resolves it through the catalog. Legacy metadata without a key
+// stays unknown, with no selection-index scan on the list request path.
 type CachedSubtitle struct {
 	ID        string    `json:"id"`
 	Language  string    `json:"language"`
 	Release   string    `json:"release"`
 	FetchedAt time.Time `json:"fetchedAt"`
+	Key       string    `json:"-"`
 }
 
 func (s *Service) CachedSubtitles() ([]CachedSubtitle, error) {
@@ -40,11 +44,22 @@ func (s *Service) CachedSubtitles() ([]CachedSubtitle, error) {
 		if err != nil || len(raw) > 64<<10 {
 			continue
 		}
-		var c CachedSubtitle
-		if json.Unmarshal(raw, &c) != nil {
+		var meta struct {
+			CachedSubtitle
+			TitleKey string `json:"titleKey"`
+		}
+		c := CachedSubtitle{}
+		if json.Unmarshal(raw, &meta) != nil {
 			continue
 		}
+		c = meta.CachedSubtitle
+		c.Key = meta.TitleKey
 		c.ID = id
+		if c.FetchedAt.IsZero() {
+			if info, err := os.Stat(filepath.Join(s.dir, id+".srt")); err == nil {
+				c.FetchedAt = info.ModTime().UTC()
+			}
+		}
 		out = append(out, c)
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].FetchedAt.After(out[j].FetchedAt) })
