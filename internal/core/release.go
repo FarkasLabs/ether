@@ -109,14 +109,17 @@ type QualityProfile struct {
 	MinCustomFormatScore *int           `json:"minCustomFormatScore,omitempty"`
 	Name                 string         `json:"name"`
 	MaxHeight            int            `json:"maxHeight"` // cap, e.g. 1080
-	MinHeight            int            `json:"minHeight"` // floor, e.g. 720
-	AllowHDR             bool           `json:"allowHdr"`  // only applied when the client also supports it
-	AllowDolbyVision     bool           `json:"allowDolbyVision"`
-	PreferredSources     []Source       `json:"preferredSources"` // best first
-	PreferredCodecs      []string       `json:"preferredCodecs"`  // best first; codecs the client can't play are dropped anyway
-	PreferredAudio       []string       `json:"preferredAudio"`
-	MinSizeMBPerMin      float64        `json:"minSizeMbPerMin"` // size sanity, per minute of runtime
-	MaxSizeMBPerMin      float64        `json:"maxSizeMbPerMin"`
-	PreferredLanguages   []string       `json:"preferredLanguages"`
-	AllowCam             bool           `json:"allowCam"` // also gated by the owner's global cam setting
+	// ConfiguredMaxHeight is MaxHeight before SelectProfile clamped it
+	// to a client's caps; runtime-only, never persisted with the profile.
+	ConfiguredMaxHeight int      `json:"-"`
+	MinHeight           int      `json:"minHeight"` // floor, e.g. 720
+	AllowHDR            bool     `json:"allowHdr"`  // only applied when the client also supports it
+	AllowDolbyVision    bool     `json:"allowDolbyVision"`
+	PreferredSources    []Source `json:"preferredSources"` // best first
+	PreferredCodecs     []string `json:"preferredCodecs"`  // best first; codecs the client can't play are dropped anyway
+	PreferredAudio      []string `json:"preferredAudio"`
+	MinSizeMBPerMin     float64  `json:"minSizeMbPerMin"` // size sanity, per minute of runtime
+	MaxSizeMBPerMin     float64  `json:"maxSizeMbPerMin"`
+	PreferredLanguages  []string `json:"preferredLanguages"`
+	AllowCam            bool     `json:"allowCam"` // also gated by the owner's global cam setting
 }

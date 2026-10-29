@@ -87,6 +87,10 @@ func SelectProfile(q config.Quality, caps core.ClientCaps, user *core.User) core
 		prof = downloadProfile(prof, caps)
 	}
 
+	// Remember the profile's own ceiling before the client clamp below
+	// erases which of the two limited the effective MaxHeight.
+	prof.ConfiguredMaxHeight = prof.MaxHeight
+
 	// Clamp to client capabilities.
 	if caps.MaxHeight > 0 && (prof.MaxHeight == 0 || prof.MaxHeight > caps.MaxHeight) {
 		prof.MaxHeight = caps.MaxHeight
@@ -139,6 +143,15 @@ func downloadProfile(prof core.QualityProfile, caps core.ClientCaps) core.Qualit
 		prof.MaxSizeMBPerMin = 80
 	}
 	return prof
+}
+
+// configuredMaxHeight is the profile's own MaxHeight before any client
+// clamp; profiles built outside SelectProfile report their MaxHeight.
+func configuredMaxHeight(p core.QualityProfile) int {
+	if p.ConfiguredMaxHeight > 0 {
+		return p.ConfiguredMaxHeight
+	}
+	return p.MaxHeight
 }
 
 func ruleMatches(rule config.QualityRule, caps core.ClientCaps, user *core.User) bool {

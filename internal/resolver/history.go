@@ -13,19 +13,24 @@ import (
 
 // HistoryRecord is one persisted resolution outcome.
 type HistoryRecord struct {
-	ID          int64          `json:"id"`
-	At          time.Time      `json:"at"`
-	TitleKey    core.RatingKey `json:"titleKey,string"`
-	TitleName   string         `json:"titleName"`
-	Profile     string         `json:"profile,omitempty"`
-	ReleaseID   string         `json:"releaseId,omitempty"`
-	ReleaseName string         `json:"releaseName,omitempty"`
-	Indexer     string         `json:"indexer,omitempty"`
-	Size        int64          `json:"size,omitempty"`
-	Error       string         `json:"error,omitempty"`
-	Failover    bool           `json:"failover,omitempty"`
-	Pinned      bool           `json:"pinned,omitempty"` // the owner's pin was used
-	Candidates  int            `json:"candidates"`
+	ID        int64          `json:"id"`
+	At        time.Time      `json:"at"`
+	TitleKey  core.RatingKey `json:"titleKey,string"`
+	TitleName string         `json:"titleName"`
+	Profile   string         `json:"profile,omitempty"`
+	// Max-height ceilings behind Profile (configured / client caps /
+	// effective); zero on records written before they were tracked.
+	ProfileMaxHeight   int    `json:"profileMaxHeight,omitempty"`
+	ClientMaxHeight    int    `json:"clientMaxHeight,omitempty"`
+	EffectiveMaxHeight int    `json:"effectiveMaxHeight,omitempty"`
+	ReleaseID          string `json:"releaseId,omitempty"`
+	ReleaseName        string `json:"releaseName,omitempty"`
+	Indexer            string `json:"indexer,omitempty"`
+	Size               int64  `json:"size,omitempty"`
+	Error              string `json:"error,omitempty"`
+	Failover           bool   `json:"failover,omitempty"`
+	Pinned             bool   `json:"pinned,omitempty"` // the owner's pin was used
+	Candidates         int    `json:"candidates"`
 	// Trace is the full decision (candidates capped at 50); only
 	// HistoryEntry fills it.
 	Trace *Trace `json:"trace,omitempty"`
@@ -68,6 +73,9 @@ func historyFromTrace(tr Trace) HistoryRecord {
 	h := HistoryRecord{At: tr.At, TitleKey: tr.TitleKey, TitleName: tr.TitleName, Profile: tr.Profile,
 		ReleaseID: tr.Winner, Error: tr.Err, Failover: tr.Failover, Pinned: tr.PinStatus == "used",
 		Candidates: len(tr.Candidates) + tr.Omitted}
+	if tr.Limits != nil {
+		h.ProfileMaxHeight, h.ClientMaxHeight, h.EffectiveMaxHeight = tr.Limits.ProfileConfiguredMaxHeight, tr.Limits.ClientMaxHeight, tr.Limits.ProfileMaxHeight
+	}
 	for _, c := range tr.Candidates {
 		if c.ReleaseID != "" && c.ReleaseID == tr.Winner {
 			h.ReleaseName, h.Indexer, h.Size = c.Name, c.Indexer, c.Size
@@ -147,6 +155,11 @@ func scanHistory(r rowScanner, withTrace bool) (HistoryRecord, error) {
 		var tr Trace
 		if err := json.Unmarshal([]byte(raw), &tr); err == nil {
 			h.Trace = &tr
+			// The ceilings live only in the trace JSON (no new columns);
+			// surface them on the record HistoryEntry returns.
+			if tr.Limits != nil {
+				h.ProfileMaxHeight, h.ClientMaxHeight, h.EffectiveMaxHeight = tr.Limits.ProfileConfiguredMaxHeight, tr.Limits.ClientMaxHeight, tr.Limits.ProfileMaxHeight
+			}
 		}
 	}
 	return h, nil

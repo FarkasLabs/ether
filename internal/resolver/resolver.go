@@ -126,10 +126,14 @@ type DiscoveryTrace struct {
 	Rescue bool   `json:"rescue,omitempty"`
 }
 type TraceLimits struct {
-	ProfileMinHeight     int `json:"profileMinHeight"`
-	ProfileMaxHeight     int `json:"profileMaxHeight"`
-	ClientMaxHeight      int `json:"clientMaxHeight"`
-	ClientMaxBitrateKbps int `json:"clientMaxBitrateKbps"`
+	ProfileMinHeight int `json:"profileMinHeight"`
+	// ProfileMaxHeight is the effective (client-clamped) ceiling;
+	// ProfileConfiguredMaxHeight is the profile's own ceiling before
+	// that clamp, so a rejection can name whoever actually limited it.
+	ProfileMaxHeight           int `json:"profileMaxHeight"`
+	ProfileConfiguredMaxHeight int `json:"profileConfiguredMaxHeight"`
+	ClientMaxHeight            int `json:"clientMaxHeight"`
+	ClientMaxBitrateKbps       int `json:"clientMaxBitrateKbps"`
 }
 
 type searchCacheEntry struct {
@@ -546,7 +550,7 @@ func (s *Service) resolve(ctx context.Context, req core.ResolveRequest, profile 
 	started := time.Now()
 	t := req.Title
 	trace := Trace{TitleKey: t.Key, TitleName: consoleTitleName(t), Profile: profile.Name, At: s.now(), Failover: len(req.Exclude) > 0}
-	trace.Limits = &TraceLimits{profile.MinHeight, profile.MaxHeight, req.Client.MaxHeight, req.Client.MaxBitrateKbps}
+	trace.Limits = &TraceLimits{ProfileMinHeight: profile.MinHeight, ProfileMaxHeight: profile.MaxHeight, ProfileConfiguredMaxHeight: configuredMaxHeight(profile), ClientMaxHeight: req.Client.MaxHeight, ClientMaxBitrateKbps: req.Client.MaxBitrateKbps}
 	defer func() {
 		trace.TotalDuration = time.Since(started)
 		s.addTrace(trace)
@@ -997,7 +1001,7 @@ func (s *Service) rankCandidates(ctx context.Context, req core.ResolveRequest, s
 		if reason != "" {
 			ct.Rejected = true
 			switch reason {
-			case "above profile max height", "below profile min height", "dolby vision not allowed for client", "video codec unsupported by client", "quality excluded by imported profile", "source recently failed health check; retrying later",
+			case "above profile max height", "above client max height", "below profile min height", "dolby vision not allowed for client", "video codec unsupported by client", "quality excluded by imported profile", "source recently failed health check; retrying later",
 				// Size ranges are per profile: a remux too large for a
 				// download or mobile profile still plays for others.
 				"size too small for runtime", "size too large for runtime":
@@ -1256,6 +1260,12 @@ func rejectPolicy(rel core.Release, t *core.Title, profile core.QualityProfile, 
 		}
 	}
 	if !preferred && profile.MaxHeight > 0 && rel.Info.Height > profile.MaxHeight {
+		// The effective ceiling is min(configured profile, client caps):
+		// name the strictly lower one as the limiter. A tie keeps the
+		// profile wording, as before.
+		if caps.MaxHeight > 0 && caps.MaxHeight < configuredMaxHeight(profile) && rel.Info.Height > caps.MaxHeight {
+			return "above client max height"
+		}
 		return "above profile max height"
 	}
 	if !preferred && profile.MinHeight > 0 && rel.Info.Height > 0 && rel.Info.Height < profile.MinHeight {
