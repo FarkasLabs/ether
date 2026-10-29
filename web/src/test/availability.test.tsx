@@ -31,6 +31,22 @@ describe("Sources availability", () => {
     fireEvent.click(screen.getByRole("button", { name: "Sync feeds" }));
     await waitFor(() => expect(calls(fake, "POST", "/availability/sync")).toHaveLength(1));
   });
+  it("preserves the movie window when disabling the gate", async () => {
+    const { fake } = renderApp("/sources/availability");
+    fireEvent.click(await screen.findByRole("button", { name: "Settings" }));
+    const d = await screen.findByRole("dialog", { name: "Availability settings" });
+    expect(within(d).getByLabelText("Movie evidence window")).toHaveValue(60);
+    fireEvent.change(within(d).getByLabelText("Movie evidence window"), {
+      target: { value: "120" },
+    });
+    fireEvent.click(within(d).getByRole("switch", { name: "Require movie release evidence" }));
+    fireEvent.click(within(d).getByRole("button", { name: "Save settings" }));
+    await waitFor(() => expect(calls(fake, "PUT", "/config/availability")).toHaveLength(1));
+    expect(calls(fake, "PUT", "/config/availability")[0]!.body).toMatchObject({
+      disableMovieEvidenceGate: true,
+      movieEvidenceDays: 120,
+    });
+  });
   it("discards unsaved source selection", async () => {
     const { fake } = renderApp("/sources/availability");
     fireEvent.click(await screen.findByRole("button", { name: "Settings" }));

@@ -123,6 +123,8 @@ Everything is managed through `/ether/`—a fast, keyboard-friendly web UI built
 
 Global TMDB trending charts refresh hourly and survive restarts. Continue Watching leads the default discovery layout, followed by Trending Now. Browseable collections and discovery rows have independent placement controls, with movie-genre and TV-network/studio defaults. Catalog → Library visibility adds optional, previewable country, language, genre and numeric exclusion rules without replacing the catalogue browser or launching provider searches.
 
+**Sources → Availability → Settings** controls the movie evidence window. It defaults to enabled for 60 days after release; change it to 1–366 days or disable the movie requirement. A suitable observed release unlocks the movie immediately during that window: this is not a mandatory wait or a guarantee of quality/playback. Episode evidence remains a separate 24-hour rule.
+
 ### Taste Intelligence & Per-Viewer Controls
 Inspect what the personalization engine has learned for each viewer—their top picks, taste confidence, peak viewing hours, typical session length, and genre/person affinities—alongside granular per-person content ratings, time windows, and stream caps.
 
