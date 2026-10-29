@@ -47,19 +47,49 @@ type session struct {
 	relay           core.HLSSession
 	relayInfo       *core.MediaInfo
 	dash            core.DASHSession
-	mu              sync.Mutex
-	info            SessionInfo
-	user            core.User
-	caps            core.ClientCaps
-	last            time.Time
-	tracks          []*track
-	resources       map[string]string
-	closed          bool
+	// mu guards the fields above and below it. It is never held across
+	// Playback.Prepare, probing or upstream I/O: preparers work on a staged
+	// snapshot (prepareMu serializes them) and publish under mu only after
+	// validating generation. getSession/ServeSegment/close therefore stay
+	// responsive while a tune or playlist preparation is in flight.
+	mu sync.Mutex
+	// generation is guarded by mu and bumped by close; a preparer that
+	// snapshotted an older generation discards its staged result.
+	generation int64
+	// prepareMu serializes tune/playlist preparation for this session. It
+	// is deliberately separate from mu so that slow preparation blocks
+	// neither media serving nor close.
+	prepareMu sync.Mutex
+	// ctx is the session lifetime, cancelled by close; preparation I/O is
+	// bound to it (bindContext) so Stop cancels a slow Prepare/probe.
+	ctx       context.Context
+	cancel    context.CancelFunc
+	info      SessionInfo
+	user      core.User
+	caps      core.ClientCaps
+	last      time.Time
+	tracks    []*track
+	resources map[string]string
+	closed    bool
+}
+
+// bindContext derives a context cancelled when parent ends or when the
+// session is closed, whichever comes first.
+func (ss *session) bindContext(parent context.Context) (context.Context, context.CancelFunc) {
+	ctx, cancel := context.WithCancel(parent)
+	if ss.ctx == nil {
+		return ctx, cancel
+	}
+	stop := context.AfterFunc(ss.ctx, cancel)
+	return ctx, func() { stop(); cancel() }
 }
 
 func (ss *session) close(s *Service) {
 	if ss.startupCancel != nil {
 		ss.startupCancel()
+	}
+	if ss.cancel != nil {
+		ss.cancel()
 	}
 	ss.mu.Lock()
 	if ss.closed {
@@ -67,6 +97,7 @@ func (ss *session) close(s *Service) {
 		return
 	}
 	ss.closed = true
+	ss.generation++
 	tracks := ss.tracks
 	relay := ss.relay
 	dash := ss.dash
@@ -176,6 +207,11 @@ func (s *Service) TuneWithSession(ctx context.Context, u *core.User, channelID s
 		},
 		user: *u, caps: caps, last: s.o.Now(), resources: map[string]string{},
 	}
+	base := s.ctx
+	if base == nil {
+		base = context.Background()
+	}
+	ss.ctx, ss.cancel = context.WithCancel(base)
 	// Upstream retries and probing share one startup budget. A stalled public
 	// source must not occupy a viewer slot for three HTTP timeouts.
 	var cancel context.CancelFunc
@@ -209,18 +245,17 @@ func (s *Service) TuneWithSession(ctx context.Context, u *core.User, channelID s
 		ss.mu.Unlock()
 	}
 
+	// Preparation does its I/O without ss.mu (see prepareTrack/startIPTVSession);
+	// close can therefore cancel it through the session context instead of
+	// waiting behind up to ~10s of upstream work.
 	if c.Kind == "virtual" {
-		ss.mu.Lock()
 		_, err = s.prepareTrack(ctx, ss, *p)
-		ss.mu.Unlock()
 		if err != nil {
 			s.Stop(ctx, ss.info.ID, u)
 			return SessionInfo{}, err
 		}
 	} else {
-		ss.mu.Lock()
-		err = s.startIPTV(ctx, ss)
-		ss.mu.Unlock()
+		err = s.startIPTVSession(ctx, ss)
 		if err != nil {
 			s.Stop(ctx, ss.info.ID, u)
 			return SessionInfo{}, err
@@ -345,7 +380,115 @@ func trackCount(span time.Duration) int {
 	}
 	return n
 }
+
+// prepareTrack prepares one programme without holding ss.mu across
+// Playback.Prepare/StartHLS. ss.prepareMu serializes preparers of this
+// session; the I/O itself runs on a staged copy of the session and is
+// published under ss.mu only if the session is unchanged (same generation,
+// not closed, programme not already prepared). A stale staged track is
+// stopped and discarded instead of leaking into a closed session.
 func (s *Service) prepareTrack(ctx context.Context, ss *session, p Programme) (*track, error) {
+	ss.prepareMu.Lock()
+	defer ss.prepareMu.Unlock()
+	return s.prepareTrackStaged(ctx, ss, p)
+}
+
+// prepareTrackStaged is prepareTrack for a caller already holding
+// ss.prepareMu (ServePlaylist prepares up to three programmes as one unit).
+func (s *Service) prepareTrackStaged(ctx context.Context, ss *session, p Programme) (*track, error) {
+	ss.mu.Lock()
+	if ss.closed {
+		ss.mu.Unlock()
+		return nil, core.ErrNotFound
+	}
+	for _, t := range ss.tracks {
+		if t.programme.ID == p.ID {
+			ss.mu.Unlock()
+			return t, nil
+		}
+	}
+	gen := ss.generation
+	stage := &session{
+		info: ss.info, user: ss.user, caps: ss.caps,
+		tracks: append([]*track(nil), ss.tracks...), nextSequence: ss.nextSequence,
+	}
+	stagedFrom := len(stage.tracks)
+	ss.mu.Unlock()
+
+	ctx, cancel := ss.bindContext(ctx)
+	defer cancel()
+	tr, err := s.prepareTrackOnStage(ctx, stage, p)
+	if err != nil {
+		return nil, err
+	}
+	ss.mu.Lock()
+	if ss.closed || ss.generation != gen {
+		ss.mu.Unlock()
+		for _, stale := range stage.tracks[stagedFrom:] {
+			s.stopTrack(stale)
+		}
+		return nil, core.ErrNotFound
+	}
+	for _, t := range ss.tracks {
+		if t.programme.ID == p.ID {
+			ss.mu.Unlock()
+			for _, stale := range stage.tracks[stagedFrom:] {
+				s.stopTrack(stale)
+			}
+			return t, nil
+		}
+	}
+	ss.info.MediaInfo = stage.info.MediaInfo
+	ss.nextSequence = stage.nextSequence
+	ss.tracks = stage.tracks
+	ss.mu.Unlock()
+	return tr, nil
+}
+
+// startIPTVSession runs startIPTV on a staged copy of ss, so probing,
+// upstream fetches and relay startup never hold ss.mu. On success the
+// staged selection is published under ss.mu (including the input-relay
+// grant, which is re-keyed from the stage to ss); if the session closed or
+// changed generation meanwhile, the staged relay/grant are discarded.
+func (s *Service) startIPTVSession(ctx context.Context, ss *session) error {
+	ss.prepareMu.Lock()
+	defer ss.prepareMu.Unlock()
+	ss.mu.Lock()
+	if ss.closed {
+		ss.mu.Unlock()
+		return core.ErrNotFound
+	}
+	gen := ss.generation
+	stage := &session{info: ss.info, user: ss.user, caps: ss.caps}
+	ss.mu.Unlock()
+
+	ctx, cancel := ss.bindContext(ctx)
+	defer cancel()
+	if err := s.startIPTV(ctx, stage); err != nil {
+		return err
+	}
+	ss.mu.Lock()
+	if ss.closed || ss.generation != gen {
+		relay := stage.relay
+		ss.mu.Unlock()
+		if relay != nil {
+			relay.Close()
+		}
+		s.revokeInput(stage)
+		return core.ErrNotFound
+	}
+	ss.inputURL, ss.inputSource, ss.inputHeaders = stage.inputURL, stage.inputSource, stage.inputHeaders
+	ss.info.MediaInfo, ss.info.ActiveSourceID = stage.info.MediaInfo, stage.info.ActiveSourceID
+	ss.relay, ss.relayInfo, ss.resources = stage.relay, stage.relayInfo, stage.resources
+	s.transferInput(stage, ss)
+	ss.mu.Unlock()
+	return nil
+}
+
+// prepareTrackOnStage performs the actual (slow) preparation against a
+// staged session copy owned exclusively by the calling goroutine; it must
+// only be called from prepareTrackStaged.
+func (s *Service) prepareTrackOnStage(ctx context.Context, ss *session, p Programme) (*track, error) {
 	if ss.closed {
 		return nil, core.ErrNotFound
 	}
@@ -424,19 +567,23 @@ func (s *Service) ServePlaylist(w http.ResponseWriter, r *http.Request, id strin
 	}
 	ss.mu.Lock()
 	ss.consumed = true
+	relay, channel := ss.relay, ss.info.Channel
 	ss.mu.Unlock()
-	if ss.relay != nil {
+	if relay != nil {
 		s.serveRelayPlaylist(w, r, ss)
 		return
 	}
-	if ss.info.Channel.Kind == "iptv" {
+	if channel.Kind == "iptv" {
 		s.ServeResource(w, r, id, "index.m3u8", u)
 		return
 	}
-	ss.mu.Lock()
-	defer ss.mu.Unlock()
+	// ss.mu is only taken for brief snapshots below; the (potentially ~10s)
+	// programme preparation runs under prepareMu on staged state, so
+	// ServeSegment/getSession/close of this same session stay responsive.
+	ss.prepareMu.Lock()
+	defer ss.prepareMu.Unlock()
 	now := s.o.Now()
-	ps, err := s.programmes(r.Context(), ss.info.Channel, now, now.Add(24*time.Second))
+	ps, err := s.programmes(r.Context(), channel, now, now.Add(24*time.Second))
 	if err != nil {
 		writeStreamError(w, err)
 		return
@@ -451,6 +598,12 @@ func (s *Service) ServePlaylist(w http.ResponseWriter, r *http.Request, id strin
 	for _, p := range ps {
 		desired[p.ID] = true
 	}
+	ss.mu.Lock()
+	if ss.closed {
+		ss.mu.Unlock()
+		writeStreamError(w, core.ErrNotFound)
+		return
+	}
 	needed := 0
 	for _, p := range ps {
 		exists := false
@@ -463,6 +616,7 @@ func (s *Service) ServePlaylist(w http.ResponseWriter, r *http.Request, id strin
 			needed++
 		}
 	}
+	var removed []*track
 	for len(ss.tracks) > 0 && (len(ss.tracks)+needed > 3 || ss.tracks[0].programme.End.Before(now.Add(-24*time.Second))) {
 		old := ss.tracks[0]
 		if desired[old.programme.ID] {
@@ -470,10 +624,14 @@ func (s *Service) ServePlaylist(w http.ResponseWriter, r *http.Request, id strin
 		}
 		ss.tracks = ss.tracks[1:]
 		ss.discontinuities++
+		removed = append(removed, old)
+	}
+	ss.mu.Unlock()
+	for _, old := range removed {
 		s.stopTrack(old)
 	}
 	for _, p := range ps {
-		if _, err = s.prepareTrack(r.Context(), ss, p); err != nil {
+		if _, err = s.prepareTrackStaged(r.Context(), ss, p); err != nil {
 			if err == core.ErrUnauthorized && p.Start.After(now) {
 				break
 			}
@@ -491,8 +649,11 @@ func (s *Service) ServePlaylist(w http.ResponseWriter, r *http.Request, id strin
 	}
 	var segments []seg
 	target := 4
+	ss.mu.Lock()
+	tracks := append([]*track(nil), ss.tracks...)
 	discSequence := ss.discontinuities
-	for ti, tr := range ss.tracks {
+	ss.mu.Unlock()
+	for ti, tr := range tracks {
 		for n := 0; n < tr.count; n++ {
 			at := tr.programme.Start.Add(tr.offset + time.Duration(n)*segmentDuration)
 			dur := segmentDuration
