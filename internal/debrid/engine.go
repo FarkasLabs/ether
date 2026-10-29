@@ -977,7 +977,7 @@ func (f *remoteFile) rangeGet(ctx context.Context, start, end int64, urgent bool
 			fails := f.linkFails
 			f.mu.Unlock()
 			if fails > maxLinkFailures {
-				return nil, tm, fmt.Errorf("debrid: link for %s keeps failing (HTTP %d): %w", f.name(), resp.StatusCode, core.ErrArticleMissing)
+				return nil, tm, directMediaError(payload, fmt.Errorf("debrid: link for %s keeps failing (HTTP %d): %w", f.name(), resp.StatusCode, core.ErrArticleMissing))
 			}
 			if _, _, err := f.link(ctx, true, gen); err != nil {
 				return nil, tm, err

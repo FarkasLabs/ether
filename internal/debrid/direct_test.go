@@ -302,3 +302,26 @@ func TestIndexerPlaysAddonLinksWithoutDebridAccounts(t *testing.T) {
 		t.Fatal("HTTP release fetched through the Usenet indexer")
 	}
 }
+
+func TestFailingAddonLinkIsNeverMarkedGone(t *testing.T) {
+	r := newDirectRig(t, config.Debrid{CachedOnly: true, ReadAheadChunks: -1})
+	eng := NewEngine(r.svc, EngineOptions{Inner: &fakeInner{}, BlockSize: testBlock, HedgeDelay: -1, Logger: r.svc.log})
+	defer eng.Close()
+	rel := r.release("resolve")
+	raw, err := r.svc.DirectPayload(context.Background(), rel)
+	if err != nil {
+		t.Fatal(err)
+	}
+	src, err := eng.Open(context.Background(), rel.ID, raw)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer src.Close()
+	r.cdnFail.Store(1 << 20) // the CDN refuses every request from now on
+	_, err = src.(interface {
+		ReadAtContext(context.Context, []byte, int64) (int, error)
+	}).ReadAtContext(context.Background(), make([]byte, 10), 20<<20)
+	if err == nil || errors.Is(err, core.ErrArticleMissing) || errors.Is(err, core.ErrArticleCorrupt) || !errors.Is(err, core.ErrSourceUnavailable) {
+		t.Fatalf("failing addon link: %v", err)
+	}
+}

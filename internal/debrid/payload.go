@@ -1,8 +1,9 @@
 // Package debrid streams torrent releases through owner-configured debrid
 // services (Real-Debrid, TorBox, AllDebrid, Premiumize, Debrid-Link,
-// Offcloud), and Stremio addons' own HTTP stream links (direct.go). A torrent the service already holds ("cached") is added to the
-// owner's account and its main video file is read over HTTPS range
-// requests; nothing is downloaded in full and Ether never seeds.
+// Offcloud), and Stremio addons' own HTTP stream links (direct.go). A
+// torrent the service already holds ("cached") is added to the owner's
+// account and its main video file is read over HTTPS range requests;
+// nothing is downloaded in full and Ether never seeds.
 //
 // The rest of Ether treats a release payload as opaque bytes (normally an
 // NZB). A debrid release's payload is a small descriptor (see Payload), and

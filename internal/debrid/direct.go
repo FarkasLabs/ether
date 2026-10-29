@@ -197,12 +197,12 @@ func videoFile(name string) bool {
 	return false
 }
 
-// directMediaError keeps a direct stream's unexpected size from marking
-// the release corrupt: the addon may be serving a placeholder for a file
-// it is still fetching.
+// directMediaError keeps a direct stream's failures from marking the
+// release bad: an addon link that changes size or keeps failing may be a
+// placeholder for a file the addon is still fetching, or an addon outage.
 func directMediaError(p Payload, err error) error {
-	if p.IsDirect() && errors.Is(err, core.ErrArticleCorrupt) {
-		return fmt.Errorf("debrid: %s changed size: %w", p.Name(), core.ErrSourceUnavailable)
+	if p.IsDirect() && (errors.Is(err, core.ErrArticleCorrupt) || errors.Is(err, core.ErrArticleMissing)) {
+		return fmt.Errorf("debrid: addon stream %s is not serving the file now: %w", p.Name(), core.ErrSourceUnavailable)
 	}
 	return err
 }
