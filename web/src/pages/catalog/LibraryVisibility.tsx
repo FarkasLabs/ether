@@ -86,12 +86,12 @@ export function LibraryVisibility() {
     <div className="catalog-scroll app-scroll">
       <div className="grid gap-6 p-5 lg:grid-cols-[minmax(0,1fr)_340px] lg:p-7">
         <div className="space-y-5">
-          <div className="rounded-xl border border-border bg-surface p-6">
+          <div>
             <p className="catalog-eyebrow">LIBRARY VISIBILITY</p>
-            <h2 className="mt-2 text-2xl font-semibold tracking-tight">
+            <h2 className="text-2xl font-semibold tracking-tight">
               Your catalogue. Your boundaries.
             </h2>
-            <p className="mt-3 max-w-2xl text-sm text-fg-muted">
+            <p className="mt-2 text-sm text-fg-muted">
               Hide matching movies and shows from Plex browsing, search, recommendations and
               collections. Combine conditions inside a group; a title matching any group is hidden.
               Metadata and watch history are kept.

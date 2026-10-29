@@ -374,6 +374,7 @@ function Shell() {
             <Route path="/playback/cache" element={<Navigate to="/cache" replace />} />
             <Route path="/playback/:tab?" element={<Playback />} />
             <Route path="/notifications/:tab?" element={<Notifications />} />
+            <Route path="/server/posters" element={<Navigate to="/metadata/artwork" replace />} />
             <Route path="/server/:tab?" element={<GeneralPage />} />
             <Route path="/remote-access/:tab?" element={<RemoteAccessPage />} />
             <Route path="/services/:tab?" element={<ServicesPage />} />

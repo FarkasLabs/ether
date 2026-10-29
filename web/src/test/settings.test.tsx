@@ -229,9 +229,17 @@ describe("Settings", () => {
       f.state.config = {
         ...f.state.config,
         experiments: { enabled: true, explore: 0.2 },
+        posters: {
+          enabled: false,
+          source: "postersplus",
+          baseUrl: "",
+          apiKey: "",
+          urlTemplate: "",
+        },
       } as never;
     });
     fireEvent.click(await screen.findByRole("tab", { name: "Experiments" }, WAIT));
+    expect(screen.queryByRole("tab", { name: "Posters" })).not.toBeInTheDocument();
     expect(await screen.findByRole("heading", { name: "Experiments" }, WAIT)).toBeInTheDocument();
     fireEvent.change(await screen.findByLabelText("Explore", {}, WAIT), {
       target: { value: "0.4" },
@@ -241,6 +249,13 @@ describe("Settings", () => {
     expect(
       (calls(fake, "PUT", "/config")[0]!.body as { experiments: unknown }).experiments,
     ).toEqual({ enabled: true, explore: 0.4 });
+  });
+
+  it("redirects the old General poster editor to Metadata artwork", async () => {
+    renderApp("/server/posters");
+    expect(await screen.findByRole("switch", { name: "Ether posters" }, WAIT)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Configure poster provider" })).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "General" })).not.toBeInTheDocument();
   });
 
   it("edits downloads, personalization and trailers on General tabs without losing other edits", async () => {
