@@ -76,6 +76,26 @@ func providerURL(p config.Posters, t *core.Title) (string, bool) {
 		imdb = ""
 	}
 	switch p.Source {
+	case "xrdb":
+		if id <= 0 {
+			return "", false
+		}
+		if kind == "tv" {
+			kind = "series"
+		}
+		u, err := url.Parse(strings.TrimRight(p.BaseURL, "/") + "/poster/tmdb:" + kind + ":" + strconv.FormatInt(id, 10))
+		if err != nil {
+			return "", false
+		}
+		q := u.Query()
+		if p.Profile != "" {
+			q.Set("config", p.Profile)
+		}
+		if p.APIKey != "" {
+			q.Set("key", p.APIKey)
+		}
+		u.RawQuery = q.Encode()
+		return u.String(), true
 	case "postersplus":
 		if id <= 0 {
 			return "", false

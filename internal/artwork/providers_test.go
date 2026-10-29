@@ -17,8 +17,8 @@ import (
 func TestProviderIdentity(t *testing.T) {
 	for _, kind := range []core.MediaType{core.TypeMovie, core.TypeShow} {
 		title := &core.Title{Type: kind, IDs: core.IDs{TMDB: 123, IMDB: "tt1234567"}}
-		for _, source := range []string{"postersplus", "rpdb", "betterposters", "custom"} {
-			p := config.Posters{Enabled: true, Source: source, BaseURL: "http://lan:8000", APIKey: "secret&?#/", URLTemplate: "https://example.com/{type}/{tmdb_id}?key={api_key}"}
+		for _, source := range []string{"postersplus", "xrdb", "rpdb", "betterposters", "custom"} {
+			p := config.Posters{Enabled: true, Source: source, BaseURL: "http://lan:8000", APIKey: "secret&?#/", Profile: "profile & test", URLTemplate: "https://example.com/{type}/{tmdb_id}?key={api_key}"}
 			if source == "betterposters" {
 				p.URLTemplate = ""
 			}
@@ -31,6 +31,14 @@ func TestProviderIdentity(t *testing.T) {
 				t.Fatal(err)
 			}
 			switch source {
+			case "xrdb":
+				want := "/poster/tmdb:movie:123"
+				if kind == core.TypeShow {
+					want = "/poster/tmdb:series:123"
+				}
+				if u.Path != want || u.Query().Get("config") != p.Profile || u.Query().Get("key") != p.APIKey {
+					t.Fatal(raw)
+				}
 			case "postersplus":
 				want := "movie"
 				if kind == core.TypeShow {
@@ -66,6 +74,10 @@ func TestProviderIdentity(t *testing.T) {
 	if _, ok := providerURL(config.Posters{Source: "betterposters"}, &core.Title{Type: core.TypeMovie, IDs: core.IDs{TMDB: 123}}); ok {
 		t.Fatal("substituted TMDB for IMDb")
 	}
+	raw, ok := providerURL(config.Posters{Source: "xrdb", BaseURL: "https://example.com"}, &core.Title{Type: core.TypeMovie, IDs: core.IDs{TMDB: 123}})
+	if !ok || strings.Contains(raw, "?") {
+		t.Fatal("default profile should omit query", raw)
+	}
 }
 
 func TestPosterFetchFallbackAndCacheSettings(t *testing.T) {
@@ -75,6 +87,9 @@ func TestPosterFetchFallbackAndCacheSettings(t *testing.T) {
 	fail := false
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		count++
+		if r.URL.Path != "/poster/tmdb:movie:123" || r.URL.Query().Get("config") != "family" {
+			t.Errorf("unexpected XRDB request: %s", r.URL.Path)
+		}
 		if fail {
 			http.Error(w, "secret upstream message", 503)
 			return
@@ -84,7 +99,7 @@ func TestPosterFetchFallbackAndCacheSettings(t *testing.T) {
 	defer upstream.Close()
 	fallback := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.Write(buf.Bytes()) }))
 	defer fallback.Close()
-	p := config.Posters{Enabled: true, Source: "postersplus", BaseURL: upstream.URL}
+	p := config.Posters{Enabled: true, Source: "xrdb", BaseURL: upstream.URL, Profile: "family"}
 	im := NewImages(ImagesOptions{Dir: t.TempDir(), Posters: func() config.Posters { return p }, ImageURL: func(string, string) string { return fallback.URL }})
 	title := &core.Title{Type: core.TypeMovie, IDs: core.IDs{TMDB: 123}}
 	get := func() []byte {

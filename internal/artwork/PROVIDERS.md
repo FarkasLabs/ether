@@ -10,6 +10,11 @@ Verified primary sources (2026-10-28):
 - PostersPlus: https://github.com/UmbraProjects/PostersPlus/blob/dev/URL_REFERENCE.md
   `/poster?tmdb_id=ID&type=movie|tv&access_key=KEY`. Owner supplies the instance
   base URL and optional access key, and configures its style on that instance.
+- XRDB: https://github.com/IbbyLabs/XRDB/blob/e6d631650ac7469e4536dc61bb7d762c09140e5e/docs/setup/aiometadata.md
+  Supply the hosted or self-hosted instance URL, an optional profile ID or alias, and the
+  optional instance `XRDB_API_KEY`. Ether requests `/poster/tmdb:movie:ID` or
+  `/poster/tmdb:series:ID` with the profile in `config` and the key in `key`.
+  Omit the profile to use the instance default. Configure custom profiles in XRDB first.
 - BetterPosters: https://btttr.cc/configure — the page's `updateAioUrl` exports
   `https://btttr.cc/poster/imdb/poster-default/{imdb_id}.jpg` by default, with
   optional path/query style settings. Paste its exported URL for customization.

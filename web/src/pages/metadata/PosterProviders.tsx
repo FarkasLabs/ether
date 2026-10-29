@@ -15,9 +15,11 @@ const empty: Posters = {
   baseUrl: "",
   apiKey: "",
   urlTemplate: "",
+  profile: "",
 };
 const sources = [
   { value: "postersplus", label: "PostersPlus" },
+  { value: "xrdb", label: "XRDB" },
   { value: "betterposters", label: "BetterPosters" },
   { value: "rpdb", label: "Rating Poster Database" },
   { value: "custom", label: "Custom URL template" },
@@ -151,7 +153,7 @@ export function PosterProviders({ onSaved }: { onSaved: () => void }) {
                   ))}
                 </select>
               </Field>
-              {draft.source === "postersplus" && (
+              {(draft.source === "postersplus" || draft.source === "xrdb") && (
                 <Field
                   label="Server URL"
                   htmlFor="poster-provider-url"
@@ -159,15 +161,32 @@ export function PosterProviders({ onSaved }: { onSaved: () => void }) {
                 >
                   <Input
                     id="poster-provider-url"
-                    placeholder="http://postersplus:8000"
+                    placeholder={
+                      draft.source === "xrdb"
+                        ? "https://extendedratings.com"
+                        : "http://postersplus:8000"
+                    }
                     value={draft.baseUrl}
                     onChange={(e) => setDraft({ ...draft, baseUrl: e.target.value, apiKey: "" })}
                   />
                 </Field>
               )}
+              {draft.source === "xrdb" && (
+                <Field label="Profile ID or alias (optional)" htmlFor="poster-provider-profile">
+                  <Input
+                    id="poster-provider-profile"
+                    value={draft.profile || ""}
+                    onChange={(e) => setDraft({ ...draft, profile: e.target.value })}
+                  />
+                </Field>
+              )}
               {draft.source !== "betterposters" && (
                 <Field
-                  label={draft.source === "postersplus" ? "Access key (optional)" : "API key"}
+                  label={
+                    draft.source === "postersplus" || draft.source === "xrdb"
+                      ? "Access key (optional)"
+                      : "API key"
+                  }
                   htmlFor="poster-provider-key"
                 >
                   <SecretInput
