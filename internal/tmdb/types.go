@@ -205,6 +205,7 @@ type TVDetails struct {
 	NumberOfSeasons   int             `json:"number_of_seasons"`
 	NumberOfEpisodes  int             `json:"number_of_episodes"`
 	LastAirDate       string          `json:"last_air_date"`
+	LastEpisodeToAir  *Episode        `json:"last_episode_to_air"`
 	InProduction      bool            `json:"in_production"`
 	Homepage          string          `json:"homepage"`
 	Seasons           []SeasonSummary `json:"seasons"`

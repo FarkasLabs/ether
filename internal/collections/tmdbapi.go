@@ -191,10 +191,10 @@ func (a *tmdbAPI) discover(ctx context.Context, kind string, params url.Values, 
 		q.Set("page", strconv.Itoa(page))
 		var res tmdbPage
 		if err := a.get(ctx, "/discover/"+kind, q, &res); err != nil {
-			if page == 1 {
+			if page == 1 || ctx.Err() != nil {
 				return nil, 0, err
 			}
-			break
+			return out, total, &partialListError{msg: fmt.Sprintf("discover results are incomplete: page %d failed: %v", page, err)}
 		}
 		total = res.TotalResults
 		for _, it := range res.Results {

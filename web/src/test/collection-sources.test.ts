@@ -2,6 +2,11 @@ import { describe, expect, it } from "vitest";
 import { describeSource, isSourceComplete, newSource, sourceMeta } from "../lib/rules";
 
 describe("list sources", () => {
+  it("describes a streaming service with the default region", () => {
+    expect(describeSource({ kind: "watchProvider", id: 8, label: "Netflix" })).toBe(
+      "Netflix (default region)",
+    );
+  });
   it("starts an AniList source empty and needs a URL", () => {
     const s = newSource("anilistList", "show");
     expect(s).toEqual({ kind: "anilistList", url: "" });

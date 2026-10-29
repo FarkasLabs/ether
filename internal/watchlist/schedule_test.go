@@ -40,24 +40,46 @@ func TestRunResumesRecordedSchedule(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { db.Close() })
-	opts := Options{SyncInterval: time.Second, ResumeSchedule: true}
+	var clock atomic.Int64
+	clock.Store(time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC).UnixMilli())
+	opts := Options{SyncInterval: time.Hour, ResumeSchedule: true, Now: func() time.Time { return time.UnixMilli(clock.Load()) }}
 
-	// First leader, nothing recorded: passes at once and records it.
+	// Wait for the durable write, not just the Users callback that precedes it.
 	var first atomic.Int32
 	stop := runPasses(t, New(db, opts), &first)
-	waitPasses(t, &first, 1, 2*time.Second)
-	stop()
-
-	// The next leader waits for the rest of the interval...
-	var next atomic.Int32
-	stop = runPasses(t, New(db, opts), &next)
-	defer stop()
-	time.Sleep(300 * time.Millisecond)
-	if next.Load() != 0 {
-		t.Fatal("new leader passed immediately after a recent pass")
+	deadline := time.Now().Add(5 * time.Second)
+	for {
+		var recorded string
+		if err := db.QueryRowContext(context.Background(), `SELECT v FROM watchlist_meta WHERE k='last_pass'`).Scan(&recorded); err == nil && recorded != "" {
+			break
+		}
+		if time.Now().After(deadline) {
+			stop()
+			t.Fatal("pass was not recorded")
+		}
+		time.Sleep(5 * time.Millisecond)
 	}
-	// ...then passes.
-	waitPasses(t, &next, 1, 3*time.Second)
+	stop()
+	if first.Load() != 1 {
+		t.Fatalf("first leader passes = %d", first.Load())
+	}
+
+	next := New(db, opts)
+	if got := next.untilDue(context.Background()); got != time.Hour {
+		t.Fatalf("new leader due in %v, want 1h", got)
+	}
+	clock.Add(int64((time.Hour - time.Minute) / time.Millisecond))
+	if got := next.untilDue(context.Background()); got != time.Minute {
+		t.Fatalf("new leader due in %v, want 1m", got)
+	}
+	clock.Add(int64(time.Minute / time.Millisecond))
+	if got := next.untilDue(context.Background()); got != 0 {
+		t.Fatalf("new leader due in %v, want 0", got)
+	}
+	var passes atomic.Int32
+	stop = runPasses(t, next, &passes)
+	defer stop()
+	waitPasses(t, &passes, 1, 5*time.Second)
 }
 
 func TestRunPassesAtStartByDefault(t *testing.T) {

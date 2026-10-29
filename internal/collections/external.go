@@ -331,10 +331,10 @@ func (s *Service) fetchTrakt(ctx context.Context, rawURL string) ([]extRef, erro
 	for page := 1; page <= maxExternalPages; page++ {
 		body, h, err := s.web.get(ctx, s.bases.TraktAPI+path+"?page="+strconv.Itoa(page)+"&limit=100", hdr)
 		if err != nil {
-			if page == 1 {
+			if page == 1 || ctx.Err() != nil {
 				return nil, fmt.Errorf("trakt: %w", err)
 			}
-			break
+			return out, &partialListError{msg: fmt.Sprintf("Trakt list is incomplete: page %d failed: %v", page, err)}
 		}
 		var items []struct {
 			Type  string `json:"type"`
@@ -358,6 +358,9 @@ func (s *Service) fetchTrakt(ctx context.Context, rawURL string) ([]extRef, erro
 			} `json:"show"`
 		}
 		if err := json.Unmarshal(body, &items); err != nil {
+			if page > 1 && len(out) > 0 {
+				return out, &partialListError{msg: fmt.Sprintf("Trakt list is incomplete: page %d has an invalid response: %v", page, err)}
+			}
 			return nil, fmt.Errorf("trakt: unexpected response: %w", err)
 		}
 		for _, it := range items {
@@ -453,10 +456,10 @@ func (s *Service) fetchLetterboxd(ctx context.Context, rawURL string) ([]extRef,
 		}
 		body, _, err := s.web.get(ctx, s.bases.Letterboxd+next, nil)
 		if err != nil {
-			if page == 1 {
+			if page == 1 || ctx.Err() != nil {
 				return nil, fmt.Errorf("letterboxd: %w", err)
 			}
-			break
+			return out, &partialListError{msg: fmt.Sprintf("Letterboxd list is incomplete: page %d failed: %v", page, err)}
 		}
 		refs, nxt := parseLetterboxdList(body)
 		out = append(out, refs...)

@@ -61,6 +61,7 @@ CREATE TABLE collections_meta (k TEXT PRIMARY KEY, v TEXT NOT NULL DEFAULT '');
 	// Builds stored before v3 mark every member shared; rebuild them all so
 	// match-"any" collections with per-viewer rules serve correctly.
 	store.Register("collections", 4, `UPDATE collections_specs SET build_hash='';`)
+	store.Register("collections", 6, `CREATE TABLE collections_air_dates (show_key INTEGER PRIMARY KEY, episode_ts INTEGER NOT NULL, premiere_ts INTEGER NOT NULL, fetched_at INTEGER NOT NULL, attempted_at INTEGER NOT NULL, failed INTEGER NOT NULL);`)
 }
 
 // builtinBase keeps shipped collections' ids far above owner ids.
@@ -73,6 +74,7 @@ type specRow struct {
 	builtin   bool
 	owner     int64
 	spec      core.CollectionSpec
+	rawSpec   string
 	enabled   bool
 	createdAt time.Time
 	updatedAt time.Time
@@ -140,6 +142,7 @@ func scanSpecRow(sc interface{ Scan(...any) error }) (*specRow, error) {
 	if err := json.Unmarshal([]byte(specJSON), &r.spec); err != nil {
 		return nil, fmt.Errorf("collections: spec %d: %w", r.id, err)
 	}
+	r.rawSpec = specJSON
 	Normalize(&r.spec)
 	r.builtin = builtin != 0
 	r.enabled = enabled != 0
@@ -310,7 +313,7 @@ func (s *Service) deleteRow(ctx context.Context, id int64) error {
 }
 
 // saveBuild persists a build's members and report.
-func (s *Service) saveBuild(ctx context.Context, id int64, keys []core.RatingKey, unshared map[core.RatingKey]bool, itemCount int, warnings []string, hash string, at time.Time) error {
+func (s *Service) saveBuild(ctx context.Context, id int64, expected, resolved string, keys []core.RatingKey, unshared map[core.RatingKey]bool, itemCount int, warnings []string, hash string, at time.Time) error {
 	wj, _ := json.Marshal(warnings)
 	if warnings == nil {
 		wj = []byte("[]")
@@ -320,6 +323,15 @@ func (s *Service) saveBuild(ctx context.Context, id int64, keys []core.RatingKey
 		return err
 	}
 	defer tx.Rollback()
+	result, err := tx.ExecContext(ctx, `UPDATE collections_specs SET spec_json=? WHERE id=? AND spec_json=?`, resolved, id, expected)
+	if err != nil {
+		return err
+	}
+	if n, err := result.RowsAffected(); err != nil {
+		return err
+	} else if n != 1 {
+		return errBuildSuperseded
+	}
 	if _, err := tx.ExecContext(ctx, `DELETE FROM collections_members WHERE spec_id=?`, id); err != nil {
 		return err
 	}

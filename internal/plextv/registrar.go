@@ -675,7 +675,7 @@ func publishable(cs []remote.Connection, includePlexDirect bool) []string {
 // them.
 func (r *Registrar) publishSet(cfg config.Config) ([]remote.Connection, []string) {
 	conns := r.connections(cfg)
-	uris := publishable(conns, r.o.PublishPlexDirect)
+	uris := publishable(conns, r.o.PublishPlexDirect || cfg.Plex.SecureConnections == remote.SecureRequired)
 	if !cfg.Plex.RemoteAccess {
 		// Only LAN and custom URLs when remote access is off.
 		var lanOnly []string
@@ -763,6 +763,14 @@ func (r *Registrar) PublishNow(ctx context.Context) error {
 	conns, uris := r.publishSet(cfg)
 	if r.o.PeerURIs != nil {
 		uris = mergeURIs(uris, r.o.PeerURIs())
+	}
+	if len(uris) == 0 {
+		err := errors.New("plextv: no connection addresses to publish")
+		r.mu.Lock()
+		r.st.LastPublish = r.o.Now()
+		r.st.LastPublishError = err.Error()
+		r.mu.Unlock()
+		return err
 	}
 	now := r.o.Now()
 	flags := &PublishFlags{HTTPSRequired: cfg.Plex.SecureConnections == "required"}
@@ -977,6 +985,12 @@ func (r *Registrar) scheduleCertCheck() {
 		}
 	}
 	info := r.o.Certs.Info()
+	r.mu.Lock()
+	certError := r.st.CertError
+	r.mu.Unlock()
+	if certError != "" && info.NextAttempt.IsZero() {
+		earlier(now.Add(5 * time.Minute))
+	}
 	switch {
 	case info.Custom:
 	case !info.NextAttempt.IsZero():
@@ -1001,6 +1015,13 @@ func (r *Registrar) scheduleCertCheck() {
 // sign-in), persists the server token and owner, informs UserSync and
 // triggers publishing.
 func (r *Registrar) Claim(ctx context.Context, userToken string) (*ClaimResult, error) {
+	// Persist before the remote operation so a crash after claim cannot lose
+	// the need to bind a managed certificate to the new device record.
+	if r.o.Certs != nil {
+		if err := r.o.Certs.RequireReissue(ctx); err != nil {
+			return nil, fmt.Errorf("plextv: prepare certificate for claim: %w", err)
+		}
+	}
 	res, err := r.client.Claim(ctx, userToken)
 	if err != nil {
 		return nil, err
@@ -1056,6 +1077,11 @@ func (r *Registrar) Claim(ctx context.Context, userToken string) (*ClaimResult, 
 // from the owner's account (best effort), so another account can claim it,
 // and the server token is forgotten.
 func (r *Registrar) Unclaim(ctx context.Context) error {
+	if r.o.Certs != nil {
+		if err := r.o.Certs.RequireReissue(ctx); err != nil {
+			return fmt.Errorf("plextv: prepare certificate for unclaim: %w", err)
+		}
+	}
 	token := r.o.Config.Get().Plex.Token
 	r.mu.Lock()
 	r.claimedToken = "" // released here, not again by onConfig
@@ -1087,6 +1113,12 @@ func (r *Registrar) onConfig(c config.Config) {
 		go func() {
 			ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 			defer cancel()
+			if r.o.Certs != nil {
+				if err := r.o.Certs.RequireReissue(ctx); err != nil {
+					r.log.Warn("prepare certificate for unclaim", "err", err)
+					return
+				}
+			}
 			r.releaseClaim(ctx, prev)
 		}()
 	}
