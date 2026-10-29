@@ -568,14 +568,17 @@ func (s *Service) download(ctx context.Context, c Candidate) ([]byte, error) {
 		return nil, err
 	}
 	defer resp.Body.Close()
-	raw, err := io.ReadAll(io.LimitReader(resp.Body, 16<<20))
+	raw, err := io.ReadAll(io.LimitReader(resp.Body, maxSubtitleBytes+1))
 	if err != nil {
 		return nil, err
 	}
 	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("subtitle file fetch: %s", resp.Status)
 	}
-	return unzipSubtitle(raw, c.Language)
+	if len(raw) > maxSubtitleBytes {
+		return nil, fmt.Errorf("subtitle download too large")
+	}
+	return unzipSubtitleCandidate(raw, c)
 }
 
 // maxSubtitleBytes bounds one subtitle entry/file; anything larger is an
@@ -607,51 +610,73 @@ const (
 	maxZipTriedEntries  = 16
 )
 
-// zipNameMatchesLang reports whether an entry name carries the requested
-// language as a delimited token (pt-br, pt_br, pt.br, ptbr or pob for
-// Brazilian Portuguese). Separators are normalised before matching so
-// the spellings collapse to one form; a loose substring (e.g. "en"
-// inside "english" or "french") never matches.
-func zipNameMatchesLang(name, lang string) bool {
-	want := langtag.Normalize(lang)
-	if want == "" {
-		return false
-	}
-	base := strings.ToLower(path.Base(name))
-	norm := strings.NewReplacer("_", "-", ".", "-", " ", "-").Replace(base)
-	padded := "-" + norm + "-"
-	variants := []string{want, strings.ReplaceAll(want, "-", "")}
-	if want == "pt-br" {
-		variants = append(variants, "pob")
-	}
-	for _, v := range variants {
-		if strings.Contains(padded, "-"+v+"-") {
-			return true
+// zipEntryHints recognises only suffix labels, avoiding language codes in titles.
+// Unlabelled entries inherit the provider's candidate metadata. Explicit labels
+// conflicting with it are never returned under that metadata.
+func zipEntryHints(name string, c Candidate) (languageRank, styleRank int, compatible bool) {
+	base := strings.TrimSuffix(strings.ToLower(path.Base(name)), strings.ToLower(path.Ext(name)))
+	parts := strings.FieldsFunc(base, func(r rune) bool {
+		return r == '.' || r == '_' || r == '-' || r == ' ' || r == '[' || r == ']' || r == '(' || r == ')'
+	})
+	forced, sdh, normal := false, false, false
+	// Recognise a bounded vocabulary at the end, in either language/style order.
+	// "it" is intentionally omitted: it is a common title word.
+	codes := map[string]string{"en": "en", "eng": "en", "fr": "fr", "fra": "fr", "fre": "fr", "es": "es", "spa": "es", "de": "de", "deu": "de", "ger": "de", "pt": "pt", "por": "pt", "pob": "pt-br", "ptbr": "pt-br", "ptpt": "pt-pt", "zh": "zh", "zho": "zh", "chi": "zh", "ja": "ja", "jpn": "ja", "ita": "it", "nl": "nl", "nld": "nl", "ru": "ru", "rus": "ru", "ko": "ko", "kor": "ko"}
+	foundLanguage := false
+	for len(parts) > 1 {
+		last := parts[len(parts)-1]
+		switch last {
+		case "forced":
+			forced = true
+		case "sdh", "hi", "cc":
+			sdh = true
+		case "normal", "full":
+			normal = true
+		default:
+			if foundLanguage {
+				goto done
+			}
+			code, ok := codes[last]
+			if len(parts) > 2 && (last == "br" || last == "pt" || last == "cn" || last == "tw") {
+				prev := parts[len(parts)-2]
+				if prev == "pt" || prev == "zh" {
+					code, ok = prev+"-"+last, true
+					parts = parts[:len(parts)-1]
+				}
+			}
+			if !ok {
+				goto done
+			}
+			tier := langtag.MatchTier(c.Language, code)
+			if tier == 0 {
+				return 0, 0, false
+			}
+			languageRank = tier
+			foundLanguage = true
 		}
+		parts = parts[:len(parts)-1]
 	}
-	return false
+done:
+	if forced && !c.Forced || sdh && !c.HearingImp || normal && (c.Forced || c.HearingImp) || normal && (forced || sdh) {
+		return 0, 0, false
+	}
+	if forced == c.Forced && sdh == c.HearingImp && (forced || sdh || normal) {
+		styleRank = 1
+	}
+
+	return languageRank, styleRank, true
 }
 
-// unzipSubtitle extracts a usable subtitle entry when the download is a
-// zip. Entries whose name matches the requested language are preferred
-// first; within that, .srt/.vtt are preferred over .ass/.ssa (which are
-// returned raw; NormalizeLang converts them). Only entries that really
-// produce cues are usable, so a junk or corrupt first entry does not
-// lose the subtitle.
-//
-// Among usable entries in the same language-match class, the one with
-// the most cues wins: a 1-cue .srt stub must not beat a complete .ass.
-// Cue count is deliberately the only completeness heuristic — it is
-// cheap and bounded; judging actual completeness would need language
-// and duration knowledge the zip does not carry. Format/order breaks
-// cue ties.
-//
-// Trying is bounded in aggregate (maxZipTriedEntries /
-// maxZipExpandedBytes): after the budget, trying stops; if no usable
-// entry was found by then, an error is returned (wrapping the last
-// per-entry error when there is one). An entry over maxSubtitleBytes is
-// an explicit error rather than a silent truncation.
+// unzipSubtitle is retained for callers without candidate style metadata.
 func unzipSubtitle(raw []byte, lang string) ([]byte, error) {
+	return unzipSubtitleCandidate(raw, Candidate{Language: lang})
+}
+
+// unzipSubtitleCandidate chooses only entries compatible with known filename
+// labels, preferring explicit language and style matches before cue count.
+// Expansion and parsing are bounded even when an entry is corrupt.
+func unzipSubtitleCandidate(raw []byte, candidate Candidate) ([]byte, error) {
+	lang := candidate.Language
 	if len(raw) < 4 || raw[0] != 'P' || raw[1] != 'K' {
 		return raw, nil
 	}
@@ -660,9 +685,9 @@ func unzipSubtitle(raw []byte, lang string) ([]byte, error) {
 		return nil, err
 	}
 	type entry struct {
-		f         *zip.File
-		prio      int // 0: srt/vtt, 1: ass/ssa
-		langMatch bool
+		f                       *zip.File
+		prio                    int // 0: srt/vtt, 1: ass/ssa
+		languageRank, styleRank int
 	}
 	var entries []entry
 	for _, f := range zr.File {
@@ -677,19 +702,25 @@ func unzipSubtitle(raw []byte, lang string) ([]byte, error) {
 			prio = 1
 		}
 		if prio >= 0 {
-			entries = append(entries, entry{f, prio, zipNameMatchesLang(f.Name, lang)})
+			lr, sr, ok := zipEntryHints(f.Name, candidate)
+			if ok {
+				entries = append(entries, entry{f: f, prio: prio, languageRank: lr, styleRank: sr})
+			}
 		}
 	}
 	sort.SliceStable(entries, func(i, j int) bool {
-		if entries[i].langMatch != entries[j].langMatch {
-			return entries[i].langMatch
+		if entries[i].languageRank != entries[j].languageRank {
+			return entries[i].languageRank > entries[j].languageRank
+		}
+		if entries[i].styleRank != entries[j].styleRank {
+			return entries[i].styleRank > entries[j].styleRank
 		}
 		return entries[i].prio < entries[j].prio
 	})
 	type usable struct {
-		data      []byte
-		cues      int
-		langMatch bool
+		data                    []byte
+		cues                    int
+		languageRank, styleRank int
 	}
 	var best *usable
 	var tooLarge, lastErr error
@@ -710,13 +741,19 @@ func unzipSubtitle(raw []byte, lang string) ([]byte, error) {
 			lastErr = err
 			continue
 		}
-		data, err := io.ReadAll(io.LimitReader(rc, maxSubtitleBytes+1))
+		remaining := maxZipExpandedBytes - expanded
+		limit := min(maxSubtitleBytes+1, remaining)
+		data, err := io.ReadAll(io.LimitReader(rc, int64(limit)))
 		rc.Close()
+		expanded += len(data)
+		if len(data) == remaining {
+			budgetExhausted = true
+			break
+		}
 		if err != nil {
 			lastErr = err
 			continue
 		}
-		expanded += len(data)
 		if len(data) > maxSubtitleBytes {
 			tooLarge = fmt.Errorf("zip subtitle %q too large: exceeds %d byte limit", e.f.Name, maxSubtitleBytes)
 			continue
@@ -732,9 +769,10 @@ func unzipSubtitle(raw []byte, lang string) ([]byte, error) {
 			lastErr = perr
 		} else if len(parsed) == 0 {
 			lastErr = fmt.Errorf("zip subtitle %q has no cues", e.f.Name)
-		} else if cand := (&usable{data, len(parsed), e.langMatch}); best == nil ||
-			(cand.langMatch != best.langMatch && cand.langMatch) ||
-			(cand.langMatch == best.langMatch && cand.cues > best.cues) {
+		} else if cand := (&usable{data, len(parsed), e.languageRank, e.styleRank}); best == nil ||
+			(cand.languageRank > best.languageRank) ||
+			(cand.languageRank == best.languageRank && cand.styleRank > best.styleRank) ||
+			(cand.languageRank == best.languageRank && cand.styleRank == best.styleRank && cand.cues > best.cues) {
 			best = cand
 		}
 		if expanded >= maxZipExpandedBytes {
