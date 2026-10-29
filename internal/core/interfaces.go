@@ -232,6 +232,11 @@ type SearchRequest struct {
 	Season        int
 	Episode       int
 	EpisodeTitle  string // optional title used to distinguish same-numbered episodes
+	// AbsoluteEpisode is the episode's number counted from the series
+	// start (0 = unknown), and Anime marks a series whose releases are
+	// commonly numbered that way (additive).
+	AbsoluteEpisode int
+	Anime           bool
 }
 
 type Indexer interface {
