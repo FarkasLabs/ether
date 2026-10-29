@@ -227,10 +227,227 @@ func TestNewDownloadRemuxerCleansStaleFiles(t *testing.T) {
 	if err := os.WriteFile(stale, []byte("old"), 0o644); err != nil {
 		t.Fatal(err)
 	}
+	// Sob a política única de limpeza, só some quem passou de
+	// staleDownloadAge: o fixture precisa ser velho de verdade (mtime),
+	// não apenas ter "stale" no nome — fresco, ele seria adotado.
+	old := time.Now().Add(-2 * staleDownloadAge)
+	if err := os.Chtimes(stale, old, old); err != nil {
+		t.Fatal(err)
+	}
 	if _, err := m.NewDownloadRemuxer(config.Downloads{}); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := os.Stat(stale); !os.IsNotExist(err) {
 		t.Fatalf("stale file survived startup cleanup: %v", err)
+	}
+}
+
+// Startup cleanup in NewDownloadRemuxer follows the single stale-download
+// policy (see staleDownloadAge): it must remove only the files the remuxer
+// itself creates (dl-*.mp4 and their .part partials), and only once stale,
+// preserving everything else sharing downloads/: unrelated files and other
+// apps' subdirs are not Ether's to delete.
+func TestNewDownloadRemuxerPreservesUnrelatedFiles(t *testing.T) {
+	fr := newFakeRunner()
+	m := newTestManager(t, fr, config.Transcode{})
+	dir := filepath.Join(m.tempDir, "downloads")
+	ether := []string{"dl-ab12cd34.mp4", "dl-ab12cd34.mp4.part"}
+	alien := []string{
+		"keep.txt",
+		"dl-notes.txt",                         // dl-* but not a name RemuxDownload creates
+		filepath.Join("other-app", "keep.txt"), // unrelated subdir
+	}
+	for _, rel := range append(append([]string{}, ether...), alien...) {
+		p := filepath.Join(dir, rel)
+		if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(p, []byte("x"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	old := time.Now().Add(-2 * staleDownloadAge)
+	for _, rel := range append(append([]string{}, ether...), "dl-notes.txt") {
+		p := filepath.Join(dir, rel)
+		if err := os.Chtimes(p, old, old); err != nil {
+			t.Fatal(err)
+		}
+	}
+	d, err := m.NewDownloadRemuxer(config.Downloads{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, rel := range ether {
+		if _, err := os.Stat(filepath.Join(dir, rel)); !os.IsNotExist(err) {
+			t.Errorf("ether file %s survived startup cleanup: %v", rel, err)
+		}
+	}
+	for _, rel := range alien {
+		if _, err := os.Stat(filepath.Join(dir, rel)); err != nil {
+			t.Errorf("unrelated %s removed by startup cleanup: %v", rel, err)
+		}
+	}
+	if got := d.UsedBytes(); got != 0 {
+		t.Errorf("UsedBytes = %d, want 0 (nothing retained, nothing adopted)", got)
+	}
+}
+
+// Teste do dono: um dl-* fresco retido pela política (16B, budget de 8B)
+// NÃO pode ficar invisível — NewDownloadRemuxer o ADOTA na contabilidade
+// (UsedBytes conta os 16B, não 0), o arquivo sobrevive no disco, e a
+// admissão enxerga esses bytes (um remux novo estoura o budget).
+func TestNewDownloadRemuxerAdoptsFreshOrphan(t *testing.T) {
+	fr := newFakeRunner()
+	m := newTestManager(t, fr, config.Transcode{})
+	dir := filepath.Join(m.tempDir, "downloads")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	fresh := filepath.Join(dir, "dl-ab12cd34.mp4")
+	payload := []byte("0123456789abcdef") // exactly 16B
+	if err := os.WriteFile(fresh, payload, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	part := fresh + ".part"
+	if err := os.WriteFile(part, []byte("part"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	d, err := m.NewDownloadRemuxer(config.Downloads{DiskBudgetBytes: 8})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, p := range []string{fresh, part} {
+		if _, err := os.Stat(p); err != nil {
+			t.Fatalf("fresh download file %s removed by startup cleanup: %v", p, err)
+		}
+	}
+	want := int64(len(payload) + len("part"))
+	if got := d.UsedBytes(); got != want {
+		t.Fatalf("UsedBytes = %d, want %d (adopted orphans counted, not 0)", got, want)
+	}
+	// Admission sees the adopted bytes: any new estimate busts budget=8.
+	if _, _, err := d.RemuxDownload(context.Background(), core.DownloadRemuxRequest{
+		InputURL: "http://x", Info: downloadInfo(), AudioStream: -1,
+	}, nil); !errors.Is(err, core.ErrDownloadBudget) {
+		t.Fatalf("RemuxDownload err = %v, want ErrDownloadBudget (adopted bytes occupy the budget)", err)
+	}
+	// Release of an adopted file frees it like any owned file.
+	d.ReleaseDownload(fresh)
+	if _, err := os.Stat(fresh); !os.IsNotExist(err) {
+		t.Errorf("released adopted file still exists: %v", err)
+	}
+	if got := d.UsedBytes(); got != int64(len("part")) {
+		t.Errorf("UsedBytes after release = %d, want %d", got, len("part"))
+	}
+}
+
+// Runtime expiry: an adopted orphan that crosses staleDownloadAge is
+// removed (and its budget freed) on the next admission, via
+// expireStaleAdopted — not just at boot. Files remuxed by this process
+// never expire by age.
+func TestDownloadRemuxerAdoptedOrphanExpiresAtRuntime(t *testing.T) {
+	fr := newFakeRunner()
+	fr.runFunc = downloadRunner("new-file")
+	m := newTestManager(t, fr, config.Transcode{})
+	dir := filepath.Join(m.tempDir, "downloads")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	orphan := filepath.Join(dir, "dl-ab12cd34.mp4")
+	if err := os.WriteFile(orphan, []byte("0123456789abcdef"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	d, err := m.NewDownloadRemuxer(config.Downloads{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := d.UsedBytes(); got != 16 {
+		t.Fatalf("UsedBytes after adoption = %d, want 16", got)
+	}
+	// Simulate the passage of time: the orphan stops advancing (real
+	// mtime aged on disk and in the adopted registry).
+	old := time.Now().Add(-2 * staleDownloadAge)
+	if err := os.Chtimes(orphan, old, old); err != nil {
+		t.Fatal(err)
+	}
+	d.mu.Lock()
+	d.adopted[orphan] = old
+	d.mu.Unlock()
+
+	path, size, err := d.RemuxDownload(context.Background(), core.DownloadRemuxRequest{
+		InputURL: "http://x", Info: downloadInfo(), AudioStream: -1,
+	}, nil)
+	if err != nil {
+		t.Fatalf("RemuxDownload: %v", err)
+	}
+	defer d.ReleaseDownload(path)
+	if _, err := os.Stat(orphan); !os.IsNotExist(err) {
+		t.Errorf("stale adopted orphan not expired at runtime: %v", err)
+	}
+	if got := d.UsedBytes(); got != size {
+		t.Errorf("UsedBytes = %d, want %d (only the new file; adopted bytes freed)", got, size)
+	}
+}
+
+// cleanStale (boot only, see New) must remove Ether-owned orphans —
+// session dirs with their nested DASH run-*/chunk and chunk c-* dirs, and
+// downloads/dl-* files older than staleDownloadAge — and nothing else in
+// a shared temp dir: fresh dl-* files (a live remux keeps writing its
+// .part, advancing mtime) and unrelated files survive. Fresh dl-* files
+// kept here are adopted later by NewDownloadRemuxer (same policy, no
+// contradiction: cleanStaleDownloads só apaga os velhos; a adoção conta
+// os frescos retidos).
+func TestCleanStaleRemovesOnlyEtherOrphans(t *testing.T) {
+	dir := t.TempDir()
+	ether := []string{
+		"s-old-1234/run-3/chunk-0-00001.m4s",
+		"s-old-1234/run-3/init-0.m4s",
+		"s-old-1234/c-1/00000.ts",
+		"s-old-1234/rung-720p/00000.ts",
+		"s-old-1234/seg-0-00001.m4s",
+		"downloads/dl-ab12cd34.mp4",
+		"downloads/dl-ab12cd34.mp4.part",
+	}
+	alien := []string{
+		"other/keep.txt",
+		"keep.txt",
+		"downloads/keep.txt",
+		"downloads/dl-notas.txt",
+		"downloads/dl-fresh99.mp4",
+		"downloads/dl-fresh99.mp4.part",
+		"s-notes.txt",
+	}
+	for _, rel := range append(append([]string{}, ether...), alien...) {
+		p := filepath.Join(dir, rel)
+		if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(p, []byte("x"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	old := time.Now().Add(-2 * time.Hour)
+	for _, rel := range ether[5:] {
+		p := filepath.Join(dir, rel)
+		if err := os.Chtimes(p, old, old); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := os.Chtimes(filepath.Join(dir, "downloads/dl-notas.txt"), old, old); err != nil {
+		t.Fatal(err)
+	}
+	(&Manager{tempDir: dir}).cleanStale()
+	if _, err := os.Stat(filepath.Join(dir, "s-old-1234")); !os.IsNotExist(err) {
+		t.Errorf("stale session dir kept: %v", err)
+	}
+	for _, rel := range ether[5:] {
+		if _, err := os.Stat(filepath.Join(dir, rel)); !os.IsNotExist(err) {
+			t.Errorf("ether orphan %s kept: %v", rel, err)
+		}
+	}
+	for _, rel := range alien {
+		if _, err := os.Stat(filepath.Join(dir, rel)); err != nil {
+			t.Errorf("unrelated/fresh %s removed: %v", rel, err)
+		}
 	}
 }

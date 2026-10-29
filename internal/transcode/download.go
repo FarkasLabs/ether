@@ -57,24 +57,29 @@ type DownloadRemuxer struct {
 	mu    sync.Mutex
 	used  int64
 	files map[string]int64
+	// adopted holds the real mtime of fresh dl-* orphans adopted at
+	// startup (see adoptOrphans): a subset of files. Only adopted files
+	// expire by age at runtime (expireStaleAdopted); files this process
+	// remuxed itself are freed only by ReleaseDownload.
+	adopted map[string]time.Time
 }
 
 var _ core.DownloadRemuxer = (*DownloadRemuxer)(nil)
 
 // NewDownloadRemuxer prepares the download temp dir under the transcode
-// temp dir and removes files a previous process left behind.
+// temp dir. Boot cleanup follows the single stale-download policy (see
+// staleDownloadAge in manager.go for who deletes what): stale dl-*
+// orphans are removed by cleanStaleDownloads, while fresh dl-* orphans
+// it keeps are ADOPTED by the new remuxer — registered in files/used at
+// their real size, with their real mtime, so they count against the
+// disk budget from the start and expire at runtime via
+// expireStaleAdopted once they cross staleDownloadAge.
 func (m *Manager) NewDownloadRemuxer(cfg config.Downloads) (*DownloadRemuxer, error) {
 	dir := filepath.Join(m.tempDir, "downloads")
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return nil, fmt.Errorf("transcode: download dir: %w", err)
 	}
-	// Nothing survives a restart: queue items live in memory, so any
-	// file here is stale.
-	if entries, err := os.ReadDir(dir); err == nil {
-		for _, e := range entries {
-			_ = os.RemoveAll(filepath.Join(dir, e.Name()))
-		}
-	}
+	cleanStaleDownloads(dir)
 	budget := cfg.DiskBudgetBytes
 	if budget <= 0 {
 		budget = 20 << 30
@@ -83,10 +88,98 @@ func (m *Manager) NewDownloadRemuxer(cfg config.Downloads) (*DownloadRemuxer, er
 	if n <= 0 {
 		n = 2
 	}
-	return &DownloadRemuxer{
+	d := &DownloadRemuxer{
 		m: m, dir: dir, budget: budget,
-		sem: make(chan struct{}, n), files: map[string]int64{},
-	}, nil
+		sem:   make(chan struct{}, n),
+		files: map[string]int64{}, adopted: map[string]time.Time{},
+	}
+	d.adoptOrphans()
+	return d, nil
+}
+
+// isRemuxDownloadFile reports whether name is one of the only files
+// RemuxDownload creates in the downloads dir: the finished
+// dl-<hex>.mp4 (see RemuxDownload) and the dl-<hex>.mp4.part partial it
+// renames into place. It is the predicate of the single stale-download
+// policy (cleanStaleDownloads) and of orphan adoption (adoptOrphans).
+func isRemuxDownloadFile(name string) bool {
+	if !strings.HasPrefix(name, "dl-") {
+		return false
+	}
+	name = strings.TrimSuffix(name, ".part")
+	return len(name) > len("dl-") && strings.HasSuffix(name, ".mp4")
+}
+
+// adoptOrphans registers fresh dl-* files left by a previous process in
+// files/used at their real size, with their real mtime in adopted.
+// cleanStaleDownloads has already removed the stale ones, so everything
+// matching isRemuxDownloadFile here is fresh and retained — but retained
+// must not mean invisible: without adoption a retained orphan would sit
+// on disk outside the budget (UsedBytes would report 0 for it and
+// admission would hand its bytes out again). Adopted files expire at
+// runtime in expireStaleAdopted; unrelated files are never adopted.
+func (d *DownloadRemuxer) adoptOrphans() {
+	entries, err := os.ReadDir(d.dir)
+	if err != nil {
+		return
+	}
+	for _, e := range entries {
+		if e.IsDir() || !isRemuxDownloadFile(e.Name()) {
+			continue
+		}
+		info, err := e.Info()
+		if err != nil {
+			continue
+		}
+		path := filepath.Join(d.dir, e.Name())
+		d.files[path] = info.Size()
+		d.adopted[path] = info.ModTime()
+		d.used += info.Size()
+	}
+}
+
+// expireStaleAdopted removes adopted orphans whose real mtime has
+// crossed staleDownloadAge, freeing their budget. It is the runtime
+// counterpart of cleanStaleDownloads (boot): same predicate, same age.
+// Only adopted files are eligible — a file this process remuxed may be
+// held for a caller far longer than staleDownloadAge and is freed only
+// by ReleaseDownload. Called on the admission path (RemuxDownload), so
+// stale adopted bytes are reclaimed before new budget is handed out.
+func (d *DownloadRemuxer) expireStaleAdopted(now time.Time) {
+	cutoff := now.Add(-staleDownloadAge)
+	d.mu.Lock()
+	var candidates []string
+	for path, mtime := range d.adopted {
+		if mtime.Before(cutoff) {
+			candidates = append(candidates, path)
+		}
+	}
+	d.mu.Unlock()
+	for _, path := range candidates {
+		// Re-stat: a .part another process is still writing keeps
+		// advancing its mtime and must not expire under us.
+		if info, err := os.Stat(path); err == nil && !info.ModTime().Before(cutoff) {
+			d.mu.Lock()
+			if _, ok := d.adopted[path]; ok {
+				d.adopted[path] = info.ModTime()
+			}
+			d.mu.Unlock()
+			continue
+		} else if err == nil {
+			_ = os.Remove(path)
+		} else if !os.IsNotExist(err) {
+			continue // erro transitório: mantém a contabilidade adotada
+		}
+		d.mu.Lock()
+		if size, ok := d.files[path]; ok {
+			if _, adopted := d.adopted[path]; adopted {
+				delete(d.files, path)
+				delete(d.adopted, path)
+				d.used -= size
+			}
+		}
+		d.mu.Unlock()
+	}
 }
 
 // downloadArgs builds the ffmpeg argument list for a copy remux.
@@ -126,6 +219,9 @@ func (d *DownloadRemuxer) RemuxDownload(ctx context.Context, req core.DownloadRe
 	if !ok {
 		return "", 0, core.ErrDownloadNeedsTranscode
 	}
+	// Reclaim adopted orphans that crossed staleDownloadAge before
+	// handing out more budget (runtime expiry; see expireStaleAdopted).
+	d.expireStaleAdopted(time.Now())
 	select {
 	case d.sem <- struct{}{}:
 		defer func() { <-d.sem }()
@@ -195,6 +291,7 @@ func (d *DownloadRemuxer) ReleaseDownload(path string) {
 	size, ok := d.files[path]
 	if ok {
 		delete(d.files, path)
+		delete(d.adopted, path)
 		d.used -= size
 	}
 	d.mu.Unlock()
