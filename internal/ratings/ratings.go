@@ -82,6 +82,14 @@ type Options struct {
 // refreshCall is one in-flight Refresh fetch for a title (singleflight,
 // same pattern as resolver.inflight). done is closed after badges/err are
 // set, so waiters reading them after <-done are race-free.
+type refreshKey struct {
+	key       core.RatingKey
+	settings  Settings
+	imdb      string
+	tmdb      int64
+	titleType core.MediaType
+}
+
 type refreshCall struct {
 	done      chan struct{}
 	badges    []Badge
@@ -93,7 +101,7 @@ type Service struct {
 	db       *sql.DB
 	o        Options
 	flightMu sync.Mutex
-	flights  map[core.RatingKey]*refreshCall
+	flights  map[refreshKey]*refreshCall
 	queue    chan core.Title
 	qmu      sync.Mutex
 	queued   map[core.RatingKey]bool
@@ -113,7 +121,7 @@ func New(db *sql.DB, o Options) *Service {
 	if o.MDBListBaseURL == "" {
 		o.MDBListBaseURL = "https://api.mdblist.com"
 	}
-	return &Service{db: db, o: o, flights: map[core.RatingKey]*refreshCall{}, queue: make(chan core.Title, 128), queued: map[core.RatingKey]bool{}, retryAt: map[core.RatingKey]time.Time{}}
+	return &Service{db: db, o: o, flights: map[refreshKey]*refreshCall{}, queue: make(chan core.Title, 128), queued: map[core.RatingKey]bool{}, retryAt: map[core.RatingKey]time.Time{}}
 }
 func (s *Service) settings(ctx context.Context) (Settings, error) {
 	if snap, ok := ctx.Value(settingsSnapshotKey{s}).(settingsSnapshot); ok {
@@ -272,9 +280,15 @@ func (s *Service) Refresh(ctx context.Context, t *core.Title) ([]Badge, error) {
 	if t == nil {
 		return s.refresh(ctx, t)
 	}
+	ctx = s.WithSettingsSnapshot(ctx)
+	cfg, err := s.settings(ctx)
+	if err != nil {
+		return nil, err
+	}
+	key := refreshKey{key: t.Key, settings: cfg, imdb: t.IDs.IMDB, tmdb: t.IDs.TMDB, titleType: t.Type}
 	for {
 		s.flightMu.Lock()
-		if f, ok := s.flights[t.Key]; ok {
+		if f, ok := s.flights[key]; ok {
 			s.flightMu.Unlock()
 			select {
 			case <-f.done:
@@ -287,16 +301,16 @@ func (s *Service) Refresh(ctx context.Context, t *core.Title) ([]Badge, error) {
 			}
 		}
 		if s.flights == nil {
-			s.flights = map[core.RatingKey]*refreshCall{}
+			s.flights = map[refreshKey]*refreshCall{}
 		}
 		f := &refreshCall{done: make(chan struct{})}
-		s.flights[t.Key] = f
+		s.flights[key] = f
 		s.flightMu.Unlock()
 
 		badges, err := s.refresh(ctx, t)
 		f.badges, f.err, f.abandoned = badges, err, err != nil && ctx.Err() != nil
 		s.flightMu.Lock()
-		delete(s.flights, t.Key)
+		delete(s.flights, key)
 		s.flightMu.Unlock()
 		close(f.done)
 		return badges, err

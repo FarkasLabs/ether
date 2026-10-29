@@ -164,3 +164,60 @@ func TestRefreshCancelledLeaderWaiterRetries(t *testing.T) {
 		t.Fatalf("Refresh seguinte: badges=%+v err=%v calls=%d", r.badges, r.err, calls.Load())
 	}
 }
+
+func TestRefreshDoesNotShareAcrossSettings(t *testing.T) {
+	entered := make(chan struct{}, 1)
+	release := make(chan struct{})
+	s := refreshTestService(t, func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Query().Get("apikey") == "secret" {
+			entered <- struct{}{}
+			<-release
+		}
+		_, _ = w.Write([]byte(omdbOK))
+	})
+	defer func() {
+		select {
+		case <-release:
+		default:
+			close(release)
+		}
+	}()
+	title := &core.Title{Key: core.MovieKey(1), IDs: core.IDs{IMDB: "tt0000001"}}
+	leader := callRefresh(s, context.Background(), title)
+	<-entered
+	if err := s.SaveSettings(context.Background(), Settings{Enabled: true, Provider: "omdb", APIKey: "new-key", CacheHours: 24}); err != nil {
+		t.Fatal(err)
+	}
+	waiter := callRefresh(s, context.Background(), title)
+	if r := awaitResult(t, waiter, "new settings"); r.err != nil || len(r.badges) != 1 {
+		t.Fatalf("new settings: %+v", r)
+	}
+	close(release)
+	if r := awaitResult(t, leader, "old settings"); r.err != nil {
+		t.Fatal(r.err)
+	}
+}
+
+func TestRefreshCancelledWaiterDoesNotCancelLeader(t *testing.T) {
+	entered := make(chan struct{}, 1)
+	release := make(chan struct{})
+	s := refreshTestService(t, func(w http.ResponseWriter, r *http.Request) {
+		entered <- struct{}{}
+		<-release
+		_, _ = w.Write([]byte(omdbOK))
+	})
+	title := &core.Title{Key: core.MovieKey(1), IDs: core.IDs{IMDB: "tt0000001"}}
+	leader := callRefresh(s, context.Background(), title)
+	<-entered
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	r := awaitResult(t, callRefresh(s, ctx, title), "cancelled waiter")
+	if r.err != context.Canceled {
+		close(release)
+		t.Fatalf("waiter: %v", r.err)
+	}
+	close(release)
+	if r = awaitResult(t, leader, "leader"); r.err != nil || len(r.badges) != 1 {
+		t.Fatalf("leader: %+v", r)
+	}
+}
