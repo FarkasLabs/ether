@@ -346,6 +346,13 @@ type MediaSource interface {
 	Close() error
 }
 
+// OriginSource is implemented by a MediaSource that can name the service its
+// bytes come from, such as "Real-Debrid" (additive). Sources without it are
+// Usenet.
+type OriginSource interface {
+	Origin() string
+}
+
 type Engine interface {
 	// Open builds the byte-offset index for the main video file of an NZB.
 	Open(ctx context.Context, releaseID string, nzb []byte) (MediaSource, error)

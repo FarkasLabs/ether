@@ -405,6 +405,8 @@ export interface NowPlaying {
   /** 0..1 when the server reports a playback position, else null. */
   progress: number | null;
   release: string;
+  /** Where the release streams from: "Usenet" or a debrid service such as "Real-Debrid". */
+  origin: string;
   failovers: number;
 }
 
@@ -450,6 +452,7 @@ export function normalizeSessions(v: unknown): NowPlaying[] {
       durationMs,
       progress,
       release: str(release.name),
+      origin: str(pick(s, "origin", "Origin")),
       failovers: num(pick(s, "Failovers", "failovers")),
     };
   });
