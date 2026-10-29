@@ -47,7 +47,7 @@ type engineFake struct {
 	cache  *segcache.Cache
 	fail   bool
 	calls  int
-	during func()
+	during func(context.Context)
 }
 
 func (e *engineFake) Open(_ context.Context, id string, _ []byte) (core.MediaSource, error) {
@@ -56,10 +56,13 @@ func (e *engineFake) Open(_ context.Context, id string, _ []byte) (core.MediaSou
 func (e *engineFake) Prefetch(context.Context, string, []byte, int64, int64) error {
 	panic("managed fill must use durable prefetch")
 }
-func (e *engineFake) DurablePrefetch(_ context.Context, id string, _ []byte, off, n int64) error {
+func (e *engineFake) DurablePrefetch(ctx context.Context, id string, _ []byte, off, n int64) error {
 	e.calls++
 	if e.during != nil {
-		e.during()
+		e.during(ctx)
+	}
+	if err := ctx.Err(); err != nil {
+		return err
 	}
 	if e.fail {
 		return errors.New("disk unavailable")
@@ -251,13 +254,36 @@ func TestPauseSurvivesRestart(t *testing.T) {
 func TestCancelledRunStopsProviderWork(t *testing.T) {
 	m, _, eng, _ := harness(t)
 	ctx, cancel := context.WithCancel(context.Background())
-	eng.during = cancel
+	entered := make(chan struct{})
+	eng.during = func(providerCtx context.Context) {
+		close(entered)
+		<-providerCtx.Done()
+	}
 	done := make(chan struct{})
 	go func() { m.Run(ctx); close(done) }()
+	t.Cleanup(func() {
+		cancel()
+		select {
+		case <-done:
+		case <-time.After(10 * time.Second):
+			t.Error("preload worker still running during cleanup")
+		}
+	})
+	// Reservation and manifest writes happen before provider work starts.
+	// Measure cancellation only after the provider has entered, not from
+	// worker launch (which also measures filesystem startup under race CI).
+	select {
+	case <-entered:
+	case <-done:
+		t.Fatal("preload worker stopped before provider work")
+	case <-time.After(10 * time.Second):
+		t.Fatal("preload provider work did not start")
+	}
+	cancel()
 	select {
 	case <-done:
 	case <-time.After(2 * time.Second):
-		t.Fatal("preload worker did not stop")
+		t.Fatal("preload worker did not stop after provider cancellation")
 	}
 	if eng.calls != 1 {
 		t.Fatal("cancelled fill kept fetching", eng.calls)
