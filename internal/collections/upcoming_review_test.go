@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -17,9 +18,15 @@ import (
 
 func TestReviewUpcomingModesAndDateCorrection(t *testing.T) {
 	now := time.Date(2035, 4, 1, 12, 0, 0, 0, time.UTC)
+	var date atomic.Value
+	date.Store("2035-04-10")
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == "/discover/movie" {
 			fmt.Fprint(w, `{"page":1,"total_pages":1,"total_results":1,"results":[{"id":888991,"title":"Tomorrow Review","release_date":"2035-04-10"}]}`)
+			return
+		}
+		if r.URL.Path == "/movie/888991" {
+			fmt.Fprintf(w, `{"id":888991,"title":"Tomorrow Review","release_date":%q}`, date.Load().(string))
 			return
 		}
 		fmt.Fprint(w, `{"genres":[]}`)
@@ -27,7 +34,7 @@ func TestReviewUpcomingModesAndDateCorrection(t *testing.T) {
 	defer srv.Close()
 	client := tmdb.New("fixture", slog.Default(), tmdb.WithBaseURL(srv.URL), tmdb.WithRateLimit(100000, 100000), tmdb.WithMaxRetries(0))
 	defer client.Close()
-	e := newEnv(t, withOpts(collections.WithTMDB(client), collections.WithNow(func() time.Time { return now })))
+	e := newEnv(t, withCatalogClient(client), withOpts(collections.WithTMDB(client), collections.WithNow(func() time.Time { return now })))
 	future := core.MovieKey(888991)
 	for _, mode := range []string{"released", "upcoming", "mixed"} {
 		sp := spec("Review "+mode, "movie", catalogSource())
@@ -68,15 +75,15 @@ func TestReviewUpcomingModesAndDateCorrection(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			title.Released = now.AddDate(0, 0, 60)
-			if err := e.cat.UpsertTitle(e.ctx, *title, false); err != nil {
+			date.Store("2035-06-01")
+			if _, err := e.cat.RefreshTitle(e.ctx, title.Key, true); err != nil {
 				t.Fatal(err)
 			}
 			if _, err := e.svc.Placeholder(e.ctx, owner, ck, future, "web"); err == nil {
 				t.Fatal("corrected date still authorized")
 			}
-			title.Released = time.Date(2035, 4, 10, 0, 0, 0, 0, time.UTC)
-			if err := e.cat.UpsertTitle(e.ctx, *title, false); err != nil {
+			date.Store("2035-04-10")
+			if _, err := e.cat.RefreshTitle(e.ctx, title.Key, true); err != nil {
 				t.Fatal(err)
 			}
 			sp.Enabled = false

@@ -395,7 +395,26 @@ func (s *Service) build(ctx context.Context, row *specRow) (*memberSet, error) {
 
 func (s *Service) buildNow(ctx context.Context, row *specRow) (*memberSet, error) {
 	started := time.Now()
-	res, err := s.evaluate(ctx, row.spec, evalOptions{seed: row.spec.Name, persist: true})
+	var prior []core.RatingKey
+	if row.spec.ReleaseMode == "upcoming" || row.spec.ReleaseMode == "mixed" {
+		keys, _, err := s.loadMembers(ctx, row.id)
+		if err != nil {
+			return nil, err
+		}
+		titles, err := loadCollectionTitles(ctx, s.db, keys)
+		if err != nil {
+			return nil, err
+		}
+		for _, title := range titles {
+			// Refresh former placeholders even after their scheduled date passes.
+			// Already-released members of a mixed collection do not depend on
+			// upcoming metadata refresh availability or consume its budget.
+			if title.Released.IsZero() || title.Released.After(row.lastBuilt) {
+				prior = append(prior, title.Key)
+			}
+		}
+	}
+	res, err := s.evaluate(ctx, row.spec, evalOptions{seed: row.spec.Name, persist: true, prior: prior})
 	if err != nil {
 		return nil, err
 	}

@@ -55,6 +55,7 @@ type evalOptions struct {
 	// persist joins external titles to the catalogue (builds); previews
 	// only overlay them.
 	persist bool
+	prior   []core.RatingKey
 }
 
 // cand is a candidate title with the rules a source already guarantees.
@@ -170,17 +171,78 @@ func (s *Service) evaluate(ctx context.Context, spIn core.CollectionSpec, opt ev
 		return nil, err
 	}
 
+	providerTitles := []core.Title{}
 	// Watch-provider rules need the provider's catalogue from TMDB.
 	ec := &evalCtx{now: s.now(), providers: map[*rule]map[core.RatingKey]bool{}}
 	for _, r := range append(append([]*rule{}, rules...), excludes...) {
 		if r.field == "watchProvider" {
 			set, titles := s.providerSet(ctx, &sp, r, warn)
 			ec.providers[r] = set
+			providerTitles = append(providerTitles, titles...)
 			snap, err = s.join(ctx, snap, titles, opt.persist)
 			if err != nil {
 				return nil, err
 			}
 		}
+	}
+
+	if sp.ReleaseMode == "upcoming" || sp.ReleaseMode == "mixed" {
+		candidates := map[core.RatingKey]bool{}
+		for _, e := range snap.order {
+			if e.released > ec.now.Unix() {
+				candidates[e.key] = true
+			}
+		}
+		for _, t := range append(external, providerTitles...) {
+			if !t.Released.IsZero() && t.Released.After(ec.now) {
+				candidates[t.Key] = true
+			}
+		}
+		for _, k := range opt.prior {
+			candidates[k] = true
+		}
+		keys := make([]core.RatingKey, 0, len(candidates))
+		for k := range candidates {
+			if k.Kind() == core.KindMovie || k.Kind() == core.KindShow {
+				keys = append(keys, k)
+			}
+		}
+		sort.Slice(keys, func(i, j int) bool { return keys[i] < keys[j] })
+		refresher, ok := s.cat.(core.AuthoritativeTitleRefresher)
+		entries := make([]*entry, 0, len(keys))
+		in := newInterner()
+		failures := 0
+		refreshCtx, cancel := context.WithTimeout(ctx, 15*time.Second)
+		defer cancel()
+		for i, k := range keys {
+			if err := ctx.Err(); err != nil {
+				return nil, err
+			}
+			var t *core.Title
+			var err error
+			if !ok || i >= 500 || refreshCtx.Err() != nil {
+				err = errors.New("refresh unavailable or budget exhausted")
+			} else {
+				t, err = refresher.RefreshTitle(refreshCtx, k, opt.persist)
+			}
+			if err != nil || t == nil || t.Released.IsZero() {
+				failures++
+				if old := snap.entries[k]; old != nil {
+					copy := *old
+					copy.released = 0
+					entries = append(entries, &copy)
+				}
+				continue
+			}
+			entries = append(entries, entryFromTitle(*t, in))
+		}
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
+		if failures > 0 {
+			warn("Upcoming dates could not be refreshed for %d titles; they were excluded", failures)
+		}
+		snap = mergeEntries(snap, entries)
 	}
 
 	// Union candidates in source order.

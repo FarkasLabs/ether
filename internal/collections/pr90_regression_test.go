@@ -30,12 +30,16 @@ func TestUpcomingProviderJoinParity(t *testing.T) {
 					fmt.Fprint(w, `{"page":1,"total_pages":1,"total_results":1,"results":[{"id":888991,"title":"Future","release_date":"2035-04-10"}]}`)
 					return
 				}
+				if r.URL.Path == "/movie/888991" {
+					fmt.Fprint(w, `{"id":888991,"title":"Future","release_date":"2035-04-10"}`)
+					return
+				}
 				fmt.Fprint(w, `{"genres":[]}`)
 			}))
 			defer srv.Close()
 			client := tmdb.New("fixture", slog.Default(), tmdb.WithBaseURL(srv.URL), tmdb.WithRateLimit(100000, 100000), tmdb.WithMaxRetries(0))
 			defer client.Close()
-			e := newEnv(t, withOpts(collections.WithTMDB(client), collections.WithNow(func() time.Time { return now })))
+			e := newEnv(t, withCatalogClient(client), withOpts(collections.WithTMDB(client), collections.WithNow(func() time.Time { return now })))
 			sp := spec("Provider", "movie", catalogSource())
 			sp.ReleaseMode = "upcoming"
 			sp.LookaheadDays = 30

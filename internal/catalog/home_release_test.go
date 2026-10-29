@@ -26,6 +26,9 @@ func (f *releaseClient) MovieDetails(_ context.Context, id int64) (*tmdb.MovieDe
 	}
 	return nil, errors.New("offline")
 }
+func (f *releaseClient) MovieDetailsFresh(ctx context.Context, id int64) (*tmdb.MovieDetails, error) {
+	return f.MovieDetails(ctx, id)
+}
 func (f *releaseClient) SearchMovies(_ context.Context, _ string, _ int) (*tmdb.Paged[tmdb.Movie], error) {
 	return &tmdb.Paged[tmdb.Movie]{Results: []tmdb.Movie{f.details[1].Movie, f.details[3].Movie}}, nil
 }

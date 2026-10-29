@@ -364,3 +364,19 @@ func cloneValues(q url.Values) url.Values {
 	}
 	return out
 }
+
+// MovieDetailsFresh and TVDetailsFresh bypass the response cache for callers
+// that must verify current release dates. They never serve a stale response.
+func (c *Client) MovieDetailsFresh(ctx context.Context, id int64) (*MovieDetails, error) {
+	q := values("append_to_response", "credits,release_dates,external_ids,images,keywords,similar,recommendations")
+	var out MovieDetails
+	err := c.getFreshJSON(ctx, fmt.Sprintf("/movie/%d", id), q, &out)
+	return &out, err
+}
+
+func (c *Client) TVDetailsFresh(ctx context.Context, id int64) (*TVDetails, error) {
+	q := values("append_to_response", "content_ratings,external_ids,credits,aggregate_credits,keywords,images,similar,recommendations")
+	var out TVDetails
+	err := c.getFreshJSON(ctx, fmt.Sprintf("/tv/%d", id), q, &out)
+	return &out, err
+}
