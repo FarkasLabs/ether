@@ -157,6 +157,9 @@ func (s *Service) separateDiscoveryCollections(ctx context.Context) error {
 // the whole catalogue once for every network. Owners can edit it freely: more
 // complex rules automatically use the ordinary collection evaluator.
 func localFacetSpec(sp core.CollectionSpec) (string, bool) {
+	if sp.ReleaseMode == "upcoming" || sp.ReleaseMode == "mixed" {
+		return "", false
+	}
 	if !sp.LocalOnly || sp.Match != MatchAll || len(sp.Sources) != 1 || sp.Sources[0].Kind != "catalog" || len(sp.Rules) != 1 || len(sp.Exclude) != 0 || sp.Sort != "popularity" || !sp.SortDesc || sp.MediaType == MediaMixed {
 		return "", false
 	}

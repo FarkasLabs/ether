@@ -185,7 +185,7 @@ func (m *Manager) Prewarm(_ context.Context, user *core.User, key core.RatingKey
 		ctx, cancel := warmPreparationContext(m.ctx, timeout, e.foreground)
 		defer cancel()
 		title, err := m.deps.Catalog.Get(ctx, key)
-		if err != nil || title == nil || title.Type == core.TypeShow || title.Type == core.TypeSeason {
+		if err != nil || title == nil || (!title.Released.IsZero() && title.Released.After(m.now())) || title.Type == core.TypeShow || title.Type == core.TypeSeason {
 			return
 		}
 		// Warming must not override the source that actually survived the

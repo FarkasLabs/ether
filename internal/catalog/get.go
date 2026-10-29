@@ -63,6 +63,14 @@ func (c *Catalog) Get(ctx context.Context, key core.RatingKey) (*core.Title, err
 	return t, err
 }
 
+func (c *Catalog) StoredTitle(ctx context.Context, key core.RatingKey) (*core.Title, error) {
+	st, err := c.loadByKey(ctx, key)
+	if err != nil {
+		return nil, err
+	}
+	return &st.t, nil
+}
+
 func (c *Catalog) get(ctx context.Context, key core.RatingKey) (*core.Title, error) {
 	switch key.Kind() {
 	case core.KindMovie:
@@ -575,3 +583,69 @@ func (c *Catalog) NextEpisode(ctx context.Context, episode core.RatingKey) (*cor
 	}
 	return nil, core.ErrNotFound
 }
+
+// RefreshTitle updates canonical details from TMDB without a stale fallback.
+func (c *Catalog) RefreshTitle(ctx context.Context, key core.RatingKey, persist bool) (*core.Title, error) {
+	if c.client == nil {
+		return nil, fmt.Errorf("catalog: TMDB unavailable")
+	}
+	var t core.Title
+	switch key.Kind() {
+	case core.KindMovie:
+		var d *tmdb.MovieDetails
+		var err error
+		if fresh, ok := c.client.(interface {
+			MovieDetailsFresh(context.Context, int64) (*tmdb.MovieDetails, error)
+		}); ok {
+			d, err = fresh.MovieDetailsFresh(ctx, key.TMDB())
+		} else {
+			return nil, fmt.Errorf("catalog: fresh movie details unavailable")
+		}
+		if err != nil {
+			return nil, err
+		}
+		if d == nil || d.ID != key.TMDB() {
+			return nil, fmt.Errorf("catalog: invalid movie details for %s", key)
+		}
+		t = c.movieDetailsToTitle(ctx, d)
+		if persist {
+			if err := c.upsert(ctx, t, upsertOpts{browsable: c.meetsThreshold(t), detail: true, releaseDates: d.ReleaseDates, gateEnabled: c.config().GateMoviesByHomeRelease}); err != nil {
+				return nil, err
+			}
+		}
+	case core.KindShow:
+		var d *tmdb.TVDetails
+		var err error
+		if fresh, ok := c.client.(interface {
+			TVDetailsFresh(context.Context, int64) (*tmdb.TVDetails, error)
+		}); ok {
+			d, err = fresh.TVDetailsFresh(ctx, key.TMDB())
+		} else {
+			return nil, fmt.Errorf("catalog: fresh show details unavailable")
+		}
+		if err != nil {
+			return nil, err
+		}
+		if d == nil || d.ID != key.TMDB() {
+			return nil, fmt.Errorf("catalog: invalid show details for %s", key)
+		}
+		t = c.tvDetailsToTitle(ctx, d)
+		if persist {
+			if err := c.upsert(ctx, t, upsertOpts{browsable: c.meetsThreshold(t), detail: true}); err != nil {
+				return nil, err
+			}
+		}
+	default:
+		return nil, core.ErrNotFound
+	}
+	if !persist {
+		return &t, nil
+	}
+	st, err := c.loadByKey(ctx, key)
+	if err != nil {
+		return nil, err
+	}
+	return &st.t, nil
+}
+
+var _ core.AuthoritativeTitleRefresher = (*Catalog)(nil)

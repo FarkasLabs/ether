@@ -604,6 +604,11 @@ func (m *Manager) prepareEntry(ctx context.Context, user *core.User, key core.Ra
 	if user == nil {
 		return nil, core.ErrUnauthorized
 	}
+	if lookup, ok := m.deps.Catalog.(core.StoredTitleLookup); ok {
+		if title, err := lookup.StoredTitle(ctx, key); err == nil && title != nil && !title.Released.IsZero() && title.Released.After(m.now()) {
+			return nil, fmt.Errorf("playback: title releases on %s: %w", title.Released.Format("2006-01-02"), core.ErrUnreleased)
+		}
+	}
 	id := identity{userID: user.ID, clientID: caps.ClientID, key: key}
 	for {
 		m.mu.Lock()
@@ -689,6 +694,9 @@ func (m *Manager) prepare(ctx context.Context, id identity, user *core.User, cap
 	title, err := m.deps.Catalog.Get(ctx, id.key)
 	if err != nil {
 		return nil, fmt.Errorf("playback: title %s: %w", id.key, err)
+	}
+	if title == nil || (!title.Released.IsZero() && title.Released.After(m.now())) {
+		return nil, fmt.Errorf("playback: title is not released: %w", core.ErrUnreleased)
 	}
 	if title.Type == core.TypeShow || title.Type == core.TypeSeason {
 		return nil, fmt.Errorf("playback: %s is a %s, not a playable item: %w", id.key, title.Type, core.ErrNotFound)

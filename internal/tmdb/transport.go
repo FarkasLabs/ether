@@ -164,6 +164,7 @@ func (c *Client) get(ctx context.Context, path string, q url.Values) ([]byte, er
 	body, err := c.flights.Do(ctx, cacheKey, func(ctx context.Context) ([]byte, error) {
 		c.mu.Lock()
 		e, cached := c.cache.get(cacheKey)
+		epoch := c.cacheEpoch
 		if cached && time.Now().Before(e.expires) {
 			// Filled by a request that finished as this one started.
 			c.mu.Unlock()
@@ -188,7 +189,7 @@ func (c *Client) get(ctx context.Context, path string, q url.Values) ([]byte, er
 		if notModified {
 			body = staleBody
 		}
-		if c.generation == cfg.generation {
+		if c.generation == cfg.generation && c.cacheEpoch == epoch {
 			if notModified {
 				c.cache.put(cacheKey, cacheEntry{body: staleBody, etag: etag, expires: time.Now().Add(c.opts.cacheTTL)}, time.Now())
 			} else {
@@ -340,4 +341,28 @@ func pageQ(q url.Values, page int) url.Values {
 		q.Set("page", strconv.Itoa(page))
 	}
 	return q
+}
+
+// getFreshJSON contacts TMDB and replaces the ordinary cached response.
+func (c *Client) getFreshJSON(ctx context.Context, path string, q url.Values, out any) error {
+	cfg := c.settings()
+	if cfg.key == "" {
+		return ErrNoKey
+	}
+	full := c.buildURL(path, q, cfg)
+	body, etag, _, err := c.doWithRetry(ctx, full, "", cfg)
+	if err != nil {
+		return err
+	}
+	if err := json.Unmarshal(body, out); err != nil {
+		return fmt.Errorf("tmdb: decode %s: %w", path, err)
+	}
+	c.mu.Lock()
+	if c.generation == cfg.generation {
+		c.cacheEpoch++
+		key := strconv.FormatUint(cfg.generation, 10) + ":" + full
+		c.cache.put(key, cacheEntry{body: append([]byte(nil), body...), etag: etag, expires: time.Now().Add(c.opts.cacheTTL)}, time.Now())
+	}
+	c.mu.Unlock()
+	return nil
 }

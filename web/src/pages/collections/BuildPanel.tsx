@@ -82,6 +82,38 @@ export function BuildPanel({
             ]}
           />
         </Field>
+        <Field
+          label="Release dates"
+          hint="Upcoming shows are new series by first air date; future episodes of existing shows are not included. Dates can change."
+        >
+          <Segmented
+            ariaLabel="Release dates"
+            value={spec.releaseMode ?? "released"}
+            onChange={(releaseMode) =>
+              update({ releaseMode, lookaheadDays: spec.lookaheadDays || 90 })
+            }
+            options={[
+              { value: "released", label: "Released" },
+              { value: "upcoming", label: "Upcoming" },
+              { value: "mixed", label: "Both" },
+            ]}
+          />
+        </Field>
+        {spec.releaseMode && spec.releaseMode !== "released" && (
+          <Field
+            label="Look ahead (days)"
+            htmlFor="lookahead-days"
+            hint="1–366 days. Upcoming titles use the whole catalogue source and TMDB discovery; playback is unavailable before the scheduled release date."
+          >
+            <NumberInput
+              id="lookahead-days"
+              value={spec.lookaheadDays ?? 90}
+              min={1}
+              max={366}
+              onChange={(lookaheadDays) => update({ lookaheadDays }, "lookaheadDays")}
+            />
+          </Field>
+        )}
       </section>
 
       <section aria-labelledby="sources-h">

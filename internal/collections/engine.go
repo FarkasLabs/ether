@@ -55,6 +55,7 @@ type evalOptions struct {
 	// persist joins external titles to the catalogue (builds); previews
 	// only overlay them.
 	persist bool
+	prior   []core.RatingKey
 }
 
 // cand is a candidate title with the rules a source already guarantees.
@@ -165,16 +166,83 @@ func (s *Service) evaluate(ctx context.Context, spIn core.CollectionSpec, opt ev
 	if len(keyOnly) > 0 {
 		external = append(external, s.titlesFor(ctx, keyOnly)...)
 	}
-	snap = s.join(ctx, snap, external, opt.persist)
+	snap, err = s.join(ctx, snap, external, opt.persist)
+	if err != nil {
+		return nil, err
+	}
 
+	providerTitles := []core.Title{}
 	// Watch-provider rules need the provider's catalogue from TMDB.
 	ec := &evalCtx{now: s.now(), providers: map[*rule]map[core.RatingKey]bool{}}
 	for _, r := range append(append([]*rule{}, rules...), excludes...) {
 		if r.field == "watchProvider" {
 			set, titles := s.providerSet(ctx, &sp, r, warn)
 			ec.providers[r] = set
-			snap = s.join(ctx, snap, titles, opt.persist)
+			providerTitles = append(providerTitles, titles...)
+			snap, err = s.join(ctx, snap, titles, opt.persist)
+			if err != nil {
+				return nil, err
+			}
 		}
+	}
+
+	if sp.ReleaseMode == "upcoming" || sp.ReleaseMode == "mixed" {
+		candidates := map[core.RatingKey]bool{}
+		for _, e := range snap.order {
+			if e.released > ec.now.Unix() {
+				candidates[e.key] = true
+			}
+		}
+		for _, t := range append(external, providerTitles...) {
+			if !t.Released.IsZero() && t.Released.After(ec.now) {
+				candidates[t.Key] = true
+			}
+		}
+		for _, k := range opt.prior {
+			candidates[k] = true
+		}
+		keys := make([]core.RatingKey, 0, len(candidates))
+		for k := range candidates {
+			if k.Kind() == core.KindMovie || k.Kind() == core.KindShow {
+				keys = append(keys, k)
+			}
+		}
+		sort.Slice(keys, func(i, j int) bool { return keys[i] < keys[j] })
+		refresher, ok := s.cat.(core.AuthoritativeTitleRefresher)
+		entries := make([]*entry, 0, len(keys))
+		in := newInterner()
+		failures := 0
+		refreshCtx, cancel := context.WithTimeout(ctx, 15*time.Second)
+		defer cancel()
+		for i, k := range keys {
+			if err := ctx.Err(); err != nil {
+				return nil, err
+			}
+			var t *core.Title
+			var err error
+			if !ok || i >= 500 || refreshCtx.Err() != nil {
+				err = errors.New("refresh unavailable or budget exhausted")
+			} else {
+				t, err = refresher.RefreshTitle(refreshCtx, k, opt.persist)
+			}
+			if err != nil || t == nil || t.Released.IsZero() {
+				failures++
+				if old := snap.entries[k]; old != nil {
+					copy := *old
+					copy.released = 0
+					entries = append(entries, &copy)
+				}
+				continue
+			}
+			entries = append(entries, entryFromTitle(*t, in))
+		}
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
+		if failures > 0 {
+			warn("Upcoming dates could not be refreshed for %d titles; they were excluded", failures)
+		}
+		snap = mergeEntries(snap, entries)
 	}
 
 	// Union candidates in source order.
@@ -197,6 +265,9 @@ func (s *Service) evaluate(ctx context.Context, spIn core.CollectionSpec, opt ev
 		case r.all:
 			for _, e := range snap.order {
 				addKey(e.key)
+			}
+			for _, t := range r.titles {
+				addKey(t.Key)
 			}
 			// Pushdown matches come right after the catalogue they extend.
 			for _, t := range pushed {
@@ -248,7 +319,8 @@ func (s *Service) evaluate(ctx context.Context, spIn core.CollectionSpec, opt ev
 		if !want(c.e) {
 			continue
 		}
-		if c.e.released == 0 || c.e.released > nowUnix {
+		if c.e.released == 0 || (sp.ReleaseMode == "upcoming" && c.e.released <= nowUnix) ||
+			(c.e.released > nowUnix && (sp.ReleaseMode != "upcoming" && sp.ReleaseMode != "mixed" || c.e.released > ec.now.AddDate(0, 0, sp.LookaheadDays).Unix())) {
 			continue
 		}
 		shared := true
@@ -464,7 +536,7 @@ func buildHash(sp core.CollectionSpec, keys []core.RatingKey, unshared map[core.
 // index. Previews (persist=false) only overlay them on the snapshot, so
 // trying out a source never changes the library. It returns the snapshot
 // to evaluate against.
-func (s *Service) join(ctx context.Context, snap *snapshot, titles []core.Title, persist bool) *snapshot {
+func (s *Service) join(ctx context.Context, snap *snapshot, titles []core.Title, persist bool) (*snapshot, error) {
 	var fresh []core.Title
 	seen := map[core.RatingKey]bool{}
 	for _, t := range titles {
@@ -478,7 +550,7 @@ func (s *Service) join(ctx context.Context, snap *snapshot, titles []core.Title,
 		fresh = append(fresh, t)
 	}
 	if len(fresh) == 0 {
-		return snap
+		return snap, nil
 	}
 	if !persist {
 		keys := make([]core.RatingKey, len(fresh))
@@ -486,7 +558,7 @@ func (s *Service) join(ctx context.Context, snap *snapshot, titles []core.Title,
 			keys[i] = t.Key
 		}
 		known := map[core.RatingKey]core.Title{}
-		if loaded, err := loadTitles(ctx, s.db, keys); err == nil {
+		if loaded, err := loadCollectionTitles(ctx, s.db, keys); err == nil {
 			for _, t := range loaded {
 				if len(t.Genres) > 0 {
 					known[t.Key] = t
@@ -501,12 +573,19 @@ func (s *Service) join(ctx context.Context, snap *snapshot, titles []core.Title,
 			}
 			entries = append(entries, entryFromTitle(t, in))
 		}
-		return mergeEntries(snap, entries)
+		return mergeEntries(snap, entries), nil
+	}
+	if s.upserter == nil {
+		for _, t := range fresh {
+			if !t.Released.IsZero() && t.Released.After(s.now()) {
+				return nil, fmt.Errorf("collections: cannot store upcoming title %s", t.Key)
+			}
+		}
 	}
 	if s.upserter != nil {
 		for _, t := range fresh {
-			if err := s.upserter.UpsertTitle(ctx, t, true); err != nil {
-				s.log.Debug("collections: join title", "key", t.Key, "err", err)
+			if err := s.upserter.UpsertTitle(ctx, t, t.IsReleased(s.now())); err != nil {
+				return nil, fmt.Errorf("collections: store title %s: %w", t.Key, err)
 			}
 		}
 		// Reload so entries carry what the mirror knows (details fetched
@@ -515,18 +594,38 @@ func (s *Service) join(ctx context.Context, snap *snapshot, titles []core.Title,
 		for i, t := range fresh {
 			keys[i] = t.Key
 		}
-		if loaded, err := loadTitles(ctx, s.db, keys); err == nil && len(loaded) > 0 {
+		loaded, err := loadCollectionTitles(ctx, s.db, keys)
+		if err != nil {
+			return nil, fmt.Errorf("collections: reload titles: %w", err)
+		}
+		if len(loaded) > 0 {
 			fresh = loaded
 		}
 	}
-	s.idx.add(fresh)
+	var released, future []core.Title
+	for _, t := range fresh {
+		if t.IsReleased(s.now()) {
+			released = append(released, t)
+		} else {
+			future = append(future, t)
+		}
+	}
+	s.idx.add(released)
 	if len(fresh) > 0 {
 		s.notify("index")
 	}
 	if cur := s.idx.current(); cur != nil {
-		return cur
+		// Keep evaluation-only entries while preferring the latest index values.
+		// The index excludes future titles, which may have been overlaid by
+		// an earlier join in this same evaluation.
+		snap = mergeEntries(snap, cur.order)
 	}
-	return snap
+	in := newInterner()
+	entries := make([]*entry, 0, len(future))
+	for _, t := range future {
+		entries = append(entries, entryFromTitle(t, in))
+	}
+	return mergeEntries(snap, entries), nil
 }
 
 // resolveRuleRefs completes rule refs: names for local matching, ids for

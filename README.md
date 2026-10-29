@@ -144,7 +144,9 @@ Inspect what the personalization engine has learned for each viewer—their top 
 ### Home Designer & Conversational Collections
 Compose your server's Home screen with global rules and per-viewer overrides, previewing any viewer's exact live rows before saving. Build smart collections visually—or let viewers type natural descriptions like **`"80s sci-fi under 2 hours"`** straight into the Plex search bar to generate an instant browsable collection (with zero AI required, and optional local/API LLM refinement when enabled).
 
-Collection sorts include **Latest aired episode** and **Latest season premiere**. These use locally mirrored regular-episode dates, exclude future episodes and specials, and put shows with unknown dates last; they do not trigger provider searches.
+To create a **Look Ahead** collection, use the whole-catalogue source and choose **Upcoming** under **Release dates**, then set a 1–366 day window. **Both** combines released and upcoming matches. These opt-in collections appear only in the Collections tab; normal browsing, search and existing collections remain released-only. Upcoming items show their scheduled date and cannot start playback or release searches before that date. This covers movie releases and new series premieres, not future episodes or seasons of existing shows. TMDB discovery is bounded and warns when truncated; dates refresh on the collection's configured schedule and may change. Future placeholders use base TMDB artwork; Ether overlays and custom poster providers remain for released titles.
+
+Collection sorts include **Latest aired episode** and **Latest season premiere**. These use regular-episode dates, fetching and caching missing show dates from TMDB in bounded batches. They exclude future episodes and specials and put shows with unknown dates last. They do not search indexers or debrid providers; missing dates and capped source results are reported in the builder.
 
 <table>
   <tr>

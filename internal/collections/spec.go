@@ -169,6 +169,21 @@ func Normalize(s *core.CollectionSpec) {
 // Validate checks a normalized spec. It returns a *ValidationError.
 func Validate(s *core.CollectionSpec) error {
 	ve := &ValidationError{}
+	switch s.ReleaseMode {
+	case "", "released":
+	case "upcoming", "mixed":
+		if s.LookaheadDays < 1 || s.LookaheadDays > 366 {
+			ve.add("lookaheadDays", "must be between 1 and 366 days")
+		}
+		if s.LocalOnly || len(s.Sources) != 1 || s.Sources[0].Kind != "catalog" {
+			ve.add("sources", "Upcoming collections require the whole catalogue source and TMDB discovery")
+		}
+		if !s.Targets.CollectionsTab || s.Targets.HomeRow || s.Targets.SectionRow {
+			ve.add("targets", "Upcoming collections require the Collections tab and cannot use Home or library rows")
+		}
+	default:
+		ve.add("releaseMode", "unknown release mode")
+	}
 	if s.LocalOnly {
 		for _, src := range s.Sources {
 			if src.Kind != "catalog" {
