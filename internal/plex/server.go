@@ -143,20 +143,21 @@ type Server struct {
 
 	sections []Section
 
-	images           *imageCache
-	streams          *streamRegistry
-	variantIDs       *variantIDRegistry
-	renderedVariants *renderedVariants
-	downloads        *downloadStore
-	queues           *playQueueStore
-	sessions         *sessionTracker
-	playbackOwners   *playbackOwners
-	transcodes       *transcodeTable
-	extraPlay        *extraPlayStore
-	selections       *selectionStore
-	notifier         *notifier
-	facets           *facetCache
-	cl               *clusterState // nil on a standalone server
+	images            *imageCache
+	streams           *streamRegistry
+	variantIDs        *variantIDRegistry
+	renderedVariants  *renderedVariants
+	downloads         *downloadStore
+	queues            *playQueueStore
+	sessions          *sessionTracker
+	playbackOwners    *playbackOwners
+	playbackLifecycle *playbackLifecycle
+	transcodes        *transcodeTable
+	extraPlay         *extraPlayStore
+	selections        *selectionStore
+	notifier          *notifier
+	facets            *facetCache
+	cl                *clusterState // nil on a standalone server
 
 	// Background enrichment (nil when disabled).
 	titles    *titleCache
@@ -197,23 +198,24 @@ func NewServer(d Deps) *Server {
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	s := &Server{
-		d:                d,
-		log:              d.Logger.With("component", "plex"),
-		images:           newImageCache(d.ImageCacheBytes, d.HTTPClient),
-		streams:          newStreamRegistry(),
-		variantIDs:       newVariantIDRegistry(d.DB),
-		renderedVariants: newRenderedVariants(),
-		downloads:        newDownloadStore(),
-		queues:           newPlayQueueStore(),
-		sessions:         newSessionTracker(),
-		playbackOwners:   newPlaybackOwners(),
-		transcodes:       newTranscodeTable(),
-		extraPlay:        newExtraPlayStore(),
-		selections:       newSelectionStore(),
-		notifier:         newNotifier(),
-		facets:           newFacetCache(),
-		ctx:              ctx,
-		cancel:           cancel,
+		d:                 d,
+		log:               d.Logger.With("component", "plex"),
+		images:            newImageCache(d.ImageCacheBytes, d.HTTPClient),
+		streams:           newStreamRegistry(),
+		variantIDs:        newVariantIDRegistry(d.DB),
+		renderedVariants:  newRenderedVariants(),
+		downloads:         newDownloadStore(),
+		queues:            newPlayQueueStore(),
+		sessions:          newSessionTracker(),
+		playbackOwners:    newPlaybackOwners(),
+		playbackLifecycle: newPlaybackLifecycle(),
+		transcodes:        newTranscodeTable(),
+		extraPlay:         newExtraPlayStore(),
+		selections:        newSelectionStore(),
+		notifier:          newNotifier(),
+		facets:            newFacetCache(),
+		ctx:               ctx,
+		cancel:            cancel,
 	}
 	s.sections = s.buildSections()
 	s.queues.now = d.Now

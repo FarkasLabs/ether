@@ -42,6 +42,12 @@ func (s *Server) handleTimeline(w http.ResponseWriter, r *http.Request) {
 	}
 	ctx := r.Context()
 	pr := FromContext(ctx)
+	unlockOwner, locked := s.lockPlaybackRequest(w, r)
+	if !locked {
+		return
+	}
+	defer unlockOwner()
+
 	q := r.URL.Query()
 	key := stateKey(r)
 	if key == 0 || pr.User == nil {
@@ -53,7 +59,9 @@ func (s *Server) handleTimeline(w http.ResponseWriter, r *http.Request) {
 	// A late stop from an explicitly superseded playback must not stop the
 	// replacement source or overwrite its progress. Unknown/omitted IDs keep
 	// the historical behavior for clients with different request identities.
-	if state == "stopped" && s.playbackOwners.stale(pr.User.ID, pr.ClientID, key, pr.SessionID) {
+	if s.playbackOwners.stale(pr.User.ID, pr.ClientID, key, pr.SessionID) {
+		s.cleanSupersededEncoders(ctx, pr.User.ID, pr.ClientID, key, pr.SessionID)
+		s.sessions.remove(trackID(pr.User.ID, pr.ClientID, pr.SessionID))
 		s.writeEmpty(w, r)
 		return
 	}
@@ -81,6 +89,10 @@ func (s *Server) handleTimeline(w http.ResponseWriter, r *http.Request) {
 	}
 	tids := s.transcodes.forClient(user.ID, pr.ClientID, key)
 	for _, id := range tids {
+		if e, ok := s.transcodes.get(id); ok && s.playbackOwners.stale(user.ID, pr.ClientID, key, e.playbackID) {
+			s.cleanSupersededEncoders(ctx, user.ID, pr.ClientID, key, e.playbackID)
+			continue
+		}
 		s.transcodes.touch(id, s.now())
 		if s.d.Transcoder != nil {
 			if output, ok := s.d.Transcoder.Session(id); ok {
@@ -115,10 +127,17 @@ func (s *Server) handleTimeline(w http.ResponseWriter, r *http.Request) {
 			s.cancelTrickplayIfIdle(ps)
 		}
 		for _, id := range tids {
-			if s.d.Transcoder != nil {
-				s.d.Transcoder.Stop(id)
+			unlock, err := s.lockEncoder(ctx, id)
+			if err != nil {
+				return
 			}
-			s.transcodes.remove(id)
+			if e, ok := s.transcodes.get(id); ok && e.userID == user.ID && e.clientID == pr.ClientID && e.key == key {
+				if s.d.Transcoder != nil {
+					s.d.Transcoder.Stop(id)
+				}
+				s.transcodes.remove(id)
+			}
+			unlock()
 		}
 	} else {
 		client := *pr
@@ -470,6 +489,16 @@ func matchesSession(e playEntry, sid string) bool {
 func (s *Server) terminateLocal(sid, reason string) bool {
 	for _, e := range s.sessions.list() {
 		if matchesSession(e, sid) {
+			unlock, err := s.lockPlaybackOwner(s.ctx, e.user.ID, e.client.ClientID)
+			if err != nil {
+				return false
+			}
+			defer unlock()
+			if s.playbackOwners.stale(e.user.ID, e.client.ClientID, e.key, e.client.SessionID) {
+				s.cleanSupersededEncoders(s.ctx, e.user.ID, e.client.ClientID, e.key, e.client.SessionID)
+				return true
+			}
+
 			s.setTermination(e.id, reason)
 			if s.d.Playback != nil {
 				if ps, ok := s.d.Playback.SessionFor(e.user.ID, e.client.ClientID, e.key); ok {
