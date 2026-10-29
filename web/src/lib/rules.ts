@@ -9,6 +9,7 @@ import type {
   RuleOp,
   Source,
   SourceKind,
+  StevenLuList,
   TmdbListName,
 } from "./contract";
 
@@ -469,6 +470,12 @@ export const SOURCE_KINDS: SourceMeta[] = [
   { kind: "traktList", label: "Trakt list", description: "A public Trakt list URL" },
   { kind: "letterboxdList", label: "Letterboxd list", description: "A public Letterboxd list URL" },
   { kind: "mdblist", label: "MDBList", description: "A public MDBList URL" },
+  { kind: "anilistList", label: "AniList list", description: "A public AniList anime list URL" },
+  {
+    kind: "stevenlu",
+    label: "StevenLu popular movies",
+    description: "Movies people are talking about",
+  },
 ];
 
 export function sourceMeta(kind: string): SourceMeta | undefined {
@@ -484,6 +491,18 @@ export const TMDB_LISTS: { value: TmdbListName; label: string; media: ("movie" |
   { value: "upcoming", label: "Upcoming", media: ["movie"] },
   { value: "airing_today", label: "Airing today", media: ["show"] },
   { value: "on_the_air", label: "On the air", media: ["show"] },
+];
+
+export const STEVENLU_LISTS: { value: StevenLuList; label: string }[] = [
+  { value: "movies", label: "All popular movies" },
+  { value: "movies-imdb-min7", label: "IMDb 7+" },
+  { value: "movies-imdb-min8", label: "IMDb 8+" },
+  { value: "movies-metacritic-min50", label: "Metacritic 50+" },
+  { value: "movies-metacritic-min60", label: "Metacritic 60+" },
+  { value: "movies-metacritic-min70", label: "Metacritic 70+" },
+  { value: "movies-metacritic-min80", label: "Metacritic 80+" },
+  { value: "movies-rottentomatoes-min70", label: "Rotten Tomatoes 70+" },
+  { value: "movies-rottentomatoes-min80", label: "Rotten Tomatoes 80+" },
 ];
 
 export function newSource(
@@ -510,7 +529,10 @@ export function newSource(
     case "traktList":
     case "letterboxdList":
     case "mdblist":
+    case "anilistList":
       return { kind, url: "" };
+    case "stevenlu":
+      return { kind, list: "movies" };
     case "titles":
       return { kind, keys: [] };
   }
@@ -528,6 +550,7 @@ export function isSourceComplete(s: Source): boolean {
     case "traktList":
     case "letterboxdList":
     case "mdblist":
+    case "anilistList":
       return /^https?:\/\/\S+$/.test(s.url.trim());
     case "titles":
       return s.keys.length > 0;
@@ -555,7 +578,10 @@ export function describeSource(s: Source): string {
     case "traktList":
     case "letterboxdList":
     case "mdblist":
+    case "anilistList":
       return `${sourceMeta(s.kind)?.label}: ${s.url || "no URL"}`;
+    case "stevenlu":
+      return `StevenLu: ${STEVENLU_LISTS.find((l) => l.value === s.list)?.label ?? s.list}`;
     case "watchProvider":
       return `${s.label || "Streaming service"} (${s.region})`;
     default:

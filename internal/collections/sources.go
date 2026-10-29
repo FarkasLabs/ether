@@ -298,7 +298,7 @@ func (s *Service) gather(ctx context.Context, sp *core.CollectionSpec, src core.
 			}
 			s.discoverInto(ctx, sp, kind, q, rules, want, &res, "discover")
 		}
-	case "traktList", "letterboxdList", "mdblist":
+	case "traktList", "letterboxdList", "mdblist", "anilistList", "stevenlu":
 		var refs []extRef
 		var err error
 		switch src.Kind {
@@ -306,6 +306,10 @@ func (s *Service) gather(ctx context.Context, sp *core.CollectionSpec, src core.
 			refs, err = s.fetchTrakt(ctx, src.URL)
 		case "letterboxdList":
 			refs, err = s.fetchLetterboxd(ctx, src.URL)
+		case "anilistList":
+			refs, err = s.fetchAniList(ctx, src.URL)
+		case "stevenlu":
+			refs, err = s.fetchStevenLu(ctx, src.List)
 		default:
 			refs, err = s.fetchMDBList(ctx, src.URL)
 		}
@@ -337,6 +341,10 @@ func sourceName(src core.CollectionSource) string {
 		return "the Letterboxd list"
 	case "mdblist":
 		return "the MDBList list"
+	case "anilistList":
+		return "the AniList list"
+	case "stevenlu":
+		return "the StevenLu list"
 	case "tmdbDiscover":
 		return "TMDB discover"
 	case "watchProvider":
@@ -457,9 +465,13 @@ func (s *Service) resolveExternal(ctx context.Context, source string, refs []ext
 		}()
 	}
 	wg.Wait()
+	// Several items can name one title (AniList lists each season of a
+	// show); it is listed once, where it first appears.
 	var keys []core.RatingKey
+	listed := map[core.RatingKey]bool{}
 	for _, sl := range slots {
-		if sl.key != 0 {
+		if sl.key != 0 && !listed[sl.key] {
+			listed[sl.key] = true
 			keys = append(keys, sl.key)
 		}
 	}
@@ -486,6 +498,8 @@ func (s *Service) resolveRef(ctx context.Context, source string, r extRef, allow
 	switch {
 	case r.IMDB != "":
 		cacheSrc, cacheID = "imdb", r.IMDB
+	case r.TVDB > 0:
+		cacheSrc, cacheID = "tvdb", strconv.FormatInt(r.TVDB, 10)
 	case r.Slug != "":
 		cacheSrc, cacheID = "letterboxd", r.Slug
 	case r.Title != "":
@@ -508,6 +522,11 @@ func (s *Service) resolveRef(ctx context.Context, source string, r extRef, allow
 	}
 	if r.IMDB != "" {
 		if t, err := s.cat.ByExternalID(ctx, "imdb", r.IMDB); err == nil && t != nil && (t.Type == core.TypeMovie || t.Type == core.TypeShow) {
+			return remember(t.Key), false
+		}
+	}
+	if r.TVDB > 0 {
+		if t, err := s.cat.ByExternalID(ctx, "tvdb", strconv.FormatInt(r.TVDB, 10)); err == nil && t != nil && (t.Type == core.TypeMovie || t.Type == core.TypeShow) {
 			return remember(t.Key), false
 		}
 	}

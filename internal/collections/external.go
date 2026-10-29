@@ -1,6 +1,7 @@
 package collections
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -23,10 +24,33 @@ type ExternalBases struct {
 	TraktAPI   string // https://api.trakt.tv
 	Letterboxd string // https://letterboxd.com
 	MDBList    string // https://mdblist.com
+	AniListAPI string // https://graphql.anilist.co
+	AnimeIDs   string // the anime id mapping document (anilist -> TMDB/TVDB/IMDb)
+	StevenLu   string // https://popular-movies-data.stevenlu.com
 }
 
 func defaultBases() ExternalBases {
-	return ExternalBases{TraktAPI: "https://api.trakt.tv", Letterboxd: "https://letterboxd.com", MDBList: "https://mdblist.com"}
+	return ExternalBases{TraktAPI: "https://api.trakt.tv", Letterboxd: "https://letterboxd.com", MDBList: "https://mdblist.com",
+		AniListAPI: "https://graphql.anilist.co",
+		AnimeIDs:   "https://raw.githubusercontent.com/Fribb/anime-lists/master/anime-list-mini.json",
+		StevenLu:   "https://popular-movies-data.stevenlu.com"}
+}
+
+// withDefaults fills origins left empty with the real ones.
+func (b ExternalBases) withDefaults() ExternalBases {
+	d := defaultBases()
+	for _, f := range []struct {
+		v *string
+		d string
+	}{
+		{&b.TraktAPI, d.TraktAPI}, {&b.Letterboxd, d.Letterboxd}, {&b.MDBList, d.MDBList},
+		{&b.AniListAPI, d.AniListAPI}, {&b.AnimeIDs, d.AnimeIDs}, {&b.StevenLu, d.StevenLu},
+	} {
+		if *f.v == "" {
+			*f.v = f.d
+		}
+	}
+	return b
 }
 
 // extRef is a title named by an external list.
@@ -66,15 +90,29 @@ func newWebClient(c *http.Client, ua string, now func() time.Time) *webClient {
 		c = &http.Client{Timeout: 30 * time.Second}
 	}
 	return &webClient{http: c, ua: ua, now: now, ttl: 6 * time.Hour,
-		gaps: map[string]time.Duration{"letterboxd.com": 1500 * time.Millisecond, "mdblist.com": time.Second, "api.trakt.tv": 500 * time.Millisecond},
+		gaps: map[string]time.Duration{"letterboxd.com": 1500 * time.Millisecond, "mdblist.com": time.Second, "api.trakt.tv": 500 * time.Millisecond,
+			"graphql.anilist.co": 2 * time.Second, "popular-movies-data.stevenlu.com": time.Second, "raw.githubusercontent.com": time.Second},
 		last: map[string]time.Time{}, cache: map[string]webEntry{}, hostL: map[string]*sync.Mutex{}}
 }
 
 var errHTTPNotFound = errors.New("not found")
 
 func (w *webClient) get(ctx context.Context, rawURL string, hdr map[string]string) ([]byte, http.Header, error) {
+	return w.do(ctx, http.MethodGet, rawURL, nil, hdr)
+}
+
+// post sends body (a JSON query) and caches the reply by URL and body.
+func (w *webClient) post(ctx context.Context, rawURL string, body []byte, hdr map[string]string) ([]byte, http.Header, error) {
+	return w.do(ctx, http.MethodPost, rawURL, body, hdr)
+}
+
+func (w *webClient) do(ctx context.Context, method, rawURL string, reqBody []byte, hdr map[string]string) ([]byte, http.Header, error) {
+	cacheKey := rawURL
+	if reqBody != nil {
+		cacheKey += "\x00" + string(reqBody)
+	}
 	w.mu.Lock()
-	if e, ok := w.cache[rawURL]; ok && w.now().Before(e.expires) {
+	if e, ok := w.cache[cacheKey]; ok && w.now().Before(e.expires) {
 		w.mu.Unlock()
 		return e.body, e.header, nil
 	}
@@ -107,7 +145,11 @@ func (w *webClient) get(ctx context.Context, rawURL string, hdr map[string]strin
 		case <-t.C:
 		}
 	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, rawURL, nil)
+	var rd io.Reader
+	if reqBody != nil {
+		rd = bytes.NewReader(reqBody)
+	}
+	req, err := http.NewRequestWithContext(ctx, method, rawURL, rd)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -139,7 +181,7 @@ func (w *webClient) get(ctx context.Context, rawURL string, hdr map[string]strin
 	if len(w.cache) > 2000 {
 		w.cache = map[string]webEntry{}
 	}
-	w.cache[rawURL] = webEntry{body: body, header: resp.Header.Clone(), expires: w.now().Add(w.ttl)}
+	w.cache[cacheKey] = webEntry{body: body, header: resp.Header.Clone(), expires: w.now().Add(w.ttl)}
 	w.mu.Unlock()
 	return body, resp.Header, nil
 }
@@ -455,6 +497,56 @@ func (s *Service) fetchMDBList(ctx context.Context, rawURL string) ([]extRef, er
 			r.Type = "movie"
 		case "show", "tv":
 			r.Type = "show"
+		}
+		out = append(out, r)
+	}
+	return out, nil
+}
+
+// ---------------------------------------------------------------------------
+// StevenLu
+
+// stevenLuLists are the published popular-movie feeds: the plain list and
+// the variants filtered by critic or audience score.
+var stevenLuLists = map[string]bool{
+	"movies": true, "movies-imdb-min7": true, "movies-imdb-min8": true,
+	"movies-metacritic-min50": true, "movies-metacritic-min60": true,
+	"movies-metacritic-min70": true, "movies-metacritic-min80": true,
+	"movies-rottentomatoes-min70": true, "movies-rottentomatoes-min80": true,
+}
+
+func stevenLuList(list string) (string, error) {
+	if list == "" {
+		return "movies", nil
+	}
+	if !stevenLuLists[list] {
+		return "", fmt.Errorf("unknown StevenLu list %q", list)
+	}
+	return list, nil
+}
+
+func (s *Service) fetchStevenLu(ctx context.Context, list string) ([]extRef, error) {
+	list, err := stevenLuList(list)
+	if err != nil {
+		return nil, err
+	}
+	body, _, err := s.web.get(ctx, s.bases.StevenLu+"/"+list+".json", map[string]string{"Accept": "application/json"})
+	if err != nil {
+		return nil, fmt.Errorf("stevenlu: %w", err)
+	}
+	var items []struct {
+		Title  string      `json:"title"`
+		TMDBID json.Number `json:"tmdb_id"`
+		IMDB   string      `json:"imdb_id"`
+	}
+	if err := json.Unmarshal(body, &items); err != nil {
+		return nil, fmt.Errorf("stevenlu: unexpected response: %w", err)
+	}
+	out := make([]extRef, 0, len(items))
+	for _, it := range items {
+		r := extRef{IMDB: it.IMDB, Title: it.Title, Type: "movie"}
+		if n, err := it.TMDBID.Int64(); err == nil && n > 0 {
+			r.TMDB = n
 		}
 		out = append(out, r)
 	}

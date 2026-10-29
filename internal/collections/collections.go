@@ -61,6 +61,7 @@ type Service struct {
 	idx      *index
 	web      *webClient
 	bases    ExternalBases
+	anime    animeIDCache
 	depsMu   sync.RWMutex
 	state    core.State
 	auth     core.Auth
@@ -138,7 +139,7 @@ func WithCatalogConfig(fn func() config.Catalog) Option { return func(s *Service
 // WithTraktConfig supplies the Trakt client id used to read public lists.
 func WithTraktConfig(fn func() config.Trakt) Option { return func(s *Service) { s.traktCfg = fn } }
 
-// WithHTTPClient sets the client for Letterboxd, MDBList and Trakt.
+// WithHTTPClient sets the client for the external list sites.
 func WithHTTPClient(c *http.Client) Option { return func(s *Service) { s.opts.httpClient = c } }
 
 // WithUserAgent identifies Ether to list sites.
@@ -194,7 +195,7 @@ func New(db *sql.DB, cat core.Catalog, log *slog.Logger, opts ...Option) (*Servi
 	s.web = newWebClient(s.opts.httpClient, ua, s.now)
 	s.bases = defaultBases()
 	if s.opts.bases != nil {
-		s.bases = *s.opts.bases
+		s.bases = s.opts.bases.withDefaults()
 	}
 	ctx := context.Background()
 	if err := s.seedBuiltins(ctx); err != nil {
