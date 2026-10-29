@@ -46,6 +46,47 @@ func TestLeaseExclusionAndFencedRelease(t *testing.T) {
 	}
 }
 
+func TestDisconnectDeleteRechecksLease(t *testing.T) {
+	ctx := context.Background()
+	db, err := store.OpenPath(ctx, filepath.Join(t.TempDir(), "test.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	s := TokenStore{DB: db, Sealer: testSealer{}}
+	now := time.Now()
+	token := Token{ClientID: "id", AccessToken: "a", RefreshToken: "r", ExpiresIn: 300, Scope: "media:read media:write"}
+	if err := s.Save(ctx, 1, token, now); err != nil {
+		t.Fatal(err)
+	}
+	var observed int64
+	var access, refresh string
+	if err := db.QueryRowContext(ctx, `SELECT lease_until,access_token,refresh_token FROM simkl_tokens WHERE user_id=?`, 1).Scan(&observed, &access, &refresh); err != nil || observed >= now.UnixMilli() {
+		t.Fatalf("initial lease: %d %v", observed, err)
+	}
+	if _, err := s.AcquireLease(ctx, 1, now); err != nil {
+		t.Fatal(err)
+	}
+	tx, err := db.BeginTx(ctx, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer tx.Rollback()
+	if err := deleteUnleasedGrant(ctx, tx, 1, "id", access, refresh, now); !errors.Is(err, ErrBusy) {
+		t.Fatalf("stale lease observation allowed delete: %v", err)
+	}
+	var count int
+	if err := tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM simkl_tokens WHERE user_id=?`, 1).Scan(&count); err != nil || count != 1 {
+		t.Fatalf("grant removed: %d %v", count, err)
+	}
+	if _, err := tx.ExecContext(ctx, `UPDATE simkl_tokens SET lease_until=0,refresh_token=? WHERE user_id=?`, "rotated", 1); err != nil {
+		t.Fatal(err)
+	}
+	if err := deleteUnleasedGrant(ctx, tx, 1, "id", access, refresh, now); !errors.Is(err, ErrBusy) {
+		t.Fatalf("stale credentials allowed delete: %v", err)
+	}
+}
+
 func TestRefreshRequiresLeaseAndKeepsAccount(t *testing.T) {
 	ctx := context.Background()
 	db, err := store.OpenPath(ctx, filepath.Join(t.TempDir(), "test.db"))
