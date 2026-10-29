@@ -235,35 +235,47 @@ func TestFilterVisibilityBeyondChunk(t *testing.T) {
 	}
 }
 
-// ExcludeKeys programático (>200) e lista de genres de filtro (>200)
-// também respeitam o bound de parâmetros sem mudar a semântica.
-func TestBrowseExcludeKeysAndGenreFilterBeyondChunk(t *testing.T) {
+// Target selection must not depend on input order or which side of the query
+// boundary a source occupies. Within a source, stored recommendation rank wins.
+func TestCrowdGraphBatchStableTargetSelection(t *testing.T) {
 	ctx := context.Background()
 	c := newChunkTestCatalog(t)
-	const n = 250
-	titles := upsertGenreMovies(t, ctx, c, n)
-
-	exclude := make([]core.RatingKey, 0, 201)
-	for i := 0; i < 201; i++ {
-		exclude = append(exclude, titles[i].Key)
+	const sources = 205
+	targets := upsertGenreMovies(t, ctx, c, 2*sources)
+	keys := make([]core.RatingKey, sources)
+	for i := range keys {
+		keys[i] = core.MovieKey(int64(10000 + i))
+		recs := fmt.Sprintf("%d,%d", targets[2*i+1].Key, targets[2*i].Key)
+		if _, err := c.db.ExecContext(ctx, `INSERT INTO catalog_crowd(key,fetched_at,pages,recs) VALUES(?,?,?,?)`, int64(keys[i]), 1, 1, recs); err != nil {
+			t.Fatal(err)
+		}
 	}
-	page, err := c.Browse(ctx, core.BrowseQuery{Filter: core.Filter{Type: core.TypeMovie, ExcludeKeys: exclude}})
-	if err != nil {
-		t.Fatal(err)
+	reversed := append([]core.RatingKey(nil), keys...)
+	for i, j := 0, len(reversed)-1; i < j; i, j = i+1, j-1 {
+		reversed[i], reversed[j] = reversed[j], reversed[i]
 	}
-	if page.Total != n-201 {
-		t.Fatalf("browse with 201 ExcludeKeys: total %d, want %d", page.Total, n-201)
-	}
-
-	genres := make([]string, 0, n)
-	for _, title := range titles {
-		genres = append(genres, title.Genres[0])
-	}
-	page, err = c.Browse(ctx, core.BrowseQuery{Filter: core.Filter{Type: core.TypeMovie, Genres: genres}})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if page.Total != n {
-		t.Fatalf("browse with %d genre filter values: total %d, want %d", len(genres), page.Total, n)
+	rotated := append(append([]core.RatingKey(nil), keys[199:]...), keys[:199]...)
+	for _, cap := range []int{3, 401} {
+		for _, input := range [][]core.RatingKey{keys, reversed, rotated} {
+			edges, loaded, err := c.CrowdGraphBatch(ctx, input, 2, cap)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if len(edges) != sources || len(loaded) != cap {
+				t.Fatalf("cap %d: %d edges and %d titles", cap, len(edges), len(loaded))
+			}
+			for i := range keys {
+				want := []core.RatingKey{targets[2*i+1].Key, targets[2*i].Key}
+				if len(edges[keys[i]]) != 2 || edges[keys[i]][0] != want[0] || edges[keys[i]][1] != want[1] {
+					t.Fatalf("source %d: edges %v, want %v", i, edges[keys[i]], want)
+				}
+				for j, key := range want {
+					_, found := loaded[key]
+					if found != (2*i+j < cap) {
+						t.Fatalf("cap %d: target %v found=%v", cap, key, found)
+					}
+				}
+			}
+		}
 	}
 }

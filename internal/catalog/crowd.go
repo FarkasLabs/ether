@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -338,15 +339,17 @@ func (c *Catalog) CrowdGraphBatch(ctx context.Context, keys []core.RatingKey, ma
 	if len(args) == 0 {
 		return edges, nil, nil
 	}
+	// The original query had no guaranteed row order. Sort source keys and
+	// query each chunk in that order so the target cap is independent of
+	// input permutation and database row order. Each recommendation list
+	// retains its stored ranking.
+	sort.Slice(args, func(i, j int) bool { return args[i].(int64) < args[j].(int64) })
 	var targetKeys []core.RatingKey
 	seenTarget := map[core.RatingKey]bool{}
-	// Chunk the deduplicated keys (same 200 as titlesByKeys below): each
-	// source key lands in exactly one chunk, so edges/targets accumulate
-	// exactly as in one unchunked query.
 	const batch = 200
 	for start := 0; start < len(args); start += batch {
 		part := args[start:min(start+batch, len(args))]
-		rows, err := c.db.QueryContext(ctx, `SELECT key, recs FROM catalog_crowd WHERE key IN (`+placeholders(len(part))+`)`, part...)
+		rows, err := c.db.QueryContext(ctx, `SELECT key, recs FROM catalog_crowd WHERE key IN (`+placeholders(len(part))+`) ORDER BY key`, part...)
 		if err != nil {
 			return nil, nil, err
 		}
