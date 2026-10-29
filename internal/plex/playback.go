@@ -387,6 +387,7 @@ func (s *Server) prepare(ctx context.Context, pr *Request, p *playRequest) (*cor
 	if p.subSet && p.subSel >= 0 && p.subSel < len(ps.Info.Streams) && ps.Info.Streams[p.subSel].Type == "subtitle" {
 		subtitle = p.subSel
 	}
+	s.playbackOwners.bind(pr.User.ID, pr.ClientID, p.key, pr.SessionID, s.now())
 	s.transcodes.put(&transcodeEntry{
 		id: p.sessionID, playID: ps.ID, userID: pr.User.ID, clientID: pr.ClientID, key: p.key,
 		requested: requested,
@@ -1116,6 +1117,7 @@ func (s *Server) handlePart(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
+	s.playbackOwners.bind(pr.User.ID, pr.ClientID, key, pr.SessionID, s.now())
 	if r.URL.Query().Get("download") == "1" {
 		w.Header().Set("Content-Disposition", "attachment; filename=\""+strings.ReplaceAll(chi.URLParam(r, "file"), "\"", "")+"\"")
 	}

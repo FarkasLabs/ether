@@ -150,6 +150,7 @@ type Server struct {
 	downloads        *downloadStore
 	queues           *playQueueStore
 	sessions         *sessionTracker
+	playbackOwners   *playbackOwners
 	transcodes       *transcodeTable
 	extraPlay        *extraPlayStore
 	selections       *selectionStore
@@ -205,6 +206,7 @@ func NewServer(d Deps) *Server {
 		downloads:        newDownloadStore(),
 		queues:           newPlayQueueStore(),
 		sessions:         newSessionTracker(),
+		playbackOwners:   newPlaybackOwners(),
 		transcodes:       newTranscodeTable(),
 		extraPlay:        newExtraPlayStore(),
 		selections:       newSelectionStore(),
@@ -393,6 +395,7 @@ func (s *Server) janitor() {
 			s.queues.expire(now, 6*time.Hour)
 			s.renderedVariants.expire(now, renderedVariantsTTL)
 			s.transcodes.expire(now, 2*time.Hour)
+			s.playbackOwners.expire(now, 2*time.Hour)
 			s.extraPlay.expire(now, 2*time.Hour)
 			s.expireTerminations(now, terminationTTL)
 			expired := s.sessions.expire(now, 2*time.Minute)

@@ -50,6 +50,13 @@ func (s *Server) handleTimeline(w http.ResponseWriter, r *http.Request) {
 	}
 	s.rememberStreamRequest(r, pr.User, key)
 	state := q.Get("state")
+	// A late stop from an explicitly superseded playback must not stop the
+	// replacement source or overwrite its progress. Unknown/omitted IDs keep
+	// the historical behavior for clients with different request identities.
+	if state == "stopped" && s.playbackOwners.stale(pr.User.ID, pr.ClientID, key, pr.SessionID) {
+		s.writeEmpty(w, r)
+		return
+	}
 	offset := msParam(q.Get("time"))
 	duration := msParam(q.Get("duration"))
 	user := pr.User

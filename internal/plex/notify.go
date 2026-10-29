@@ -121,6 +121,65 @@ func (t *sessionTracker) expire(now time.Time, ttl time.Duration) []playEntry {
 	return out
 }
 
+// playbackOwners records explicit playback identifiers observed on source requests.
+// Only a known superseded identifier is stale: clients can omit identifiers or
+// use different identifiers on their timeline and media requests.
+type playbackOwners struct {
+	mu      sync.Mutex
+	entries map[playbackOwnerKey]*playbackOwner
+}
+type playbackOwnerKey struct {
+	user   int64
+	client string
+	key    core.RatingKey
+}
+type playbackOwner struct {
+	current string
+	prior   map[string]bool
+	updated time.Time
+}
+
+func newPlaybackOwners() *playbackOwners {
+	return &playbackOwners{entries: make(map[playbackOwnerKey]*playbackOwner)}
+}
+func (o *playbackOwners) bind(user int64, client string, key core.RatingKey, id string, now time.Time) {
+	if id == "" {
+		return
+	}
+	o.mu.Lock()
+	defer o.mu.Unlock()
+	k := playbackOwnerKey{user, client, key}
+	e := o.entries[k]
+	if e == nil {
+		e = &playbackOwner{prior: make(map[string]bool)}
+		o.entries[k] = e
+	}
+	if e.current != "" && e.current != id {
+		e.prior[e.current] = true
+	}
+	delete(e.prior, id)
+	e.current = id
+	e.updated = now
+}
+func (o *playbackOwners) stale(user int64, client string, key core.RatingKey, id string) bool {
+	if id == "" {
+		return false
+	}
+	o.mu.Lock()
+	defer o.mu.Unlock()
+	e := o.entries[playbackOwnerKey{user, client, key}]
+	return e != nil && e.current != "" && e.current != id && e.prior[id]
+}
+func (o *playbackOwners) expire(now time.Time, ttl time.Duration) {
+	o.mu.Lock()
+	defer o.mu.Unlock()
+	for k, e := range o.entries {
+		if now.Sub(e.updated) > ttl {
+			delete(o.entries, k)
+		}
+	}
+}
+
 // ---------------------------------------------------------------------------
 // Notification fan-out
 
