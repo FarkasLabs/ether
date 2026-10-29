@@ -431,3 +431,19 @@ func EpisodeMatchesAbsolute(parsed core.ReleaseInfo, absolute int) bool {
 	}
 	return false
 }
+
+// AnimeSearchEpisode is the absolute episode number an anime episode
+// request is also searched by ("Show 1071"), or 0: the catalogue's count,
+// or the episode itself in the first season.
+func AnimeSearchEpisode(req core.SearchRequest) int {
+	if !req.Anime || req.Type != core.TypeEpisode || req.Season <= 0 || req.Episode <= 0 {
+		return 0
+	}
+	if req.AbsoluteEpisode > 0 {
+		return req.AbsoluteEpisode
+	}
+	if req.Season == 1 {
+		return req.Episode
+	}
+	return 0
+}
