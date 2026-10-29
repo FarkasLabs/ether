@@ -29,15 +29,18 @@ func (c *Catalog) FilterVisibility(ctx context.Context, ts []core.Title) []core.
 		return ts
 	}
 	out := make([]core.Title, 0, len(ts))
-	idx := map[core.RatingKey]int{}
+	idx := map[core.RatingKey][]int{}
 	for _, t := range ts {
 		if _, ok := idx[t.Key]; !ok {
-			idx[t.Key] = len(out)
+			idx[t.Key] = []int{len(out)}
 			out = append(out, t)
 		}
 	}
 	ts = out
 	// These are the only summary facets which may be absent after remote search.
+	// ts is deduplicated above, so chunking it bounds the IN parameters
+	// without ever querying (or enriching) a key twice.
+	const batch = 200
 	for _, p := range []struct {
 		table, col string
 		set        func(int, string)
@@ -45,8 +48,11 @@ func (c *Catalog) FilterVisibility(ctx context.Context, ts []core.Title) []core.
 		{"catalog_countries", "country", func(i int, v string) { out[i].Countries = append(out[i].Countries, v) }},
 		{"catalog_genres", "genre", func(i int, v string) { out[i].Genres = append(out[i].Genres, v) }},
 	} {
-		if err := c.scanPairs(ctx, "SELECT key,"+p.col+" FROM "+p.table+" WHERE key IN ("+placeholders(len(ts))+")", keyArgs(ts), p.set, idx); err != nil {
-			return nil
+		for start := 0; start < len(ts); start += batch {
+			part := ts[start:min(start+batch, len(ts))]
+			if err := c.scanPairs(ctx, "SELECT key,"+p.col+" FROM "+p.table+" WHERE key IN ("+placeholders(len(part))+")", keyArgs(part), p.set, idx); err != nil {
+				return nil
+			}
 		}
 	}
 	if c.config().GateMoviesByHomeRelease {

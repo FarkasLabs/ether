@@ -380,16 +380,24 @@ func (c *Catalog) Grandchildren(ctx context.Context, key core.RatingKey) ([]core
 	if err := c.loadSeasons(ctx, key.TMDB(), seasons); err != nil {
 		return nil, err
 	}
-	numbers := make([]any, 0, len(seasons)+1)
-	numbers = append(numbers, int64(key))
-	for _, s := range seasons {
-		numbers = append(numbers, s.Season)
+	// Bound the season IN like every other key IN in the package, however
+	// many seasons a show has. Seasons arrive in listing order, so chunk
+	// results stay in season/episode order when concatenated.
+	out := []core.Title{}
+	for start := 0; start < len(seasons); start += 200 {
+		part := seasons[start:min(start+200, len(seasons))]
+		numbers := make([]any, 0, len(part)+1)
+		numbers = append(numbers, int64(key))
+		for _, s := range part {
+			numbers = append(numbers, s.Season)
+		}
+		chunk, err := c.queryTitles(ctx, `SELECT `+titleCols+` FROM catalog_titles WHERE type='episode' AND show_key=? AND season IN (`+placeholders(len(part))+`) ORDER BY season ASC, episode ASC`, numbers...)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, chunk...)
 	}
-	out, err := c.queryTitles(ctx, `SELECT `+titleCols+` FROM catalog_titles WHERE type='episode' AND show_key=? AND season IN (`+placeholders(len(seasons))+`) ORDER BY season ASC, episode ASC`, numbers...)
-	if out == nil && err == nil {
-		out = []core.Title{}
-	}
-	return out, err
+	return out, nil
 }
 
 // seasonLoads bounds a show's concurrent season fetches.

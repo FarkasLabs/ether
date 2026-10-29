@@ -60,98 +60,105 @@ func (c *Catalog) ShowTrajectories(ctx context.Context, shows []core.RatingKey) 
 	if len(args) == 0 {
 		return out, nil
 	}
-	ph := placeholders(len(args))
 	nowTS := c.now().Unix()
 	statusByShow := map[core.RatingKey]string{}
 	showRating := map[core.RatingKey]float64{}
-	srows, err := c.db.QueryContext(ctx, `SELECT key, status, rating FROM catalog_titles WHERE key IN (`+ph+`)`, args...)
-	if err != nil {
-		return nil, err
-	}
-	for srows.Next() {
-		var k int64
-		var st string
-		var r float64
-		if err := srows.Scan(&k, &st, &r); err != nil {
-			srows.Close()
-			return nil, err
-		}
-		statusByShow[core.RatingKey(k)] = st
-		showRating[core.RatingKey(k)] = r
-	}
-	if err := srows.Err(); err != nil {
-		srows.Close()
-		return nil, err
-	}
-	srows.Close()
-
 	type sPoint struct {
 		season int
 		rating float64
 	}
 	byShow := map[core.RatingKey][]sPoint{}
-	rows, err := c.db.QueryContext(ctx, `
-		SELECT show_key, season, rating FROM catalog_titles
-		WHERE type='season' AND season>0 AND rating>0 AND released_ts<>0 AND released_ts<=? AND show_key IN (`+ph+`)
-		ORDER BY show_key ASC, season ASC`, append([]any{nowTS}, args...)...)
-	if err != nil {
-		return nil, err
-	}
-	for rows.Next() {
-		var sk int64
-		var sea int
-		var r float64
-		if err := rows.Scan(&sk, &sea, &r); err != nil {
-			rows.Close()
+	// Chunk the deduplicated show args (same 200 as hydrateSlice). Each
+	// show lands in exactly one chunk, so per-show points stay ordered
+	// and are never merged across queries.
+	const batch = 200
+	for start := 0; start < len(args); start += batch {
+		part := args[start:min(start+batch, len(args))]
+		ph := placeholders(len(part))
+		srows, err := c.db.QueryContext(ctx, `SELECT key, status, rating FROM catalog_titles WHERE key IN (`+ph+`)`, part...)
+		if err != nil {
 			return nil, err
 		}
-		byShow[core.RatingKey(sk)] = append(byShow[core.RatingKey(sk)], sPoint{season: sea, rating: r})
-	}
-	if err := rows.Err(); err != nil {
-		rows.Close()
-		return nil, err
-	}
-	rows.Close()
+		for srows.Next() {
+			var k int64
+			var st string
+			var r float64
+			if err := srows.Scan(&k, &st, &r); err != nil {
+				srows.Close()
+				return nil, err
+			}
+			statusByShow[core.RatingKey(k)] = st
+			showRating[core.RatingKey(k)] = r
+		}
+		if err := srows.Err(); err != nil {
+			srows.Close()
+			return nil, err
+		}
+		srows.Close()
 
-	// Fallback/augmentation from mirrored episode ratings when season ratings are 0.
-	erows, err := c.db.QueryContext(ctx, `
-		SELECT show_key, season, AVG(rating) FROM catalog_titles
-		WHERE type='episode' AND season>0 AND rating>0 AND released_ts<>0 AND released_ts<=? AND show_key IN (`+ph+`)
-		GROUP BY show_key, season
-		ORDER BY show_key ASC, season ASC`, append([]any{nowTS}, args...)...)
-	if err == nil {
-		epByShow := map[core.RatingKey][]sPoint{}
-		scanDiscarded := 0
-		for erows.Next() {
+		rows, err := c.db.QueryContext(ctx, `
+			SELECT show_key, season, rating FROM catalog_titles
+			WHERE type='season' AND season>0 AND rating>0 AND released_ts<>0 AND released_ts<=? AND show_key IN (`+ph+`)
+			ORDER BY show_key ASC, season ASC`, append([]any{nowTS}, part...)...)
+		if err != nil {
+			return nil, err
+		}
+		for rows.Next() {
 			var sk int64
 			var sea int
 			var r float64
-			if err := erows.Scan(&sk, &sea, &r); err != nil {
-				scanDiscarded++
-				continue
+			if err := rows.Scan(&sk, &sea, &r); err != nil {
+				rows.Close()
+				return nil, err
 			}
-			epByShow[core.RatingKey(sk)] = append(epByShow[core.RatingKey(sk)], sPoint{season: sea, rating: r})
+			byShow[core.RatingKey(sk)] = append(byShow[core.RatingKey(sk)], sPoint{season: sea, rating: r})
 		}
-		if err := erows.Err(); err != nil {
-			// Episode augmentation is optional: keep the season
-			// trajectories already loaded and discard the partial
-			// episode points rather than failing the whole batch.
-			c.log.Warn("catalog: episode trajectories not fully loaded", "err", err)
-		} else if scanDiscarded > 0 {
-			// A scan error means some episode points were dropped:
-			// discard the partial episode points (like an iteration
-			// error) rather than merging an incomplete set.
-			c.log.Warn("catalog: episode trajectories not fully loaded", "dropped", scanDiscarded)
-		} else {
-			for k, pts := range epByShow {
-				if len(byShow[k]) < len(pts) {
-					byShow[k] = pts
+		if err := rows.Err(); err != nil {
+			rows.Close()
+			return nil, err
+		}
+		rows.Close()
+
+		// Fallback/augmentation from mirrored episode ratings when season ratings are 0.
+		erows, err := c.db.QueryContext(ctx, `
+			SELECT show_key, season, AVG(rating) FROM catalog_titles
+			WHERE type='episode' AND season>0 AND rating>0 AND released_ts<>0 AND released_ts<=? AND show_key IN (`+ph+`)
+			GROUP BY show_key, season
+			ORDER BY show_key ASC, season ASC`, append([]any{nowTS}, part...)...)
+		if err == nil {
+			epByShow := map[core.RatingKey][]sPoint{}
+			scanDiscarded := 0
+			for erows.Next() {
+				var sk int64
+				var sea int
+				var r float64
+				if err := erows.Scan(&sk, &sea, &r); err != nil {
+					scanDiscarded++
+					continue
+				}
+				epByShow[core.RatingKey(sk)] = append(epByShow[core.RatingKey(sk)], sPoint{season: sea, rating: r})
+			}
+			if err := erows.Err(); err != nil {
+				// Episode augmentation is optional: keep the season
+				// trajectories already loaded and discard the partial
+				// episode points rather than failing the whole batch.
+				c.log.Warn("catalog: episode trajectories not fully loaded", "err", err)
+			} else if scanDiscarded > 0 {
+				// A scan error means some episode points were dropped:
+				// discard the partial episode points (like an iteration
+				// error) rather than merging an incomplete set.
+				c.log.Warn("catalog: episode trajectories not fully loaded", "dropped", scanDiscarded)
+			} else {
+				for k, pts := range epByShow {
+					if len(byShow[k]) < len(pts) {
+						byShow[k] = pts
+					}
 				}
 			}
+			erows.Close()
+		} else {
+			c.log.Warn("catalog: episode trajectories not fully loaded", "err", err)
 		}
-		erows.Close()
-	} else {
-		c.log.Warn("catalog: episode trajectories not fully loaded", "err", err)
 	}
 
 	for k, pts := range byShow {

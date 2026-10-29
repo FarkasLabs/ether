@@ -135,6 +135,18 @@ func browseOrder(q core.BrowseQuery) string {
 	return col + " " + dir
 }
 
+// inChunks renders "col IN (...)" for n values, split into ORed chunks of
+// at most 200 placeholders so no single IN exceeds the bound used across
+// the package, however long a filter value list gets. Callers append the
+// values to args in their original order, matching the placeholders.
+func inChunks(col string, n int) string {
+	parts := make([]string, 0, (n+199)/200)
+	for start := 0; start < n; start += 200 {
+		parts = append(parts, col+" IN ("+placeholders(min(start+200, n)-start)+")")
+	}
+	return "(" + strings.Join(parts, " OR ") + ")"
+}
+
 func (c *Catalog) browseWhere(f core.Filter) (string, []any, error) {
 	var conds []string
 	var args []any
@@ -148,9 +160,13 @@ func (c *Catalog) browseWhere(f core.Filter) (string, []any, error) {
 		conds = append(conds, homeReleaseSQL("t"))
 		args = append(args, c.now().Unix(), c.now().Unix()-int64(homeReleaseGrace.Seconds()))
 	}
-	if len(f.ExcludeKeys) > 0 {
-		conds = append(conds, "t.key NOT IN ("+placeholders(len(f.ExcludeKeys))+")")
-		for _, k := range f.ExcludeKeys {
+	// ExcludeKeys can be programmatic (every hidden movie/show), so bound
+	// each NOT IN to 200 parameters; ANDed NOT IN chunks are equivalent
+	// to one large NOT IN.
+	for start := 0; start < len(f.ExcludeKeys); start += 200 {
+		part := f.ExcludeKeys[start:min(start+200, len(f.ExcludeKeys))]
+		conds = append(conds, "t.key NOT IN ("+placeholders(len(part))+")")
+		for _, k := range part {
 			args = append(args, k)
 		}
 	}
@@ -164,7 +180,7 @@ func (c *Catalog) browseWhere(f core.Filter) (string, []any, error) {
 		return "", nil, fmt.Errorf("catalog: browse: unsupported type %q", f.Type)
 	}
 	if len(f.Genres) > 0 {
-		conds = append(conds, `EXISTS (SELECT 1 FROM catalog_genres g WHERE g.key=t.key AND g.genre IN (`+placeholders(len(f.Genres))+`))`)
+		conds = append(conds, `EXISTS (SELECT 1 FROM catalog_genres g WHERE g.key=t.key AND `+inChunks("g.genre", len(f.Genres))+`)`)
 		for _, g := range f.Genres {
 			args = append(args, g)
 		}
@@ -190,19 +206,19 @@ func (c *Catalog) browseWhere(f core.Filter) (string, []any, error) {
 		args = append(args, int64(f.MinRuntime.Seconds()))
 	}
 	if len(f.Languages) > 0 {
-		conds = append(conds, "t.language IN ("+placeholders(len(f.Languages))+")")
+		conds = append(conds, inChunks("t.language", len(f.Languages)))
 		for _, l := range f.Languages {
 			args = append(args, l)
 		}
 	}
 	if len(f.Countries) > 0 {
-		conds = append(conds, `EXISTS (SELECT 1 FROM catalog_countries co WHERE co.key=t.key AND co.country IN (`+placeholders(len(f.Countries))+`))`)
+		conds = append(conds, `EXISTS (SELECT 1 FROM catalog_countries co WHERE co.key=t.key AND `+inChunks("co.country", len(f.Countries))+`)`)
 		for _, v := range f.Countries {
 			args = append(args, v)
 		}
 	}
 	if len(f.ContentRatings) > 0 {
-		conds = append(conds, "t.content_rating IN ("+placeholders(len(f.ContentRatings))+")")
+		conds = append(conds, inChunks("t.content_rating", len(f.ContentRatings)))
 		for _, v := range f.ContentRatings {
 			args = append(args, v)
 		}
