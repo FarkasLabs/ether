@@ -44,6 +44,15 @@ it("saves independently and clears keys when changing destination", async () => 
   fireEvent.click(configure);
   fireEvent.change(screen.getByLabelText("Source"), { target: { value: "betterposters" } });
   expect(screen.getByLabelText(/Poster URL template/)).toHaveAttribute("type", "password");
+  fireEvent.change(screen.getByLabelText("Source"), { target: { value: "xrdb" } });
+  fireEvent.change(screen.getByLabelText("Server URL"), {
+    target: { value: "https://xrdb.example" },
+  });
+  fireEvent.change(screen.getByLabelText("Profile ID or alias (optional)"), {
+    target: { value: "family" },
+  });
+  expect(screen.getByLabelText("Access key (optional)")).toHaveValue("");
+  expect(screen.queryByLabelText("Poster URL template")).not.toBeInTheDocument();
 });
 
 it("discards provider edits when the drawer is canceled", async () => {

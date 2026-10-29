@@ -24,3 +24,21 @@ func TestPosterSecrets(t *testing.T) {
 		t.Fatal("forwarded retained key to new template")
 	}
 }
+
+func TestXRDBSecretRedaction(t *testing.T) {
+	c := config.Defaults(t.TempDir())
+	c.Posters = config.Posters{Enabled: true, Source: "xrdb", BaseURL: "https://xrdb.example", Profile: "home", APIKey: "private-key"}
+	r := RedactConfig(c)
+	data, _ := json.Marshal(r)
+	if strings.Contains(string(data), "private-key") {
+		t.Fatal("key exposed")
+	}
+	restored, errs := UnredactConfig(r, c)
+	if len(errs) != 0 || restored.Posters != c.Posters {
+		t.Fatal(errs)
+	}
+	r.Posters.BaseURL = "https://other.example"
+	if _, errs := UnredactConfig(r, c); len(errs) == 0 {
+		t.Fatal("retained key sent to changed instance")
+	}
+}

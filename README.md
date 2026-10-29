@@ -164,7 +164,7 @@ Collection sorts include **Latest aired episode** and **Latest season premiere**
 ### Live Poster Studio & 24/7 Live TV Guide
 Design versioned poster overlays (`Cinema`, `Spotlight`, `Essential`) with IMDb, Rotten Tomatoes, Letterboxd, and TMDB scores. Quality badges (`4K`, `HDR`, `Dolby Vision`, `Atmos`) are **strictly truthful**—rendered only when backed by observed media facts. In **Live TV**, combine M3U/XMLTV and Xtream feeds with 24/7 virtual channels generated from your own collections.
 
-Under **Metadata → Artwork**, choose self-hosted PostersPlus, BetterPosters, Rating Poster Database, or a custom URL template for movie and show posters. Supply your own provider settings; unavailable posters fall back to TMDB. Provider keys and template URLs stay on the server. Ether overlays can be added on top. See [provider setup and limits](internal/artwork/PROVIDERS.md).
+Under **Metadata → Artwork**, choose self-hosted PostersPlus, XRDB, BetterPosters, Rating Poster Database, or a custom URL template for movie and show posters. Supply your own provider settings; unavailable posters fall back to TMDB. Provider keys and template URLs stay on the server. Ether overlays can be added on top. See [provider setup and limits](internal/artwork/PROVIDERS.md).
 
 <table>
   <tr>
