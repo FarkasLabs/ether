@@ -48,7 +48,8 @@ type session struct {
 	relayInfo       *core.MediaInfo
 	dash            core.DASHSession
 	// mu guards the fields above and below it. It is never held across
-	// Playback.Prepare, probing or upstream I/O: preparers work on a staged
+	// Playback.Prepare/Failover, HLS SwapInput, programme lookups, probing
+	// or upstream I/O: preparers work on a staged
 	// snapshot (prepareMu serializes them) and publish under mu only after
 	// validating generation. getSession/ServeSegment/close therefore stay
 	// responsive while a tune or playlist preparation is in flight.
@@ -328,15 +329,31 @@ func (s *Service) Session(ctx context.Context, id string, u *core.User) (Session
 	if err != nil {
 		return SessionInfo{}, err
 	}
+	// Snapshot under mu, then run the programme lookup (DB/upstream)
+	// without the lock so getSession/ServeSegment/close stay responsive
+	// while it is in flight.
 	ss.mu.Lock()
-	defer ss.mu.Unlock()
+	if ss.closed {
+		ss.mu.Unlock()
+		return SessionInfo{}, core.ErrNotFound
+	}
+	gen := ss.generation
 	info := ss.info
 	if ss.relayInfo != nil {
 		info.MediaInfo = ss.relayInfo
 	}
+	channel := ss.info.Channel
+	ss.mu.Unlock()
 	info.Channel.StreamURL = ""
 	info.Channel.StreamSources = nil
-	ps, err := s.programmes(ctx, ss.info.Channel, s.o.Now(), s.o.Now().Add(time.Second))
+	ps, err := s.programmes(ctx, channel, s.o.Now(), s.o.Now().Add(time.Second))
+	// Discard the snapshot if the session died while the lookup ran.
+	ss.mu.Lock()
+	stale := ss.closed || ss.generation != gen
+	ss.mu.Unlock()
+	if stale {
+		return SessionInfo{}, core.ErrNotFound
+	}
 	if err == nil && len(ps) > 0 {
 		info.Programme = &ps[0]
 	}
@@ -739,25 +756,77 @@ func (s *Service) ServeSegment(w http.ResponseWriter, r *http.Request, id string
 }
 
 // Failover keeps the channel timestamp when Playback resolves another release.
+//
+// Playback.Failover and HLSSession.SwapInput do I/O, so they run without
+// ss.mu (getSession/ServeSegment/close stay responsive): the current track
+// is snapshotted under mu and the swap is only kept if, once it finishes,
+// the session is still alive and still carries that same track. A stale
+// swap is discarded — the replacement playback session (when it is a new
+// one) is stopped and the swapped HLS is closed — and reported as
+// ErrNotFound, matching a session/track that is already gone.
 func (s *Service) Failover(ctx context.Context, id string, u *core.User) error {
 	ss, err := s.getSession(ctx, id, u)
 	if err != nil {
 		return err
 	}
-	ss.mu.Lock()
-	defer ss.mu.Unlock()
 	now := s.o.Now()
+	ss.mu.Lock()
+	if ss.closed {
+		ss.mu.Unlock()
+		return core.ErrNotFound
+	}
+	gen := ss.generation
+	var current *track
 	for _, tr := range ss.tracks {
 		if !now.Before(tr.programme.Start) && now.Before(tr.programme.End) {
-			at := tr.programme.Offset(now)
-			ps, err := s.o.Playback.Failover(ctx, tr.playbackID, at)
-			if err != nil {
-				return err
-			}
-			return tr.hls.SwapInput(ctx, s.o.Playback.InputURL(ps.ID), ps.Info, at)
+			current = tr
+			break
 		}
 	}
-	return core.ErrNotAvailable
+	if current == nil {
+		ss.mu.Unlock()
+		return core.ErrNotAvailable
+	}
+	hls, playbackID := current.hls, current.playbackID
+	at := current.programme.Offset(now)
+	ss.mu.Unlock()
+
+	stillCurrent := func() bool {
+		ss.mu.Lock()
+		defer ss.mu.Unlock()
+		if ss.closed || ss.generation != gen {
+			return false
+		}
+		for _, tr := range ss.tracks {
+			if tr == current {
+				return true
+			}
+		}
+		return false
+	}
+	discard := func(ps *core.PlaySession, swapped bool) {
+		if ps != nil && ps.ID != playbackID && s.o.Playback != nil {
+			s.o.Playback.Stop(ps.ID)
+		}
+		if swapped && hls != nil {
+			hls.Close()
+		}
+	}
+
+	ps, err := s.o.Playback.Failover(ctx, playbackID, at)
+	if err != nil {
+		return err
+	}
+	if !stillCurrent() {
+		discard(ps, false)
+		return core.ErrNotFound
+	}
+	swapErr := hls.SwapInput(ctx, s.o.Playback.InputURL(ps.ID), ps.Info, at)
+	if !stillCurrent() {
+		discard(ps, swapErr == nil)
+		return core.ErrNotFound
+	}
+	return swapErr
 }
 
 // startIPTV recognizes HLS without assuming URL suffixes (many owners use
