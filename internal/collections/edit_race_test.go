@@ -138,3 +138,28 @@ func TestCancelPreviewWhileSourceBlocked(t *testing.T) {
 		t.Fatal("cancelled preview did not return")
 	}
 }
+
+type failedCatalog struct{ core.Catalog }
+
+func (c failedCatalog) List(context.Context, string, core.MediaType, int) ([]core.Title, error) {
+	return nil, errors.New("fixture list failure")
+}
+func (c failedCatalog) Collection(context.Context, int64) (string, []core.Title, error) {
+	return "", nil, errors.New("fixture collection failure")
+}
+func TestCatalogListAndFranchiseFailurePreservesUnion(t *testing.T) {
+	e := newEnv(t)
+	svc, err := collections.New(e.db.(*sql.DB), failedCatalog{e.cat}, slog.Default(), collections.WithoutDefaults())
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, src := range []core.CollectionSource{{Kind: "tmdbList", List: "popular"}, {Kind: "tmdbCollection", ID: 10}} {
+		t.Run(src.Kind, func(t *testing.T) {
+			sp := spec("Failure union", "movie", []core.CollectionSource{{Kind: "titles", Keys: []string{core.MovieKey(101).String()}}, src})
+			p, err := svc.Preview(e.ctx, sp, 10)
+			if err != nil || len(p.Items) != 1 || p.Items[0].Key != core.MovieKey(101) || len(p.Warnings) == 0 {
+				t.Fatalf("preview: %+v %v", p, err)
+			}
+		})
+	}
+}

@@ -291,3 +291,30 @@ func TestRandomAndPersonalSortDirectionsAreStable(t *testing.T) {
 		}
 	}
 }
+
+func TestSortUnknownRatingAndUnreleasedTitles(t *testing.T) {
+	e := newEnv(t)
+	known := time.Now().AddDate(-1, 0, 0)
+	titles := []core.Title{
+		{Key: core.MovieKey(901), Type: core.TypeMovie, Title: "Unrated A", Released: known, Popularity: 5},
+		{Key: core.MovieKey(902), Type: core.TypeMovie, Title: "Unrated B", Released: known, Popularity: 10},
+		{Key: core.MovieKey(903), Type: core.TypeMovie, Title: "Unknown release", Rating: 9},
+	}
+	for _, item := range titles {
+		if err := e.cat.UpsertTitle(e.ctx, item, true); err != nil {
+			t.Fatal(err)
+		}
+	}
+	sp := spec("Unknown values", "movie", []core.CollectionSource{{Kind: "titles", Keys: []string{titles[0].Key.String(), titles[1].Key.String(), titles[2].Key.String()}}})
+	sp.Sort = "rating"
+	for _, desc := range []bool{false, true} {
+		sp.SortDesc = desc
+		p, err := e.svc.Preview(e.ctx, sp, 10)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(p.Items) != 2 || p.Items[0].Key != titles[1].Key || p.Items[1].Key != titles[0].Key {
+			t.Fatalf("desc=%t unknown rating/release: %+v", desc, p.Items)
+		}
+	}
+}
