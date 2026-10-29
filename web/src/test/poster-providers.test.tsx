@@ -24,6 +24,10 @@ it("saves independently and clears keys when changing destination", async () => 
   });
   const saved = vi.fn();
   render(<PosterProviders onSaved={saved} />);
+  const configure = screen.getByRole("button", { name: "Configure poster provider" });
+  await waitFor(() => expect(configure).toBeEnabled());
+  expect(screen.queryByLabelText(/Server URL/)).not.toBeInTheDocument();
+  fireEvent.click(configure);
   fireEvent.change(await screen.findByLabelText(/Server URL/), {
     target: { value: "http://new:8000" },
   });
@@ -36,6 +40,34 @@ it("saves independently and clears keys when changing destination", async () => 
     baseUrl: "http://new:8000",
     apiKey: "",
   });
+  await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+  fireEvent.click(configure);
   fireEvent.change(screen.getByLabelText("Source"), { target: { value: "betterposters" } });
   expect(screen.getByLabelText(/Poster URL template/)).toHaveAttribute("type", "password");
+});
+
+it("discards provider edits when the drawer is canceled", async () => {
+  vi.mocked(apiFetch).mockClear();
+  vi.mocked(api.getConfig).mockResolvedValue({
+    posters: {
+      enabled: false,
+      source: "postersplus",
+      baseUrl: "http://saved:8000",
+      apiKey: "",
+      urlTemplate: "",
+    },
+  } as Awaited<ReturnType<typeof api.getConfig>>);
+  render(<PosterProviders onSaved={vi.fn()} />);
+  const configure = screen.getByRole("button", { name: "Configure poster provider" });
+  await waitFor(() => expect(configure).toBeEnabled());
+  fireEvent.click(configure);
+  fireEvent.change(await screen.findByLabelText("Server URL"), {
+    target: { value: "http://unsaved:8000" },
+  });
+  fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+  await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+  expect(apiFetch).not.toHaveBeenCalled();
+  expect(screen.getByText("TMDB artwork")).toBeInTheDocument();
+  fireEvent.click(configure);
+  expect(await screen.findByLabelText("Server URL")).toHaveValue("http://saved:8000");
 });

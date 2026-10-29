@@ -42,6 +42,7 @@ const KNOWN_KEYS = new Set([
   "downloads",
   "personalize",
   "extras",
+  "posters", // Metadata → Artwork owns the provider editor.
   // Node-local storage, chosen at startup; the admin API shows it redacted
   // and never edits it, so it gets no generic form on General.
   "database",

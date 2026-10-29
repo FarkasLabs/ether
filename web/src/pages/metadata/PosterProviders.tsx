@@ -1,7 +1,11 @@
-import { Button, Input, Switch, toast } from "@braedonsaunders/appkit-ui";
-import { useEffect, useState } from "react";
-import { api, apiFetch } from "../../lib/api";
+import { Badge, Button, Input, Switch, toast } from "@braedonsaunders/appkit-ui";
+import { SlidersHorizontal } from "lucide-react";
+import { useState } from "react";
+import { Drawer } from "../../components/Drawer";
+import { Field, SecretInput } from "../../components/fields";
 import { MutationError } from "../../components/feedback";
+import { api, apiFetch } from "../../lib/api";
+import { useAsync } from "../../lib/hooks";
 import { nativeSelect } from "./shared";
 
 import type { PosterProviderConfig as Posters } from "../../lib/types";
@@ -12,18 +16,25 @@ const empty: Posters = {
   apiKey: "",
   urlTemplate: "",
 };
+const sources = [
+  { value: "postersplus", label: "PostersPlus" },
+  { value: "betterposters", label: "BetterPosters" },
+  { value: "rpdb", label: "Rating Poster Database" },
+  { value: "custom", label: "Custom URL template" },
+];
+const normalize = (value?: Posters): Posters => ({
+  ...empty,
+  ...value,
+  source: value?.source || "postersplus",
+});
 
 export function PosterProviders({ onSaved }: { onSaved: () => void }) {
+  const config = useAsync(async () => normalize((await api.getConfig()).posters), []);
   const [draft, setDraft] = useState<Posters | null>(null);
   const [error, setError] = useState<unknown>(null);
   const [saving, setSaving] = useState(false);
-  useEffect(() => {
-    void api
-      .getConfig()
-      .then((c) => setDraft({ ...empty, ...c.posters, source: c.posters?.source || "postersplus" }))
-      .catch(setError);
-  }, []);
   const save = async () => {
+    if (!draft || saving) return;
     setSaving(true);
     setError(null);
     try {
@@ -31,7 +42,8 @@ export function PosterProviders({ onSaved }: { onSaved: () => void }) {
         method: "PUT",
         body: JSON.stringify(draft),
       });
-      setDraft(result.value);
+      config.setData(normalize(result.value));
+      setDraft(null);
       onSaved();
       toast.success("Poster provider saved");
     } catch (e) {
@@ -41,87 +53,159 @@ export function PosterProviders({ onSaved }: { onSaved: () => void }) {
     }
   };
   return (
-    <section className="metadata-control-section" aria-label="Poster provider">
-      <h3>Poster provider</h3>
-      <p>
-        Use an owner-configured source for movie and show posters. Missing artwork falls back to
-        TMDB. Ether badges are applied on top; disable overlapping badges below.
-      </p>
-      <MutationError error={error} />
-      {draft && (
-        <div className="space-y-3">
-          <label className="flex items-center justify-between">
-            Enable poster provider
-            <Switch
-              aria-label="Enable poster provider"
-              checked={draft.enabled}
-              onChange={(e) => setDraft({ ...draft, enabled: e.currentTarget.checked })}
-            />
-          </label>
-          <label className="block">
-            Source
-            <select
-              className={nativeSelect}
-              value={draft.source || "postersplus"}
-              onChange={(e) =>
-                setDraft({ ...empty, enabled: draft.enabled, source: e.target.value })
-              }
-            >
-              <option value="postersplus">PostersPlus (self-hosted)</option>
-              <option value="betterposters">BetterPosters</option>
-              <option value="rpdb">Rating Poster Database</option>
-              <option value="custom">Custom URL template</option>
-            </select>
-          </label>
-          {draft.source === "postersplus" && (
-            <label className="block">
-              Server URL
-              <Input
-                placeholder="http://postersplus:8000"
-                value={draft.baseUrl}
-                onChange={(e) => setDraft({ ...draft, baseUrl: e.target.value, apiKey: "" })}
-              />
-              <small>
-                Your server may be on your LAN. Changing its address clears the saved key.
-              </small>
-            </label>
-          )}
-          {draft.source !== "betterposters" && (
-            <label className="block">
-              {draft.source === "postersplus" ? "Access key (optional)" : "API key"}
-              <Input
-                type="password"
-                autoComplete="new-password"
-                value={draft.apiKey}
-                onChange={(e) => setDraft({ ...draft, apiKey: e.target.value })}
-              />
-            </label>
-          )}
-          {(draft.source === "custom" || draft.source === "betterposters") && (
-            <label className="block">
-              Poster URL template
-              <Input
-                type="password"
-                autoComplete="new-password"
-                value={draft.urlTemplate}
-                onChange={(e) => setDraft({ ...draft, urlTemplate: e.target.value, apiKey: "" })}
-              />
-              <small>
-                {draft.source === "betterposters"
-                  ? "Optional: paste the Poster URL from btttr.cc/configure. Blank uses its default IMDb poster endpoint."
-                  : "Use {imdb_id}, or {tmdb_id} with {type} (movie/tv). Optional {api_key} uses the separate key. LAN URLs are allowed; redirects are refused."}
-              </small>
-            </label>
-          )}
-          <p>
-            Save to update the artwork preview on this page. Plex refreshes its own cached posters
-            separately. Seasons and episodes retain TMDB artwork.
-          </p>
-          <Button disabled={saving} onClick={() => void save()}>
-            {saving ? "Saving…" : "Save poster provider"}
+    <>
+      <section className="metadata-control-section" aria-label="Poster provider">
+        <div className="metadata-section-title">
+          <h3>Poster provider</h3>
+          <Button
+            size="sm"
+            variant="ghost"
+            aria-label="Configure poster provider"
+            disabled={!config.data}
+            onClick={() => {
+              setError(null);
+              setDraft({ ...config.data! });
+            }}
+          >
+            <SlidersHorizontal size={13} /> Configure
           </Button>
         </div>
-      )}
-    </section>
+        {config.error ? (
+          <div className="space-y-2">
+            <MutationError error={config.error} />
+            <Button size="sm" variant="outline" onClick={() => void config.reload()}>
+              Retry
+            </Button>
+          </div>
+        ) : (
+          <>
+            <div className="flex items-center justify-between gap-2 text-xs">
+              <span>
+                {config.loading
+                  ? "Loading provider…"
+                  : config.data?.enabled
+                    ? sources.find((s) => s.value === config.data?.source)?.label ||
+                      "Custom provider"
+                    : "TMDB artwork"}
+              </span>
+              {config.data?.enabled && <Badge variant="secondary">Enabled</Badge>}
+            </div>
+            <p className="mt-1 text-[11px] text-fg-muted">
+              {config.data?.enabled
+                ? "Movie and show posters, with TMDB as a fallback."
+                : "Add a provider for movie and show posters."}
+            </p>
+          </>
+        )}
+      </section>
+      <Drawer
+        open={draft !== null}
+        onClose={() => {
+          if (!saving) setDraft(null);
+        }}
+        title="Poster provider"
+        description="Choose the artwork underneath your Ether poster design."
+        size="lg"
+        footer={
+          <div className="flex w-full justify-end gap-2">
+            <Button variant="ghost" size="sm" disabled={saving} onClick={() => setDraft(null)}>
+              Cancel
+            </Button>
+            <Button size="sm" disabled={saving} onClick={() => void save()}>
+              {saving ? "Saving…" : "Save poster provider"}
+            </Button>
+          </div>
+        }
+      >
+        {draft && (
+          <div className="space-y-6">
+            <MutationError error={error} />
+            <fieldset className="space-y-5" disabled={saving}>
+              <div className="flex items-center justify-between gap-4 rounded-lg border border-border p-4">
+                <div>
+                  <label htmlFor="poster-provider-enabled" className="text-sm font-medium">
+                    Use poster provider
+                  </label>
+                  <p className="mt-1 text-xs text-fg-muted">When off, posters come from TMDB.</p>
+                </div>
+                <Switch
+                  id="poster-provider-enabled"
+                  aria-label="Enable poster provider"
+                  checked={draft.enabled}
+                  onChange={(e) => setDraft({ ...draft, enabled: e.currentTarget.checked })}
+                />
+              </div>
+              <Field label="Source" htmlFor="poster-provider-source">
+                <select
+                  id="poster-provider-source"
+                  className={nativeSelect}
+                  value={draft.source}
+                  onChange={(e) =>
+                    setDraft({ ...empty, enabled: draft.enabled, source: e.target.value })
+                  }
+                >
+                  {sources.map((s) => (
+                    <option key={s.value} value={s.value}>
+                      {s.label}
+                    </option>
+                  ))}
+                </select>
+              </Field>
+              {draft.source === "postersplus" && (
+                <Field
+                  label="Server URL"
+                  htmlFor="poster-provider-url"
+                  hint="Your server may be on your LAN. Changing its address clears the saved key."
+                >
+                  <Input
+                    id="poster-provider-url"
+                    placeholder="http://postersplus:8000"
+                    value={draft.baseUrl}
+                    onChange={(e) => setDraft({ ...draft, baseUrl: e.target.value, apiKey: "" })}
+                  />
+                </Field>
+              )}
+              {draft.source !== "betterposters" && (
+                <Field
+                  label={draft.source === "postersplus" ? "Access key (optional)" : "API key"}
+                  htmlFor="poster-provider-key"
+                >
+                  <SecretInput
+                    id="poster-provider-key"
+                    value={draft.apiKey}
+                    onChange={(value) => setDraft({ ...draft, apiKey: value })}
+                  />
+                </Field>
+              )}
+              {(draft.source === "custom" || draft.source === "betterposters") && (
+                <Field
+                  label="Poster URL template"
+                  htmlFor="poster-provider-template"
+                  hint={
+                    draft.source === "betterposters"
+                      ? "Optional: paste the Poster URL from btttr.cc/configure. Leave blank to use its default posters."
+                      : "Use {imdb_id}, or {tmdb_id} with {type} (movie/tv). Add {api_key} to use the separate key."
+                  }
+                >
+                  <SecretInput
+                    id="poster-provider-template"
+                    value={draft.urlTemplate}
+                    onChange={(value) => setDraft({ ...draft, urlTemplate: value, apiKey: "" })}
+                  />
+                </Field>
+              )}
+            </fieldset>
+            <div className="space-y-2 rounded-lg bg-bg-subtle p-4 text-xs leading-relaxed text-fg-muted">
+              <p>Missing posters fall back to TMDB. Seasons and episodes keep TMDB artwork.</p>
+              <p>
+                Ether badges appear on top. Turn off any badges that are already included by your
+                provider.
+              </p>
+              <p>Saving updates this preview. Plex refreshes its own cached posters separately.</p>
+            </div>
+          </div>
+        )}
+      </Drawer>
+    </>
   );
 }

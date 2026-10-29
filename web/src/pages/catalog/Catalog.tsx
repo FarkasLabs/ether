@@ -2,7 +2,6 @@ import { Badge, Button, EmptyState, Input, SubtabNav } from "@braedonsaunders/ap
 import {
   ArrowLeft,
   ArrowRight,
-  Database,
   Film,
   LayoutGrid,
   List,
@@ -172,20 +171,6 @@ function CatalogBrowser({
   };
   return (
     <div className="catalog-scroll app-scroll">
-      <div className="catalog-intro">
-        <div className="catalog-intro-icon">
-          <Database size={22} />
-        </div>
-        <div>
-          <p className="catalog-eyebrow">YOUR PLEX LIBRARY, AT A GLANCE</p>
-          <h2>Explore your catalog</h2>
-          <p>Browse released titles, inspect their metadata, and shape what’s discoverable.</p>
-        </div>
-        <div className="catalog-intro-note">
-          <span className="catalog-live-dot" /> Powered by TMDB
-          <span>Movies & television · Updated automatically</span>
-        </div>
-      </div>
       <div className="catalog-toolbar">
         <SubtabNav
           ariaLabel="Catalog media type"

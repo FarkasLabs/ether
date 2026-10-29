@@ -168,7 +168,6 @@ export function ArtworkSettings() {
         }
         aside={
           <>
-            <PosterProviders onSaved={() => setNonce((n) => n + 1)} />
             <div className="metadata-enable">
               <div>
                 <label htmlFor="overlay-enabled">Ether posters</label>
@@ -182,6 +181,7 @@ export function ArtworkSettings() {
                 onChange={(e) => set({ enabled: e.currentTarget.checked })}
               />
             </div>
+            <PosterProviders onSaved={() => setNonce((n) => n + 1)} />
             <section className="metadata-control-section" aria-label="Design presets">
               <div className="metadata-section-title">
                 <h3>Preset</h3>

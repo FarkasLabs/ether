@@ -700,7 +700,7 @@ export const DOWNLOADS: FieldGroup[] = [
         label: "Temporary disk space",
         kind: "bytes",
         unit: "GiB",
-        help: "Prepared files waiting to be fetched. 0 uses 20 GiB.",
+        help: "Maximum space for prepared downloads. Set to 0 to use the default limit of 20 GiB.",
       },
       {
         key: "expiry",
