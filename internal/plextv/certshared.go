@@ -186,6 +186,7 @@ func (m *CertManager) syncSharedLocked(ctx context.Context) (bool, error) {
 	m.saveState(blob.State)
 	m.mu.Lock()
 	m.info.LastAttempt, m.info.LastError, m.info.RetryAfter = blob.State.LastAttempt, blob.State.LastError, blob.State.RetryAfter
+	m.info.ReissueRequired = blob.State.ReissueRequired
 	m.sharedVer = v
 	m.mu.Unlock()
 	return changed, nil
@@ -193,7 +194,7 @@ func (m *CertManager) syncSharedLocked(ctx context.Context) (bool, error) {
 
 func (m *CertManager) currentState() certState {
 	info := m.Info()
-	return certState{LastAttempt: info.LastAttempt, LastError: info.LastError, Hash: info.Hash, RetryAfter: info.RetryAfter}
+	return certState{LastAttempt: info.LastAttempt, LastError: info.LastError, Hash: info.Hash, RetryAfter: info.RetryAfter, ReissueRequired: info.ReissueRequired}
 }
 
 // pushSharedLocked stores the served certificate (unless self-signed, which

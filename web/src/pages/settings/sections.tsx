@@ -1,4 +1,4 @@
-import { Badge, Button, SettingsSection, toast } from "@braedonsaunders/appkit-ui";
+import { Button, SettingsSection, toast } from "@braedonsaunders/appkit-ui";
 import { useEffect, useState } from "react";
 import { ErrorPanel, LoadingRows } from "../../components/feedback";
 import { LevelBadge } from "../../components/status";
@@ -35,8 +35,8 @@ export function PlexStatus({
   const r = remoteHealth(remote);
   const c = plexDirectHealth(remote);
   const conns =
-    isPlainObject(remote) && Array.isArray(remote.connections)
-      ? remote.connections.filter(isPlainObject)
+    isPlainObject(remote) && Array.isArray(remote.publishedUris)
+      ? remote.publishedUris.filter((uri): uri is string => typeof uri === "string")
       : [];
   return (
     <SettingsSection title="Status">
@@ -66,12 +66,9 @@ export function PlexStatus({
       {conns.length ? (
         <SettingsRow stacked title="Published addresses">
           <ul className="space-y-1 text-xs">
-            {conns.map((x, i) => (
+            {conns.map((uri, i) => (
               <li key={i} className="flex items-center gap-2">
-                <Badge variant={x.local ? "secondary" : "info"}>
-                  {x.local ? "Local" : "Remote"}
-                </Badge>
-                <code className="truncate text-fg-muted">{String(x.uri ?? "")}</code>
+                <code className="truncate text-fg-muted">{uri}</code>
               </li>
             ))}
           </ul>
