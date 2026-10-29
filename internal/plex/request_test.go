@@ -26,6 +26,14 @@ func TestParseRequestNegotiatesFormatFromAccept(t *testing.T) {
 		{"json refused", []string{"application/json;q=0"}, model.XML},
 		{"json with charset", []string{"application/json; charset=utf-8"}, model.JSON},
 		{"split headers", []string{"application/xml", "application/json;q=0.9"}, model.XML},
+		{"split tie xml first", []string{"text/xml", "application/json"}, model.XML},
+		{"split tie json first", []string{"application/json", "text/xml"}, model.JSON},
+		{"xml refused", []string{"application/xml;q=0, application/json;q=0.2"}, model.JSON},
+		{"both refused", []string{"application/json;q=0, application/xml;q=0"}, model.XML},
+		{"invalid json quality", []string{"application/json;q=bogus, application/xml"}, model.XML},
+		{"negative json quality", []string{"application/json;q=-1, application/xml"}, model.XML},
+		{"wildcard with explicit json", []string{"*/*, application/json"}, model.JSON},
+		{"wildcard with refused json", []string{"*/*, application/json;q=0"}, model.XML},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
