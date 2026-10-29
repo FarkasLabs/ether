@@ -19,13 +19,16 @@ func (t *qualityTranscoder) Decide(info core.MediaInfo, caps core.ClientCaps, op
 }
 
 func TestStartRenegotiatesQualityAndTracks(t *testing.T) {
-	for _, transport := range []string{"ts", "mkv", "dash"} {
+	for _, transport := range []string{"ts", "mkv", "dash", "vidaa"} {
 		t.Run(transport, func(t *testing.T) {
 			f, dt := dashFixture()
 			defer f.srv.Close()
 			f.srv.d.Transcoder = &qualityTranscoder{dt}
 			protocol, ext := "hls", "m3u8"
 			headers := []string{"X-Plex-Product", "Plex for Apple TV", "X-Plex-Platform", "tvOS"}
+			if transport == "vidaa" {
+				headers = []string{"X-Plex-Product", "Plex for VIDAA"}
+			}
 			if transport == "mkv" {
 				headers = append(headers, "X-Plex-Client-Profile-Extra", "add-transcode-target(type=videoProfile&context=all&protocol=hls&container=mkv&videoCodec=h264&audioCodec=aac,eac3)")
 			} else if transport == "dash" {

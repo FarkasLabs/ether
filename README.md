@@ -247,6 +247,8 @@ Ether never emulates, unlocks, or bypasses Plex Pass or any paid Plex feature. E
 <summary><b>Which Plex apps work?</b></summary>
 
 Every official Plex client: **Apple TV, iPhone, iPad, Android, Android TV / Nvidia Shield, Fire TV, Roku, PlayStation, Xbox, Smart TVs (LG, Samsung, VIDAA), Plex Desktop, and Plex Web.** To the client app, Ether is simply a Plex Media Server on your account.
+
+Plex for VIDAA receives one automatic media choice to keep its playback settings stable, so its Play Version menu does not offer individual releases. Automatic selection and playback quality controls remain available.
 </details>
 
 <details>

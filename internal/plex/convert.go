@@ -483,7 +483,10 @@ func (s *Server) mediaFor(ctx context.Context, pr *Request, t *core.Title, withS
 	if stamp <= 0 {
 		stamp = 1
 	}
-	if withVariants && withStreams && ps == nil {
+	// VIDAA caches playback settings for the item and can fail if a later
+	// response introduces a version picker. Keep its Auto choice stable;
+	// playback quality controls remain independent of the version picker.
+	if withVariants && withStreams && ps == nil && !strings.EqualFold(strings.TrimSpace(pr.Product), "Plex for VIDAA") {
 		if media, edition := s.mediaForVariants(ctx, pr, t, stamp); len(media) > 0 {
 			return media, edition
 		}
