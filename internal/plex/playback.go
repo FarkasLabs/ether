@@ -130,6 +130,27 @@ type playRequest struct {
 	// mde: the client runs its own media decision engine (hasMDE=1, sent
 	// by current Plex Web, iOS and Apple TV apps).
 	mde bool
+	// listAllTracks: Android-family clients receive every probed track in
+	// the decision response; recorded PMS decisions for web, iOS and Apple
+	// TV are selected-only, so those clients keep that shape. Set from the
+	// request context in decisionContainer; zeroed by sameSettings because
+	// it is response shaping, not a playback setting (an asymmetric compare
+	// would re-prepare and restart the encoder on every start).
+	listAllTracks bool
+}
+
+// androidFamilyClient reports whether the request comes from Plex's
+// Android app family (Android, Android TV and Fire TV builds send an
+// Android product/platform pair).
+func androidFamilyClient(pr *Request) bool {
+	if pr == nil {
+		return false
+	}
+	product := strings.ToLower(pr.Product)
+	if strings.Contains(product, "android") {
+		return true
+	}
+	return strings.EqualFold(pr.Platform, "android") && !strings.Contains(product, "web")
 }
 
 // sameSettings compares playback controls, excluding the seek position (DASH
@@ -139,6 +160,7 @@ type playRequest struct {
 func (p playRequest) sameSettings(other playRequest) bool {
 	p.offset, other.offset = 0, 0
 	p.caps, other.caps = core.ClientCaps{}, core.ClientCaps{}
+	p.listAllTracks, other.listAllTracks = false, false
 	return reflect.DeepEqual(p, other)
 }
 
@@ -452,7 +474,6 @@ func (s *Server) handleDecision(w http.ResponseWriter, r *http.Request) {
 		if ctx.Err() != nil {
 			return
 		}
-		s.observeResolve(pr, p.sessionID, t, err, nil)
 		s.log.Info("playback decision failed", "key", p.key, "user", pr.User.Username, "reason", playbackMessage(err), "err", err)
 		// The client follows a failed decision with start.mpd/start.m3u8
 		// for the same session: answer it with this error, not a second
@@ -461,7 +482,6 @@ func (s *Server) handleDecision(w http.ResponseWriter, r *http.Request) {
 		s.write(w, r, s.decisionError(ctx, pr, t, err, p))
 		return
 	}
-	s.observeResolve(pr, p.sessionID, t, nil, &dec)
 	s.write(w, r, s.decisionContainer(ctx, pr, t, ps, dec, p))
 }
 
@@ -533,6 +553,7 @@ func (s *Server) decisionContainer(ctx context.Context, pr *Request, t *core.Tit
 	if mdeDirect {
 		shown = core.Decision{Kind: core.DecisionDirectPlay, VideoCopy: true, AudioCopy: true, Container: ps.Info.Container}
 	}
+	p.listAllTracks = androidFamilyClient(pr)
 	md.Media = []model.Media{s.decisionMedia(t, ps, shown, p, pr.User)}
 	s.addProbedStreamFeatures(ctx, t.Key, ps.Info, &md)
 	if md.Media[0].Duration > 0 {
@@ -605,18 +626,15 @@ func (s *Server) decisionMedia(t *core.Title, ps *core.PlaySession, dec core.Dec
 		}
 	}
 
-	// Only Android builds its in-player track menu from unselected streams.
-	// Other clients must keep the PMS decision shape: video plus the
-	// selected audio and subtitle.
-	listAlternates := androidClient(p.caps.Product, p.caps.Platform)
+	selectedOnly := info.Estimated || !p.listAllTracks
 	if dec.Kind == core.DecisionDirectPlay {
-		return directPlayMedia(m, streams, listAlternates)
+		return directPlayMedia(m, streams, selectedOnly)
 	}
 	applyTranscodeMedia(&m, dec, p.protocol)
 	var kept []model.Stream
 	for _, st := range streams {
 		ref, _ := s.streams.lookup(st.ID)
-		if shaped, keep := applyStreamDecision(st, ref.info, dec, listAlternates); keep {
+		if shaped, keep := applyStreamDecision(st, ref.info, dec, selectedOnly); keep {
 			kept = append(kept, shaped)
 		}
 	}
@@ -627,16 +645,18 @@ func (s *Server) decisionMedia(t *core.Title, ps *core.PlaySession, dec core.Dec
 	return m
 }
 
-// directPlayMedia preserves stream ordering. Non-Android clients get the
-// video and the selected audio and subtitle, matching PMS. Android keeps
-// every audio and subtitle; selected marks the one that will play, and
-// dropping the alternates leaves its playback menu empty.
-func directPlayMedia(m model.Media, streams []model.Stream, listAlternates bool) model.Media {
+// directPlayMedia preserves stream ordering. For Android-family clients
+// every audio and subtitle stays in the list and selected marks the one
+// that will play: Plex Android builds its playback track menu from this
+// response, so dropping the alternates leaves the menu empty. Other
+// clients keep the recorded PMS shape (video + selected tracks), which
+// TestDecisionConformsToPMS and the goldens pin.
+func directPlayMedia(m model.Media, streams []model.Stream, selectedOnly bool) model.Media {
 	part := &m.Part[0]
 	part.Decision = "directplay"
 	var kept []model.Stream
 	for _, st := range streams {
-		if !listAlternates && st.StreamType != 1 && (st.Selected == nil || !*st.Selected) {
+		if selectedOnly && st.StreamType != 1 && (st.Selected == nil || !*st.Selected) {
 			continue
 		}
 		st.Location = "direct"
@@ -693,10 +713,13 @@ func applyTranscodeMedia(m *model.Media, dec core.Decision, protocol string) {
 	part.Bitrate, part.Width, part.Height = m.Bitrate, m.Width, m.Height
 }
 
-// applyStreamDecision shapes one already-resolved stream without registry I/O.
-// listAlternates keeps an unselected audio or subtitle for Android, with its
-// source index and no decision or location. Other clients omit that stream.
-func applyStreamDecision(st model.Stream, src core.StreamInfo, dec core.Decision, listAlternates bool) (model.Stream, bool) {
+// applyStreamDecision shapes one already-resolved stream without registry
+// I/O. When selectedOnly is false (Android-family decisions), an unselected
+// stream stays in the list bare: it keeps its index and gets no decision or
+// location, the same shape its streams carry in library metadata. That is
+// the shape under review against a real PMS Android capture; the selected
+// stream's shape never changes.
+func applyStreamDecision(st model.Stream, src core.StreamInfo, dec core.Decision, selectedOnly bool) (model.Stream, bool) {
 	idx := st.Index
 	st.Index = nil // segments carry their own stream layout
 	switch st.StreamType {
@@ -738,7 +761,7 @@ func applyStreamDecision(st model.Stream, src core.StreamInfo, dec core.Decision
 		st.Location = "segments-av"
 	case 2:
 		if st.Selected == nil || !*st.Selected {
-			if !listAlternates {
+			if selectedOnly {
 				return st, false
 			}
 			st.Index = idx
@@ -756,7 +779,7 @@ func applyStreamDecision(st model.Stream, src core.StreamInfo, dec core.Decision
 		st.Location = "segments-av"
 	case 3:
 		if st.Selected == nil || !*st.Selected {
-			if !listAlternates {
+			if selectedOnly {
 				return st, false
 			}
 			st.Index = idx

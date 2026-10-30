@@ -456,7 +456,12 @@ func (s *Server) personTags(key core.RatingKey, ps []core.Person, kind string, m
 
 // mediaInfoFor is the media info shown for a title: the live session's when
 // one exists for this client, otherwise the probe of the release Prepare
-// would still open for this viewer, otherwise the playback estimate.
+// would still open for this viewer, otherwise the probe a detail-page
+// warm-up already completed for this client, otherwise the playback
+// estimate. Clients build their track list from the detail/play-queue
+// item they navigated with, so once a warm-up has probed the file its
+// real tracks must be rendered there: the estimate invents a single
+// audio track and no subtitles.
 func (s *Server) mediaInfoFor(ctx context.Context, pr *Request, t *core.Title) (core.MediaInfo, *core.PlaySession) {
 	if s.d.Playback == nil {
 		return core.MediaInfo{Estimated: true, Duration: t.Runtime}, nil
@@ -467,6 +472,12 @@ func (s *Server) mediaInfoFor(ctx context.Context, pr *Request, t *core.Title) (
 		}
 		if info, _, ok := s.resumedTracks(ctx, pr, t); ok {
 			return info, nil
+		}
+		if wp, ok := s.d.Playback.(core.WarmProber); ok {
+			caps := pr.ClientCaps(s.cfg().Transcode.RemoteMaxBitrateKbps)
+			if info, warm := wp.WarmProbeInfo(pr.User, caps, t.Key); warm {
+				return info, nil
+			}
 		}
 	}
 	caps := pr.ClientCaps(s.cfg().Transcode.RemoteMaxBitrateKbps)
