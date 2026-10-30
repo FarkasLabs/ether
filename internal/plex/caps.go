@@ -126,10 +126,17 @@ func productCaps(product, platform, device string) baseCaps {
 		return htpcCaps
 	case strings.Contains(pr, "ios") || pl == "ios" || pl == "ipados" || strings.Contains(dv, "iphone") || strings.Contains(dv, "ipad"):
 		return iosCaps
-	case strings.Contains(pr, "android") && (strings.Contains(pr, "tv") || strings.Contains(dv, "shield") || strings.Contains(dv, "tv")):
+	case (strings.Contains(pr, "android") || (pr == "plezy" && pl == "android")) && (strings.Contains(pr, "tv") || strings.Contains(dv, "shield") || strings.Contains(dv, "tv")):
+		// Plezy/Android reuses this TV split: TV-ish Device (shield/tv)
+		// only; a generic Android device falls to androidCaps below.
 		return androidTVCaps
 	case strings.Contains(pr, "android") || pl == "android":
 		return androidCaps
+	case pr == "plezy":
+		// Plezy is mpv-based and capable on desktop (incl. decision requests
+		// forcing Platform to Generic); Apple/Android matched their platform
+		// caps above, so weak Android phones keep androidCaps as official.
+		return htpcCaps
 	case strings.Contains(pr, "roku") || pl == "roku":
 		return rokuCaps
 	case strings.Contains(pr, "htpc") || strings.Contains(pr, "plex media player") || strings.Contains(pr, "kodi") || strings.Contains(pr, "infuse"):
