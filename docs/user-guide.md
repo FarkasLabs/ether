@@ -274,6 +274,13 @@ cause.
    rows are **Waiting for a stream** and **Now available**. Check that your
    saved row policies do not hide them, and reload Plex Home.
 
+A watchlisted show becomes available through its first episode. After that,
+Ether keeps looking for each new regular episode as it airs (hourly for the
+first two days, then on the normal check interval). When a playable release
+turns up it sends one **Watchlist title available** alert for that episode and
+warms its opening, however many viewers follow the show. Specials and
+unaired episodes never trigger an alert.
+
 Plex watchlist access covers the owner and supported Plex Home members.
 Sharing a server with a friend does not grant access to that friend's Plex
 Watchlist. Trakt watchlist monitoring is a separate option and requires that
@@ -588,6 +595,10 @@ only updates the draft until you review and save.
   adaptive mode gives repeat watches extra retention credit. Detail-page opening
   windows, resume windows and next-episode warming are independently
   configurable and always yield priority to active streams.
+- **Free-space floor:** Whatever the budget, the cache keeps at least 10 GiB or
+  5% of its volume free (whichever is smaller), evicting the oldest unprotected
+  segments when other files fill the disk. Segments of active streams and
+  pinned titles are never evicted for it.
 - **Managed preloading:** Opt-in movie and TV preloading ranks candidates using
   a configurable blend of household watch history and catalogue popularity, with
   a rolling episode window around each active viewer's progress. Preloading
