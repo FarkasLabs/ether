@@ -316,8 +316,11 @@ catalogue poster nor an indexer's “cached” label guarantees a playable sourc
 ## Versions, trailers, downloads and previews
 
 Detail pages can list several versions of a title, such as 4K, a
-high-compatibility 1080p release or an extended cut. Choose one with Plex's
-**Play Version**; otherwise Ether picks the best version for the device. Search
+high-compatibility 1080p release or an extended cut. Right after the automatic
+choice, up to two other releases of the same cut, resolution and HDR type are
+listed, named by quality, audio, size and release group, so you can switch if
+one fails. Choose one with Plex's **Play Version**; otherwise Ether picks the
+best version for the device. Search
 also accepts descriptions such as "90s thrillers under 100 mins" and offers a
 matching collection; rate it to keep it as a personal collection.
 

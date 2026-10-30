@@ -247,7 +247,7 @@ func (s *Server) mediaForVariants(ctx context.Context, pr *Request, t *core.Titl
 	caps := pr.ClientCaps(s.cfg().Transcode.RemoteMaxBitrateKbps)
 	vctx, cancel := context.WithTimeout(ctx, variantRenderBudget)
 	defer cancel()
-	vs, err := s.d.Variants.Variants(vctx, core.ResolveRequest{Title: t, Client: caps, User: pr.User}, 4)
+	vs, err := s.d.Variants.Variants(vctx, core.ResolveRequest{Title: t, Client: caps, User: pr.User}, core.MaxVariants)
 	if err != nil {
 		s.log.Debug("variants unavailable", "key", t.Key, "err", err)
 		return nil, ""
@@ -389,7 +389,7 @@ func (s *Server) resolveVariantSelection(ctx context.Context, pr *Request, p *pl
 	}
 	vctx, cancel := context.WithTimeout(ctx, variantRenderBudget)
 	defer cancel()
-	vs, err := s.d.Variants.Variants(vctx, core.ResolveRequest{Title: t, Client: p.caps, User: pr.User}, 4)
+	vs, err := s.d.Variants.Variants(vctx, core.ResolveRequest{Title: t, Client: p.caps, User: pr.User}, core.MaxVariants)
 	if err != nil || p.mediaIndex >= len(vs) {
 		return ""
 	}
