@@ -434,16 +434,19 @@ func (s *Service) validate(ctx context.Context, token, h string) (*core.User, er
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
-	if !s.inflight.Has(h) && s.inflight.Len() >= s.o.MaxConcurrentValidations {
-		return s.stale(h, errors.New("auth: token validation capacity reached"))
-	}
 	// Detached, so one impatient client does not fail the others waiting
 	// on the same token.
-	return s.inflight.DoDetached(ctx, h, func(ctx context.Context) (*core.User, error) {
+	u, err := s.inflight.DoDetachedLimit(ctx, h, s.o.MaxConcurrentValidations, func(ctx context.Context) (*core.User, error) {
 		ctx, cancel := context.WithTimeout(ctx, 20*time.Second)
 		defer cancel()
 		return s.validateOnce(ctx, token, h)
 	})
+	// Only the direct admission refusal takes this path; validation errors may
+	// wrap other causes and retain their existing stale-fallback semantics.
+	if err == flight.ErrCapacity {
+		return s.stale(h, errors.New("auth: token validation capacity reached"))
+	}
+	return u, err
 }
 
 func (s *Service) validateOnce(ctx context.Context, token, h string) (*core.User, error) {
