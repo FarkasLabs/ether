@@ -105,3 +105,22 @@ func TestBackupFailedAndUpdateAvailableAreAutomaticEvents(t *testing.T) {
 		t.Fatalf("catalog %v", auto)
 	}
 }
+
+func TestTitleAvailableOnceQueuesOncePerKey(t *testing.T) {
+	ctx := context.Background()
+	s := newTestService(t)
+	if err := s.Save(ctx, Channel{ID: "hook", Kind: "webhook", Enabled: true, Endpoint: "https://hooks.example/x", Events: []string{"title.available"}, PerMinute: 60}); err != nil {
+		t.Fatal(err)
+	}
+	for i := 0; i < 3; i++ {
+		if err := s.TitleAvailableOnce(ctx, "episode:1", "The Show S01E03"); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := s.TitleAvailableOnce(ctx, "episode:2", "The Show S01E04"); err != nil {
+		t.Fatal(err)
+	}
+	if n := queued(t, s, "title.available"); n != 2 {
+		t.Fatalf("queued %d", n)
+	}
+}

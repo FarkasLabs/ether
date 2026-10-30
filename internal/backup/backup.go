@@ -595,6 +595,7 @@ func restore(ctx context.Context, r io.Reader, destination string, finish func()
 	}
 	return os.Rename(stage, destination)
 }
+
 // Run takes scheduled backups until ctx ends. onResult hears every
 // scheduled attempt: its error, or nil once one succeeds. A failing backup
 // is retried with backoff (15 minutes, doubling, at most the interval), not

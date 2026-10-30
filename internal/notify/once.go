@@ -54,6 +54,13 @@ func (s *Service) UpdateAvailable(ctx context.Context, current, version string) 
 	return err
 }
 
+// TitleAvailableOnce publishes availability once per key (an episode, say),
+// however often a caller retries after a failure or crash.
+func (s *Service) TitleAvailableOnce(ctx context.Context, key, title string) error {
+	_, err := s.EmitOnce(ctx, "title.available:"+key, Event{Kind: "title.available", Title: "Title available", Message: title})
+	return err
+}
+
 // BackupFailed reports a scheduled backup that did not complete.
 func (s *Service) BackupFailed(ctx context.Context, err error) error {
 	return s.Emit(ctx, Event{

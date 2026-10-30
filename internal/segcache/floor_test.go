@@ -3,6 +3,9 @@ package segcache
 import (
 	"context"
 	"errors"
+	"io/fs"
+	"path/filepath"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -225,5 +228,71 @@ func TestSharedCacheFreeSpaceFloor(t *testing.T) {
 	}
 	if n != 7 {
 		t.Fatalf("shared double eviction: %d left", n)
+	}
+}
+
+// Two nodes of a shared cache: node B measures while node A's eviction is
+// committed but its files are not unlinked yet. B must not free the same
+// shortfall again.
+func TestSharedFreeSpaceFloorCountsBytesStillBeingUnlinked(t *testing.T) {
+	db, err := store.OpenMemory(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	dir := t.TempDir()
+	a, err := OpenShared(dir, 0, db, "node-a", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer a.Close()
+	b, err := OpenShared(dir, 0, db, "node-b", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer b.Close()
+	for i := 0; i < 10; i++ {
+		if err := a.Put("film", i, payload("film", i, 1, 10)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	// The volume's free space follows the segment bytes really on disk.
+	onDisk := func() int64 {
+		var n int64
+		_ = filepath.WalkDir(dir, func(p string, d fs.DirEntry, err error) error {
+			if err == nil && !d.IsDir() && strings.HasSuffix(p, segExt) {
+				if fi, e := d.Info(); e == nil {
+					n += fi.Size() - headerSize
+				}
+			}
+			return nil
+		})
+		return n
+	}
+	vol := func() (int64, int64, error) { return 1000, 1000 - 880 - onDisk(), nil } // 20 free, floor 50
+	count := func() int {
+		n := 0
+		for i := 0; i < 10; i++ {
+			if b.Has("film", i) {
+				n++
+			}
+		}
+		return n
+	}
+	a.shared.beforeUnlink = func() {
+		a.shared.beforeUnlink = nil
+		// A's 30 bytes are out of the pool but still on disk.
+		b.SetDiskUsage(vol)
+		if n := count(); n != 7 {
+			t.Errorf("node B evicted again while A was unlinking: %d segments left", n)
+		}
+	}
+	a.SetDiskUsage(vol)
+	if n := count(); n != 7 {
+		t.Fatalf("%d segments left, want 7", n)
+	}
+	var pending int
+	if err := db.QueryRow(`SELECT COUNT(*) FROM segcache_reclaim`).Scan(&pending); err != nil || pending != 0 {
+		t.Fatalf("reclaim records left: %d %v", pending, err)
 	}
 }
