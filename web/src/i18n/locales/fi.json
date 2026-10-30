@@ -29,6 +29,7 @@
   "m_002e76b6340a46": "Noudattaa kohtaa {link}. Muuta mitä tahansa alla antaaksesi katselijalle {name} omat valinnat.",
   "m_002eb9f37e57c6": "Asti",
   "m_0030896e629200": "Muokkain",
+  "m_00355a0c3f28ba": "Mukautuva bittinopeusportaikko · Direct Stream",
   "m_0036fd7c0fbe0f": {
     "one": "nimike piilotettaisiin",
     "other": "nimikettä piilotettaisiin"
@@ -317,6 +318,7 @@
   "m_023ba8488e3b27": "Indeksoijat eivät palauttaneet mitään käyttökelpoista tälle nimikkeelle.",
   "m_023be4145aa024": "trash omat formaatit pisteytys",
   "m_023e08f3532e68": "Loppu (UTC)",
+  "m_023e1222c317ed": "Oletuksena päällä yhdessä transkoodausportaikon kanssa. Pois päältä Direct Stream -istunnot ilmoittavat vain copy-primaryn ilman pehmeitä encode-varavaihtoehtoja.",
   "m_023e3ef44bb4b3": "Pieni jalanjälki. Vain hyödylliset hetket.",
   "m_02413a2ace086e": "Esikatselun konteksti",
   "m_024331c508a2cd": "Ohita",
@@ -3731,6 +3733,7 @@
   "m_1bcbabf3800f0d": "Jokainen katselija saa tämän julkaisun ensimmäisenä laatuprofiilistaan riippumatta, ellei hänen sovelluksensa pysty dekoodaamaan sitä, katselija valitse toista versiota tai se epäonnistu kuntotarkistuksessa. Offline-lataukset säilyttävät oman profiilinsa.",
   "m_1bcca98c4d6c29": "Maa",
   "m_1bcdbbe42c13f9": "Debrid-tilit",
+  "m_1bce5c1abf707f": "Mukautuva bittinopeusportaikko · Transcode",
   "m_1bd432e5470026": "Kanavan poisto epäonnistui",
   "m_1bd4df6d055713": "Mukauta kuvitusta: {name}",
   "m_1bd5864b59f5f2": "Palauta",
@@ -4160,6 +4163,7 @@
   "m_1eed4d9469a112": "Asetukset tallennetaan tietokantaan. Muutos millä tahansa solmulla saavuttaa muut 30 sekunnissa.",
   "m_1ef30bfb482ac5": "Perutaanko liittymistoken?",
   "m_1ef38ca172a4a4": "Osoite kopioitu",
+  "m_1ef55a8dbf237a": "Tarjoaa matalampia enkoodauslaatuja transkoodauksen aikana, jotta asiakas voi sovittaa laadun kaistanleveyteen.",
   "m_1ef8ef0f7b9e4b": "käyttäjät ystävät tilit",
   "m_1ef9486033e861": "Alemmat pisteet saaneita julkaisuja ei toisteta.",
   "m_1f02244d04f6fa": "Muokkaa sitä kuten mitä tahansa muuta profiilia lisäämisen jälkeen.",

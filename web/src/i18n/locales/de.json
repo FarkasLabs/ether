@@ -29,6 +29,7 @@
   "m_002e76b6340a46": "Folgt {link}. Ändere unten etwas, um {name} eigene Einstellungen zu geben.",
   "m_002eb9f37e57c6": "Bis",
   "m_0030896e629200": "Editor",
+  "m_00355a0c3f28ba": "Adaptive Bitrate-Leiter · Direct Stream",
   "m_0036fd7c0fbe0f": {
     "one": "Titel würde ausgeblendet",
     "other": "Titel würden ausgeblendet"
@@ -317,6 +318,7 @@
   "m_023ba8488e3b27": "Die Indexer haben für diesen Titel nichts Brauchbares geliefert.",
   "m_023be4145aa024": "trash eigene Formate",
   "m_023e08f3532e68": "Ende (UTC)",
+  "m_023e1222c317ed": "Standardmäßig zusammen mit der Transcode-Leiter aktiv. Wenn aus, werben Direct-Stream-Sitzungen nur die Copy-Primärqualität ohne weiche Encode-Fallbacks an.",
   "m_023e3ef44bb4b3": "Ein kleiner Platzbedarf. Nur die nützlichen Momente.",
   "m_02413a2ace086e": "Vorschaukontext",
   "m_024331c508a2cd": "Verwerfen",
@@ -3731,6 +3733,7 @@
   "m_1bcbabf3800f0d": "Jeder Zuschauer erhält dieses Release zuerst, unabhängig vom Qualitätsprofil – es sei denn, seine App kann es nicht dekodieren, ein Zuschauer wählt eine andere Version oder es besteht die Zustandsprüfung nicht. Offline-Downloads behalten ihr eigenes Profil.",
   "m_1bcca98c4d6c29": "Land",
   "m_1bcdbbe42c13f9": "Debrid-Konten",
+  "m_1bce5c1abf707f": "Adaptive Bitrate-Leiter · Transcode",
   "m_1bd432e5470026": "Der Kanal konnte nicht gelöscht werden",
   "m_1bd4df6d055713": "Artwork von {name} anpassen",
   "m_1bd5864b59f5f2": "Zurücksetzen",
@@ -4160,6 +4163,7 @@
   "m_1eed4d9469a112": "Einstellungen werden in der Datenbank gespeichert. Eine Änderung auf einem Knoten erreicht die anderen innerhalb von 30 Sekunden.",
   "m_1ef30bfb482ac5": "Beitritts-Token widerrufen?",
   "m_1ef38ca172a4a4": "Adresse kopiert",
+  "m_1ef55a8dbf237a": "Bietet niedrigere Encode-Qualitäten während Transcodes an, damit Clients die Qualität an die Bandbreite anpassen können.",
   "m_1ef8ef0f7b9e4b": "Benutzer Freunde Konten",
   "m_1ef9486033e861": "Releases mit niedrigerer Wertung werden nicht abgespielt.",
   "m_1f02244d04f6fa": "Bearbeite es nach dem Hinzufügen wie jedes andere Profil.",

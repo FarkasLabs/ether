@@ -29,6 +29,7 @@
   "m_002e76b6340a46": "{link} ayarını izler. {name} için kendi ayarlarını vermek üzere aşağıdaki herhangi bir şeyi değiştirin.",
   "m_002eb9f37e57c6": "Bitiş",
   "m_0030896e629200": "Düzenleyici",
+  "m_00355a0c3f28ba": "Uyarlanabilir bit hızı merdiveni · Direct Stream",
   "m_0036fd7c0fbe0f": {
     "one": "başlık gizlenecek",
     "other": "başlık gizlenecek"
@@ -317,6 +318,7 @@
   "m_023ba8488e3b27": "Dizinleyiciler bu başlık için kullanılabilir bir şey döndürmedi.",
   "m_023be4145aa024": "trash özel biçimler",
   "m_023e08f3532e68": "Bitiş (UTC)",
+  "m_023e1222c317ed": "Transcode merdiveniyle birlikte varsayılan olarak açık. Kapalıyken Direct Stream oturumları yumuşak encode yedekleri olmadan yalnızca copy primary kalitesini duyurur.",
   "m_023e3ef44bb4b3": "Küçük bir yer kaplar. Yalnızca işe yarayan anlar.",
   "m_02413a2ace086e": "Önizleme bağlamı",
   "m_024331c508a2cd": "Kapat",
@@ -3731,6 +3733,7 @@
   "m_1bcbabf3800f0d": "Uygulaması çözemiyorsa, bir izleyici başka bir sürüm seçiyorsa veya sağlık denetiminden geçemiyorsa dışında, kalite profili ne olursa olsun her izleyici bu sürümü ilk olarak alır. Çevrimdışı indirmeler kendi profillerini korur.",
   "m_1bcca98c4d6c29": "Ülke",
   "m_1bcdbbe42c13f9": "Debrid hesapları",
+  "m_1bce5c1abf707f": "Uyarlanabilir bit hızı merdiveni · Transcode",
   "m_1bd432e5470026": "Kanal silinemedi",
   "m_1bd4df6d055713": "{name} görselini özelleştir",
   "m_1bd5864b59f5f2": "Sıfırla",
@@ -4160,6 +4163,7 @@
   "m_1eed4d9469a112": "Ayarlar veritabanında saklanır. Herhangi bir düğümdeki değişiklik diğerlerine 30 saniye içinde ulaşır.",
   "m_1ef30bfb482ac5": "Katılım belirteci iptal edilsin mi?",
   "m_1ef38ca172a4a4": "Adres kopyalandı",
+  "m_1ef55a8dbf237a": "İstemcilerin kaliteyi bant genişliğine göre ayarlayabilmesi için transcode sırasında daha düşük encode kaliteleri sunar.",
   "m_1ef8ef0f7b9e4b": "kullanıcılar arkadaşlar hesaplar",
   "m_1ef9486033e861": "Daha düşük puan alan sürümler oynatılmaz.",
   "m_1f02244d04f6fa": "Eklendikten sonra diğer profiller gibi düzenleyin.",

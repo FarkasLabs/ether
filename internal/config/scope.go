@@ -137,6 +137,7 @@ var mixedSections = map[string]map[string]Scope{
 		"fastStartSegment":     Shared,
 		"fastStartMaxHeight":   Shared,
 		"abrLadder":            Shared,
+		"abrLadderUnderCopy":   Shared,
 		"vbvReservoir":         Shared,
 		"vbvBufferSeconds":     Shared,
 		"spikeGovernor":        Shared,
