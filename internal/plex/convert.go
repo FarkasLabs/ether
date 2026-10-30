@@ -29,6 +29,8 @@ type renderOpts struct {
 	guids bool
 	// state holds the user's watch status for the rendered keys.
 	state map[core.RatingKey]core.WatchStatus
+	// skipLeafCounts skips applyListLeafCounts when the caller calls applyLeafCounts itself.
+	skipLeafCounts bool
 }
 
 // metadataKey is the item's "key": children list for containers, the item
@@ -1160,7 +1162,89 @@ func (s *Server) renderTitles(ctx context.Context, pr *Request, ts []core.Title,
 	if s.d.PlexGUID != nil && len(missingGUIDs) > 0 {
 		s.d.PlexGUID.Schedule(missingGUIDs...)
 	}
+	if !o.detail && !o.skipLeafCounts {
+		s.applyListLeafCounts(ctx, pr, out, ts)
+	}
 	return out
+}
+
+type watchedEpisodesReader interface {
+	WatchedEpisodes(ctx context.Context, userID int64) ([]core.RatingKey, error)
+}
+
+// applyListLeafCounts populates viewedLeafCount (and viewCount when all
+// episodes are watched) on shows and seasons in list/search/hub responses,
+// touching only shows that have at least one watched episode for the user.
+func (s *Server) applyListLeafCounts(ctx context.Context, pr *Request, items []model.Metadata, ts []core.Title) {
+	if s.d.State == nil || pr.User == nil || len(items) == 0 {
+		return
+	}
+	hasShowOrSeason := false
+	for i := range ts {
+		if ts[i].Type == core.TypeShow || ts[i].Type == core.TypeSeason {
+			hasShowOrSeason = true
+			break
+		}
+	}
+	if !hasShowOrSeason {
+		return
+	}
+	reader, ok := s.d.State.(watchedEpisodesReader)
+	if !ok {
+		return
+	}
+	watched, err := reader.WatchedEpisodes(ctx, pr.User.ID)
+	if err != nil || len(watched) == 0 {
+		return
+	}
+	watchedByShow := make(map[int64][]core.RatingKey)
+	for _, k := range watched {
+		if tmdb := k.TMDB(); tmdb > 0 {
+			watchedByShow[tmdb] = append(watchedByShow[tmdb], k)
+		}
+	}
+	subset := make([]core.Title, 0)
+	for i := range ts {
+		if ts[i].Type != core.TypeShow && ts[i].Type != core.TypeSeason {
+			continue
+		}
+		if len(watchedByShow[ts[i].Key.TMDB()]) > 0 {
+			subset = append(subset, ts[i])
+		}
+	}
+	if len(subset) == 0 {
+		return
+	}
+	s.applyLeafCounts(ctx, pr, items, subset, nil)
+	byKey := make(map[string]int, len(items))
+	for i := range items {
+		byKey[items[i].RatingKey] = i
+	}
+	for _, title := range subset {
+		i, ok := byKey[title.Key.String()]
+		if !ok || items[i].ViewedLeafCount != nil {
+			continue
+		}
+		viewed := 0
+		for _, k := range watchedByShow[title.Key.TMDB()] {
+			switch title.Type {
+			case core.TypeShow:
+				if k.Season() > 0 {
+					viewed++
+				}
+			case core.TypeSeason:
+				if k.Season() == title.Key.Season() {
+					viewed++
+				}
+			}
+		}
+		if viewed > 0 {
+			items[i].ViewedLeafCount = model.Ptr(viewed)
+			if items[i].LeafCount != nil && *items[i].LeafCount > 0 && viewed >= *items[i].LeafCount {
+				items[i].ViewCount = max(items[i].ViewCount, 1)
+			}
+		}
+	}
 }
 
 func (s *Server) stateFor(ctx context.Context, pr *Request, ts []core.Title) map[core.RatingKey]core.WatchStatus {
