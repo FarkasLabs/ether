@@ -2,6 +2,7 @@ package playback
 
 import (
 	"context"
+	"reflect"
 	"sync"
 	"time"
 
@@ -309,6 +310,9 @@ func (e *warmEntry) facts() warmFacts {
 // must be at least as permissive as the warm one.
 func warmAcceptable(e *warmEntry, profile core.QualityProfile, caps core.ClientCaps) bool {
 	if e == nil || e.res == nil {
+		return false
+	}
+	if !reflect.DeepEqual(e.profileObj.ReleaseRules, profile.ReleaseRules) {
 		return false
 	}
 	f := e.facts()

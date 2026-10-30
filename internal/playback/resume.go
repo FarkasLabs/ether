@@ -74,7 +74,7 @@ func (p *ResumePoint) ReleaseID() string { return p.Release.ID }
 // are not an input and the same definition keys identically for
 // every client. Profiles built outside SelectProfile (tests/stubs)
 // have no SelectionKey: fall back to the same canonical hash of the
-// object's own fields.
+// object's own fields. Release rules are included in that hash.
 func profileKey(p core.QualityProfile) string {
 	key := p.SelectionKey
 	if key == "" {
