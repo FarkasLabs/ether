@@ -152,20 +152,21 @@ func (g *generation) releaseID() string {
 
 // session is the internal, mutable form of a core.PlaySession.
 type session struct {
-	reserve        reserveState
-	viewerPosition time.Duration // guarded by mu, from authenticated Plex timeline
-	viewerAt       time.Time
-	viewerState    string
-	warm           warmState // the encoder input range being prefetched
-	playbackGroup  string
-	id             string
-	ident          identity
-	user           core.User
-	caps           core.ClientCaps
-	title          *core.Title
-	titleName      string
-	profileKey     string // profileKey of the resolving profile
-	startedAt      time.Time
+	reserve          reserveState
+	viewerPosition   time.Duration // guarded by mu, from authenticated Plex timeline
+	viewerAt         time.Time
+	viewerState      string
+	warm             warmState // the encoder input range being prefetched
+	playbackGroup    string
+	id               string
+	ident            identity
+	user             core.User
+	caps             core.ClientCaps
+	title            *core.Title
+	titleName        string
+	profileKey       string // profileKey of the resolving profile
+	originalLanguage string // catalogue language when this session was selected
+	startedAt        time.Time
 
 	// virtual is the byte/time layout of the first generation: the file the
 	// client was told about. Direct-play byte offsets are always in these
@@ -216,22 +217,23 @@ type session struct {
 func newSession(id string, ident identity, user *core.User, caps core.ClientCaps, title *core.Title, profileKey string, now time.Time) *session {
 	stopCtx, stopCancel := context.WithCancel(context.Background())
 	return &session{
-		id:         id,
-		stopCtx:    stopCtx,
-		stopCancel: stopCancel,
-		ident:      ident,
-		user:       *user,
-		caps:       caps,
-		title:      title,
-		titleName:  displayTitle(title),
-		profileKey: profileKey,
-		startedAt:  now,
-		lastActive: now,
-		failSem:    make(chan struct{}, 1),
-		rate:       rateMeter{},
-		genSince:   now,
-		graceUntil: now,
-		expectPos:  -1,
+		id:               id,
+		stopCtx:          stopCtx,
+		stopCancel:       stopCancel,
+		ident:            ident,
+		user:             *user,
+		caps:             caps,
+		title:            title,
+		titleName:        displayTitle(title),
+		profileKey:       profileKey,
+		originalLanguage: titleLanguage(title),
+		startedAt:        now,
+		lastActive:       now,
+		failSem:          make(chan struct{}, 1),
+		rate:             rateMeter{},
+		genSince:         now,
+		graceUntil:       now,
+		expectPos:        -1,
 	}
 }
 

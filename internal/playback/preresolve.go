@@ -2,10 +2,13 @@ package playback
 
 import (
 	"context"
+	"reflect"
+	"strings"
 	"sync"
 	"time"
 
 	"github.com/braedonsaunders/ether/internal/core"
+	"github.com/braedonsaunders/ether/internal/releasepolicy"
 )
 
 const preResolveTTL = 10 * time.Minute
@@ -27,6 +30,11 @@ type warmEntry struct {
 	runtime    time.Duration // title runtime, for size rules without a probe
 	res        *core.Resolution
 	probe      *probeCache
+	// originalAudio is set when the warmed profile compares audio with
+	// the catalogue language. originalLanguage is the Title.Language
+	// that Resolve saw. A later catalogue correction must not reuse it.
+	originalAudio    bool
+	originalLanguage string
 }
 
 type probeCache struct {
@@ -190,7 +198,11 @@ func (m *Manager) Prewarm(_ context.Context, user *core.User, key core.RatingKey
 		}
 		// Warming must not override the source that actually survived the
 		// previous playback with the original, slower top-ranked release.
-		res := m.resumeResolution(ctx, u.ID, key, e.profileKey, caps)
+		res := m.resumeResolution(ctx, u.ID, key, e.profileObj, caps, strings.TrimSpace(title.Language))
+		if releasepolicy.UsesOriginalAudio(e.profileObj.ReleaseRules) {
+			e.originalAudio = true
+			e.originalLanguage = strings.TrimSpace(title.Language)
+		}
 		if res == nil || !releaseMatchesTitle(res.Release, title) {
 			res, err = m.deps.Resolver.Resolve(ctx, core.ResolveRequest{Title: title, Client: caps, User: &u})
 		}
@@ -307,8 +319,14 @@ func (e *warmEntry) facts() warmFacts {
 // for the same device; equality is sufficient but not required. Unknown
 // properties never reject; with no facts at all, the Play-time profile
 // must be at least as permissive as the warm one.
-func warmAcceptable(e *warmEntry, profile core.QualityProfile, caps core.ClientCaps) bool {
+func warmAcceptable(e *warmEntry, profile core.QualityProfile, caps core.ClientCaps, originalLanguage string) bool {
 	if e == nil || e.res == nil {
+		return false
+	}
+	if !reflect.DeepEqual(e.profileObj.ReleaseRules, profile.ReleaseRules) {
+		return false
+	}
+	if e.originalAudio && e.originalLanguage != strings.TrimSpace(originalLanguage) {
 		return false
 	}
 	f := e.facts()
@@ -355,7 +373,7 @@ func warmAcceptable(e *warmEntry, profile core.QualityProfile, caps core.ClientC
 // takeWarmResolution consumes the warm entry for id when its release is
 // acceptable for the Play-time profile and caps (and, for a variant,
 // is the picked release); an unacceptable entry is discarded.
-func (m *Manager) takeWarmResolution(ctx context.Context, id identity, profile core.QualityProfile, caps core.ClientCaps, prefer string) *warmEntry {
+func (m *Manager) takeWarmResolution(ctx context.Context, id identity, profile core.QualityProfile, caps core.ClientCaps, prefer, originalLanguage string) *warmEntry {
 	m.mu.Lock()
 	e := m.warm[id]
 	if e == nil {
@@ -390,7 +408,7 @@ func (m *Manager) takeWarmResolution(ctx context.Context, id identity, profile c
 	if prefer != "" && (e.res == nil || e.res.Release.ID != prefer) {
 		return nil // keep it: a plain Prepare may still use it
 	}
-	if !warmAcceptable(e, profile, caps) || (e.res != nil && m.releaseBlocked(ctx, e.res.Release.ID)) {
+	if !warmAcceptable(e, profile, caps, originalLanguage) || (e.res != nil && m.releaseBlocked(ctx, e.res.Release.ID)) {
 		delete(m.warm, id)
 		return nil
 	}

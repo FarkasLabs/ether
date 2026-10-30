@@ -17,6 +17,7 @@ import (
 	"github.com/braedonsaunders/ether/internal/config"
 	"github.com/braedonsaunders/ether/internal/core"
 	"github.com/braedonsaunders/ether/internal/releaseparse"
+	"github.com/braedonsaunders/ether/internal/releasepolicy"
 )
 
 const (
@@ -73,12 +74,13 @@ type Options struct {
 
 // CandidateTrace explains one candidate's fate in a resolution.
 type CandidateTrace struct {
-	ReleaseID           string        `json:"releaseId"`
-	Name                string        `json:"name"`
-	Indexer             string        `json:"indexer"`
-	Score               float64       `json:"score"`
-	CustomFormats       []FormatMatch `json:"customFormats,omitempty"`
-	CompatibilityReason string        `json:"compatibilityReason,omitempty"`
+	Preferences         *releasepolicy.Result `json:"preferences,omitempty"`
+	ReleaseID           string                `json:"releaseId"`
+	Name                string                `json:"name"`
+	Indexer             string                `json:"indexer"`
+	Score               float64               `json:"score"`
+	CustomFormats       []FormatMatch         `json:"customFormats,omitempty"`
+	CompatibilityReason string                `json:"compatibilityReason,omitempty"`
 	// Route explains a move by source routing (routing.go), e.g. "faster
 	// source: cached on debrid".
 	Route          string        `json:"route,omitempty"`
@@ -843,6 +845,16 @@ func (s *Service) missingSources() error {
 	return nil
 }
 
+// titleOriginalLanguage is the catalogue field Title.Language.
+// An unknown title language stays empty. Custom-format scoring may
+// assume English for an untagged release; this comparison must not.
+func titleOriginalLanguage(t *core.Title) string {
+	if t == nil {
+		return ""
+	}
+	return strings.TrimSpace(t.Language)
+}
+
 func searchCacheKey(req core.SearchRequest) string {
 	return fmt.Sprintf("%s|%v|%s|%d|%d|%d", req.Type, req.IDs, strings.ToLower(req.Title), req.Year, req.Season, req.Episode)
 }
@@ -982,6 +994,10 @@ func (s *Service) scoreCandidates(ctx context.Context, req core.ResolveRequest, 
 // traced like every other result. Interactive search reads the same trace.
 func (s *Service) rankCandidates(ctx context.Context, req core.ResolveRequest, sreq core.SearchRequest, profile core.QualityProfile, results []core.Release, trace *Trace, pinID string) ([]candidate, bool, error) {
 	t := req.Title
+	policy, err := releasepolicy.Compile(profile.ReleaseRules)
+	if err != nil {
+		return nil, true, err
+	}
 	exclude := map[string]bool{}
 	for _, id := range req.Exclude {
 		exclude[id] = true
@@ -994,14 +1010,26 @@ func (s *Service) rankCandidates(ctx context.Context, req core.ResolveRequest, s
 		ct := CandidateTrace{ReleaseID: rel.ID, Name: rel.Name, Indexer: rel.Indexer, Size: rel.Size}
 		pinned := pinID != "" && rel.ID == pinID
 		ct.Pinned = pinned
+		// Catalogue language is applied here, after the search cache.
+		// The cache stores indexer results only; it does not freeze a
+		// previous title's original language or a custom-format guess.
+		policyResult := policy.Evaluate(rel, releasepolicy.Context{OriginalLanguage: titleOriginalLanguage(t)})
+		if len(profile.ReleaseRules) > 0 {
+			ct.Preferences = &policyResult
+		}
 		preferred := pinned || (req.Prefer != "" && rel.ID == req.Prefer)
 		var reason string
 		if pinned {
 			reason = s.pinRejectReason(rel, sreq, req.Client, exclude)
+		} else if !preferred && policyResult.Rejected {
+			reason = preferenceReason(policyResult)
 		} else {
 			reason = s.rejectReason(rel, t, sreq, profile, rcfg, req.Client, exclude, preferred)
 		}
 		if reason != "" {
+			if strings.HasPrefix(reason, "release preference:") {
+				clientRejected = true
+			}
 			ct.Rejected = true
 			switch reason {
 			case "above profile max height", "above client max height", "below profile min height", "dolby vision not allowed for client", "video codec unsupported by client", "quality excluded by imported profile", "source recently failed health check; retrying later",
@@ -1057,7 +1085,7 @@ func (s *Service) rankCandidates(ctx context.Context, req core.ResolveRequest, s
 			trace.Candidates = append(trace.Candidates, ct)
 			tr = len(trace.Candidates) - 1
 		}
-		cands = append(cands, candidate{rel: rel, trace: tr, verified: verified, bandwidth: s.deliveryFit(sizedForEpisode(rel), req.Client, t)})
+		cands = append(cands, candidate{policy: policyResult, rel: rel, trace: tr, verified: verified, bandwidth: s.deliveryFit(sizedForEpisode(rel), req.Client, t)})
 	}
 	return s.orderCandidates(cands, req.Title, trace), clientRejected, nil
 }
@@ -1077,7 +1105,10 @@ func (s *Service) orderCandidates(cands []candidate, title *core.Title, trace *T
 		}
 		return cands[i].rel.Score > cands[j].rel.Score
 	})
-	return s.routeSources(cands, title, trace)
+	cands = s.routeSources(cands, title, trace)
+	// Explicit ordered preferences and fallback tiers override soft source ranking.
+	sort.SliceStable(cands, func(i, j int) bool { return releasepolicy.Better(cands[i].policy, cands[j].policy) })
+	return cands
 }
 
 // releaseScore is one release's total ranking score and its parts.
@@ -1255,7 +1286,21 @@ func rejectIdentity(rel core.Release, t *core.Title, sreq core.SearchRequest) st
 	return ""
 }
 
+func preferenceReason(result releasepolicy.Result) string {
+	for _, e := range result.Explanations {
+		// A prefer rule can be unknown without rejecting. Only a
+		// require or avoid that excluded the release, or could not
+		// be judged, names the rejection.
+		rejecting := e.Outcome == "exclude" || (e.Outcome == "unknown" && (e.Action == "require" || e.Action == "avoid"))
+		if rejecting {
+			return "release preference: " + e.Name + " (" + e.Outcome + ")"
+		}
+	}
+	return "release preference: rejected"
+}
+
 // rejectPolicy applies client support and quality/size policy in rejection order.
+// Release rules are judged once in rankCandidates; this does not compile them again.
 func rejectPolicy(rel core.Release, t *core.Title, profile core.QualityProfile, caps core.ClientCaps, preferred bool) string {
 	// Client / profile hard gates. The viewer's explicit pick bypasses the
 	// profile-policy gates (an explicit 4K pick on a 1080p profile must
