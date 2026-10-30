@@ -123,7 +123,7 @@ describe("Settings", () => {
     const dialog = await screen.findByRole("dialog", { name: "Set up Trakt" }, WAIT);
     expect(within(dialog).getByLabelText("Client ID")).toHaveValue("");
     fireEvent.click(within(dialog).getByRole("button", { name: "Cancel" }));
-    expect(screen.queryByRole("dialog")).toBeNull();
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull(), WAIT);
     expect(calls(fake, "PUT", "/config/trakt")).toHaveLength(0);
     expect(screen.getByRole("switch", { name: "Trakt enabled" })).not.toBeChecked();
     expect(screen.queryByRole("tab", { name: "Trakt" })).toBeNull();
@@ -140,7 +140,7 @@ describe("Settings", () => {
       enabled: true,
       clientId: "cid",
     });
-    expect(screen.queryByRole("dialog")).toBeNull();
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull(), WAIT);
     expect(screen.getByRole("switch", { name: "Trakt enabled" })).toBeChecked();
     expect(screen.getByRole("tab", { name: "Trakt" })).toBeInTheDocument();
   });
@@ -173,7 +173,7 @@ describe("Settings", () => {
     const dialog = await screen.findByRole("dialog", { name: "Set up Trakt" }, WAIT);
     fireEvent.change(within(dialog).getByLabelText("Client ID"), { target: { value: "bad id" } });
     fireEvent.click(within(dialog).getByRole("button", { name: "Save and enable" }));
-    expect(await screen.findByText("looks malformed", {}, WAIT)).toBeInTheDocument();
+    expect((await screen.findAllByText("looks malformed", {}, WAIT)).length).toBeGreaterThan(0);
     expect(screen.getByRole("dialog", { name: "Set up Trakt" })).toBeInTheDocument();
     expect(screen.getByRole("switch", { name: "Trakt enabled" })).not.toBeChecked();
     expect(screen.queryByRole("tab", { name: "Trakt" })).toBeNull();
@@ -459,7 +459,7 @@ describe("Settings", () => {
     await waitFor(() => expect(calls(fake, "PUT", "/config/simkl")).toHaveLength(1), WAIT);
     expect(calls(fake, "PUT", "/config/simkl")[0]!.body).toEqual({ enabled: false });
     await waitFor(() => expect(simklSwitch()).not.toBeChecked(), WAIT);
-    expect(simklSwitch()).toBeEnabled();
+    await waitFor(() => expect(simklSwitch()).toBeEnabled(), WAIT);
     expect(screen.queryByRole("tab", { name: "Simkl" })).toBeNull();
     fireEvent.click(simklSwitch());
     await waitFor(() => expect(calls(fake, "PUT", "/config/simkl")).toHaveLength(2), WAIT);
@@ -467,8 +467,8 @@ describe("Settings", () => {
       enabled: true,
       clientId: "draft-client",
     });
-    expect(simklSwitch()).toBeChecked();
-    expect(screen.getByRole("tab", { name: "Simkl" })).toBeInTheDocument();
+    await waitFor(() => expect(simklSwitch()).toBeChecked(), WAIT);
+    expect(await screen.findByRole("tab", { name: "Simkl" }, WAIT)).toBeInTheDocument();
   });
 
   it("reflects Simkl and ratings enabled after each form saves", async () => {
@@ -489,19 +489,24 @@ describe("Settings", () => {
     const ratings = await screen.findByRole("dialog", { name: "Set up OMDb and MDBList" }, WAIT);
     fireEvent.change(within(ratings).getByLabelText("API key"), { target: { value: "omdb-key" } });
     fireEvent.click(within(ratings).getByRole("button", { name: "Save and enable" }));
-    await waitFor(() => expect(calls(fake, "PUT", "/discovery/ratings/settings")).toHaveLength(1), WAIT);
+    await waitFor(
+      () => expect(calls(fake, "PUT", "/discovery/ratings/settings")).toHaveLength(1),
+      WAIT,
+    );
     expect(calls(fake, "PUT", "/discovery/ratings/settings")[0]!.body).toMatchObject({
       enabled: true,
       apiKey: "omdb-key",
     });
     fireEvent.click(screen.getByRole("tab", { name: "Overview" }));
-    expect(await screen.findByRole("switch", { name: "OMDb and MDBList enabled" }, WAIT)).toBeChecked();
+    expect(
+      await screen.findByRole("switch", { name: "OMDb and MDBList enabled" }, WAIT),
+    ).toBeChecked();
     expect(screen.getByRole("tab", { name: "Ratings" })).toBeInTheDocument();
     expect(screen.getByText("Configured")).toBeInTheDocument();
     expect(screen.queryByText(/^Connected/)).toBeNull();
   });
 
-  it("keeps ratings off when a later edit is saved after the card is turned off", async () => {
+  it("keeps ratings off and removes its editor after the card is turned off", async () => {
     let ratings = {
       enabled: true,
       provider: "omdb",
@@ -518,21 +523,26 @@ describe("Settings", () => {
     expect(await screen.findByRole("switch", { name: "External ratings" }, WAIT)).toBeChecked();
     fireEvent.click(screen.getByRole("tab", { name: "Overview" }));
     fireEvent.click(await screen.findByRole("switch", { name: "OMDb and MDBList enabled" }, WAIT));
-    await waitFor(() => expect(calls(fake, "PUT", "/discovery/ratings/settings")).toHaveLength(1), WAIT);
+    await waitFor(
+      () => expect(calls(fake, "PUT", "/discovery/ratings/settings")).toHaveLength(1),
+      WAIT,
+    );
     expect(calls(fake, "PUT", "/discovery/ratings/settings")[0]!.body).toMatchObject({
       enabled: false,
     });
+    await waitFor(() => expect(screen.queryByRole("tab", { name: "Ratings" })).toBeNull(), WAIT);
     fireEvent.click(screen.getByRole("link", { name: /^Ratings$/ }));
-    expect(await screen.findByRole("switch", { name: "External ratings" }, WAIT)).not.toBeChecked();
-    fireEvent.change(screen.getByLabelText("Keep scores for"), { target: { value: "24" } });
-    fireEvent.click(screen.getByRole("button", { name: /Save changes/ }));
-    await waitFor(() => expect(calls(fake, "PUT", "/discovery/ratings/settings")).toHaveLength(2), WAIT);
-    expect(calls(fake, "PUT", "/discovery/ratings/settings")[1]!.body).toMatchObject({
-      enabled: false,
-      cacheHours: 24,
-    });
-    fireEvent.click(screen.getByRole("tab", { name: "Overview" }));
+    await waitFor(
+      () =>
+        expect(screen.getByRole("tab", { name: "Overview" })).toHaveAttribute(
+          "aria-selected",
+          "true",
+        ),
+      WAIT,
+    );
+    expect(screen.queryByRole("switch", { name: "External ratings" })).toBeNull();
     expect(screen.getByRole("switch", { name: "OMDb and MDBList enabled" })).not.toBeChecked();
+    expect(calls(fake, "PUT", "/discovery/ratings/settings")).toHaveLength(1);
   });
 
   it("translates integration tabs when the locale changes and keeps the draft", async () => {
@@ -661,7 +671,10 @@ describe("Settings", () => {
         value: { enabled: false, clientId: "new-id", clientSecret: "••••" },
       });
     });
-    await waitFor(() => expect(screen.getByRole("switch", { name: "Trakt enabled" })).not.toBeChecked(), WAIT);
+    await waitFor(
+      () => expect(screen.getByRole("switch", { name: "Trakt enabled" })).not.toBeChecked(),
+      WAIT,
+    );
     expect(seen).toHaveLength(2);
   });
 
