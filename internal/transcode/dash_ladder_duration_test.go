@@ -79,8 +79,9 @@ func TestIntegrationDASHShortLadderLongGOPAndSeeks(t *testing.T) {
 	if len(doc.Period.Sets[0].Reps) < 2 || doc.Period.Sets[0].Template.Duration != 2 {
 		t.Fatalf("missing short ladder: %+v", doc)
 	}
-	// Slot 3 lies inside the first ten-second GOP; it must remain decodable.
-	if st, first := e.probeDASH(t, "base.mp4", dashGet(t, ds, 0, 3)); st.CodecName != "h264" || first > 6 {
+	// Slot 3 lies inside the first ten-second GOP; it must remain decodable
+	// (encoded primaries may open slightly past the slot start).
+	if st, first := e.probeDASH(t, "base.mp4", dashGet(t, ds, 0, 3)); st.CodecName != "h264" || first > 6.1 {
 		t.Fatalf("base segment: %+v at %v", st, first)
 	}
 	// Request a lower rendition far forward and then back. Both tracks retain
@@ -96,17 +97,16 @@ func TestIntegrationDASHShortLadderLongGOPAndSeeks(t *testing.T) {
 	defer srv.Close()
 	e.playMPD(t, srv.URL+"/start.mpd", 24)
 
-	// Start cold inside a long GOP: no earlier run can hide copied-audio
-	// preroll with already cached segments. Video keeps its decode keyframe,
-	// but audio must begin at the requested media time on either rendition.
+	// Start cold mid-title: audio and every video rendition must open on the
+	// short encode grid at the requested media time.
 	cold := startDASH(t, e.m, core.HLSRequest{SessionID: "cold-seek", InputURL: e.url("ladder.mkv"), Info: *info, Decision: d, StartOffset: 18 * time.Second})
 	_, afirst := e.probeDASH(t, "cold-audio.mp4", dashGet(t, cold, 1, 9))
 	if math.Abs(afirst-18) > 0.1 {
 		t.Fatalf("cold seek audio starts %v, want 18", afirst)
 	}
 	_, vfirst := e.probeDASH(t, "cold-video.mp4", dashGet(t, cold, 0, 9))
-	if vfirst > 18 || vfirst < 9.9 {
-		t.Fatalf("cold copy seek lost its decode keyframe: %v", vfirst)
+	if math.Abs(vfirst-18) > 0.2 {
+		t.Fatalf("cold encode seek starts %v, want ~18", vfirst)
 	}
 	_, lower := e.probeDASH(t, "cold-lower.mp4", dashGet(t, cold, 2, 9))
 	if math.Abs(lower-afirst) > 0.1 {
