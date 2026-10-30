@@ -1,4 +1,10 @@
-import { Button, SettingsSection, SubtabNav, buttonVariants, toast } from "@braedonsaunders/appkit-ui";
+import {
+  Button,
+  SettingsSection,
+  SubtabNav,
+  buttonVariants,
+  toast,
+} from "@braedonsaunders/appkit-ui";
 import { useCallback, useMemo, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { useApp } from "../../app-context";

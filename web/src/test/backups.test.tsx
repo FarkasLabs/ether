@@ -72,11 +72,7 @@ describe("Backups & import", () => {
     });
     fireEvent.click(screen.getByRole("button", { name: "Preview import" }));
     expect(await screen.findByText(/1200/)).toBeInTheDocument();
-    const review = await screen.findByRole(
-      "region",
-      { name: "Review import" },
-      { timeout: 3000 },
-    );
+    const review = await screen.findByRole("region", { name: "Review import" }, { timeout: 3000 });
     expect(within(review).getByText(/A remembered film/)).toBeInTheDocument();
     expect(
       within(review).getByRole("button", { name: "Import reviewed records" }),
