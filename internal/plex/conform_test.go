@@ -63,6 +63,11 @@ var pmsOnlyRE = regexp.MustCompile(`(@|/)(chapterSource|contentRatingAge|primary
 // it has one, e.g. IMDb's).
 var etherOnlyRE = regexp.MustCompile(`(Writer(\[\])?/@?thumb|Video/Rating|Metadata\[\]/Rating)$`)
 
+// decisionTrackRE is the stream identity a decision now keeps for tracks
+// the viewer did not select. PMS recordings of these decisions omit it.
+// Android builds its audio and subtitle menu from that index.
+var decisionTrackRE = regexp.MustCompile(`Stream(\[\])?/(@)?(index|canAutoSync)$`)
+
 func pmsFixtureName(profile, path string, jsonMode bool) string {
 	return pmsconform.FixtureName(profile, path, jsonMode) + ".json"
 }
@@ -130,7 +135,7 @@ func TestDecisionConformsToPMS(t *testing.T) {
 					for _, d := range pmsconform.Compare(ref, ours).Differences {
 						switch {
 						case d.Kind == pmsconform.KindMissing && pmsOnlyRE.MatchString(d.Path):
-						case d.Kind == pmsconform.KindExtra && etherOnlyRE.MatchString(d.Path):
+						case d.Kind == pmsconform.KindExtra && (etherOnlyRE.MatchString(d.Path) || decisionTrackRE.MatchString(d.Path)):
 						case d.Kind == pmsconform.KindValue && !strings.HasSuffix(d.Path, "#order") && !stableMediaValue.MatchString(d.Path):
 						default:
 							t.Errorf("%s %s ref=%v ours=%v", d.Kind, d.Path, d.Reference, d.Target)

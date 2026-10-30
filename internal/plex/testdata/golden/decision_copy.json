@@ -104,6 +104,47 @@
                     "streamType": 2,
                     "decision": "copy",
                     "location": "segments-av"
+                  },
+                  {
+                    "bitrate": 128,
+                    "canNormalizeLoudness": "0",
+                    "channels": 2,
+                    "codec": "aac",
+                    "displayTitle": "French (AAC Stereo)",
+                    "extendedDisplayTitle": "French (AAC Stereo)",
+                    "id": "1670249740",
+                    "index": 2,
+                    "language": "French",
+                    "languageCode": "fre",
+                    "languageTag": "fr",
+                    "samplingRate": 48000,
+                    "streamType": 2
+                  },
+                  {
+                    "canAutoSync": false,
+                    "codec": "srt",
+                    "displayTitle": "English (SRT)",
+                    "extendedDisplayTitle": "English (SRT)",
+                    "id": "1809146860",
+                    "index": 3,
+                    "language": "English",
+                    "languageCode": "eng",
+                    "languageTag": "en",
+                    "streamType": 3
+                  },
+                  {
+                    "canAutoSync": false,
+                    "codec": "srt",
+                    "displayTitle": "Spanish (SRT External)",
+                    "extendedDisplayTitle": "Spanish (SRT External)",
+                    "external": true,
+                    "format": "srt",
+                    "id": "1513126264",
+                    "key": "/library/streams/1513126264",
+                    "language": "Spanish",
+                    "languageCode": "spa",
+                    "languageTag": "es",
+                    "streamType": 3
                   }
                 ]
               }

@@ -100,14 +100,24 @@ func TestPresentationScopesAndExplicitRefresh(t *testing.T) {
 	for name, change := range map[string]func(*memoKey){
 		"viewer": func(k *memoKey) { k.user++ }, "section": func(k *memoKey) { k.section = core.TypeShow },
 		"device": func(k *memoKey) { k.bucket = "tv" }, "day": func(k *memoKey) { k.day++ },
-		"schedule": func(k *memoKey) { k.hour++ }, "layout": func(k *memoKey) { k.layout++ },
-		"limits":    func(k *memoKey) { k.limits = "R" },
-		"page size": func(k *memoKey) { k.limit++ }, "tuning": func(k *memoKey) { k.tuning = "b" },
+		"layout": func(k *memoKey) { k.layout++ },
+		"limits": func(k *memoKey) { k.limits = "R" }, "tuning": func(k *memoKey) { k.tuning = "b" },
 	} {
 		changed := k
 		change(&changed)
 		if presentationKey(changed, false) == want {
 			t.Errorf("scope shared across %s", name)
+		}
+	}
+	// Hour and page size are one visit. Android and Android TV poll with a
+	// new count, and the hour changing mid-session must not reshuffle rows.
+	for name, change := range map[string]func(*memoKey){
+		"schedule": func(k *memoKey) { k.hour++ }, "page size": func(k *memoKey) { k.limit++ },
+	} {
+		changed := k
+		change(&changed)
+		if presentationKey(changed, false) != want {
+			t.Errorf("scope split across %s", name)
 		}
 	}
 	if presentationKey(k, true) == want {
