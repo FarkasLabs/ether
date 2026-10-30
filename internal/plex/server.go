@@ -22,6 +22,7 @@ import (
 	"github.com/braedonsaunders/ether/internal/clusterbus"
 	"github.com/braedonsaunders/ether/internal/config"
 	"github.com/braedonsaunders/ether/internal/core"
+	"github.com/braedonsaunders/ether/internal/diagnostics"
 	"github.com/braedonsaunders/ether/internal/episodeorder"
 	"github.com/braedonsaunders/ether/internal/livetv"
 	"github.com/braedonsaunders/ether/internal/plexguid"
@@ -132,6 +133,8 @@ type Deps struct {
 	SessionHeartbeat time.Duration
 	// Now is the clock (tests).
 	Now func() time.Time
+	// Support records neutral request and playback facts. Nil leaves playback unchanged.
+	Support *diagnostics.Recorder
 }
 
 // Server is the PMS API handler. It is an http.Handler; call Close on
