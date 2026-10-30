@@ -83,6 +83,12 @@ func SelectProfile(q config.Quality, caps core.ClientCaps, user *core.User) core
 		prof.CustomFormatScores = copyScores
 	}
 
+	// Key of the configured definition, taken from this pristine copy
+	// before the configured-height snapshot, download reshaping, and
+	// the client-cap clamp below, so the same configured profile keys
+	// identically for every client.
+	prof.SelectionKey = prof.ComputeSelectionKey()
+
 	// Snapshot the owner's configured ceiling before the download
 	// reshape below (and the client clamp after it) lowers the
 	// effective MaxHeight: "configured" is what the owner set, even
