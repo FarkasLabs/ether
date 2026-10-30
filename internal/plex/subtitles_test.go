@@ -263,8 +263,8 @@ func TestSidecarSelectionSurvivesProbeAndRemux(t *testing.T) {
 		!strings.Contains(selected, fmt.Sprintf(`key="/library/streams/%d"`, releaseID)) || !strings.Contains(selected, `decision="copy" location="sidecar"`) {
 		t.Fatalf("decision subtitle: %q\n%s", subs, rec.Body.String())
 	}
-	if len(subs) < 2 {
-		t.Fatalf("decision dropped alternate subtitles: %q", subs)
+	if len(subs) != 1 {
+		t.Fatalf("non-Android decision listed unselected subtitles: %q", subs)
 	}
 	if f.trans.lastOpts.SubtitleStream != -1 {
 		t.Fatalf("sidecar reached the transcoder: %+v", f.trans.lastOpts)
@@ -285,15 +285,16 @@ func TestSubtitleStreamIDOnDecisionPicksSidecar(t *testing.T) {
 	key := fightClub.Key.String()
 	f.get(t, "/library/metadata/"+key)
 	releaseID := externalID(fightClub.Key, "ether-subtitle:release-en")
-	// Direct play keeps every subtitle and marks the requested sidecar selected.
+	// Direct play marks the requested sidecar selected. Unselected tracks
+	// stay off this response; Android is the client that lists them.
 	rec := f.get(t, fmt.Sprintf("/video/:/transcode/universal/decision?path=/library/metadata/%s&subtitleStreamID=%d&session=dp1", key, releaseID))
 	subs := subtitleTags(rec.Body.String())
 	selected := selectedTag(subs)
 	if selected == "" || !strings.Contains(selected, fmt.Sprintf(`key="/library/streams/%d"`, releaseID)) {
 		t.Fatalf("direct play subtitle: %q\n%s", subs, rec.Body.String())
 	}
-	if len(subs) < 2 {
-		t.Fatalf("direct play dropped alternate subtitles: %q", subs)
+	if len(subs) != 1 {
+		t.Fatalf("non-Android direct play listed unselected subtitles: %q", subs)
 	}
 }
 
@@ -324,8 +325,8 @@ func TestTrackPreferenceAlwaysSelectsCachedSidecar(t *testing.T) {
 	if selected == "" || !strings.Contains(selected, `external="1"`) {
 		t.Fatalf("always mode at play: %q", got)
 	}
-	if len(got) < 2 {
-		t.Fatalf("always mode dropped alternate subtitles: %q", got)
+	if len(got) != 1 {
+		t.Fatalf("non-Android always mode listed unselected subtitles: %q", got)
 	}
 }
 
