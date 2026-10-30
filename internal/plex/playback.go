@@ -840,6 +840,11 @@ func (s *Server) handleStartHLS(w http.ResponseWriter, r *http.Request) {
 		}
 		s.d.Transcoder.Stop(p.sessionID)
 	}
+	if !dec.VideoCopy && s.hasStartedVideoCopy(pr.User.ID, pr.ClientID, p.key, p.sessionID) {
+		s.log.Info("skip encode HLS start; video-copy sibling active", "session", p.sessionID, "key", p.key)
+		writeHTTPError(w, http.StatusGone)
+		return
+	}
 	hs, err := s.d.Transcoder.StartHLS(context.WithoutCancel(ctx), core.HLSRequest{
 		SessionID:   p.sessionID,
 		InputURL:    s.d.Playback.InputURL(ps.ID),
@@ -854,6 +859,7 @@ func (s *Server) handleStartHLS(w http.ResponseWriter, r *http.Request) {
 	}
 	entry.decision, entry.offset, entry.started, entry.updatedAt = dec, p.offset, true, s.now()
 	s.transcodes.put(entry)
+	s.reconcilePlayEncoders(ctx, pr.User.ID, pr.ClientID, p.key, p.sessionID)
 	unlockEncoder()
 	unlockOwner()
 	s.writeMasterPlaylist(w, r, p.sessionID, hs, ps.Info, dec)
