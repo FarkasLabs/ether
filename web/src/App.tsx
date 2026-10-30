@@ -59,6 +59,7 @@ import {
   useSearchParams,
 } from "react-router-dom";
 import { AppProvider, useApp } from "./app-context";
+import { hasExemptDiagnostic } from "./lib/health";
 import { t } from "./i18n";
 import { I18nProvider, LanguagePicker } from "./i18n/react";
 import { Brand, BrandSplash, EtherMark } from "./components/brand";
@@ -185,10 +186,13 @@ function HealthIndicator() {
   // Before setup finishes, unconfigured sources and an unclaimed server are
   // expected, not problems: show progress instead of a red verdict.
   const settingUp = !boot.setupComplete;
+  // "Operational" means no participating failure. It does not mean TLS was verified.
   const label = settingUp
     ? t("Setting up")
     : overall === "ok" || overall === "off"
-      ? t("All systems normal")
+      ? hasExemptDiagnostic(health)
+        ? t("Operational")
+        : t("All systems normal")
       : overall === "unknown"
         ? dashboard
           ? t("Status incomplete")
