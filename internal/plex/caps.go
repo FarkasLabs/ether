@@ -142,6 +142,14 @@ func productCaps(product, platform, device string) baseCaps {
 	return genericCaps
 }
 
+// androidClient reports Plex's Android family: Plex for Android, Android TV,
+// and Fire TV builds that identify as Android. A platform of Android does
+// not include Plex Web.
+func androidClient(product, platform string) bool {
+	product = strings.ToLower(product)
+	return strings.Contains(product, "android") || (strings.EqualFold(platform, "android") && !strings.Contains(product, "web"))
+}
+
 func fireTV4KMax(model string) bool {
 	switch strings.ToUpper(strings.TrimSpace(model)) {
 	case "AFTKA", "AFTKRT":
@@ -160,9 +168,7 @@ func (pr *Request) ClientCaps(remoteMaxKbps int) core.ClientCaps {
 	// https://developer.amazon.com/docs/device-specs/identify-fire-tv-devices.html
 	// Do not infer 4K from an AFT prefix (HD devices share it) or DeviceName,
 	// which is an owner-editable friendly name. Request limits apply below.
-	product := strings.ToLower(pr.Product)
-	android := strings.Contains(product, "android") || (strings.EqualFold(pr.Platform, "android") && !strings.Contains(product, "web"))
-	if android && (fireTV4KMax(pr.Device) || fireTV4KMax(pr.Model)) {
+	if androidClient(pr.Product, pr.Platform) && (fireTV4KMax(pr.Device) || fireTV4KMax(pr.Model)) {
 		b.maxHeight = 2160
 		b.hdr10 = true
 	}

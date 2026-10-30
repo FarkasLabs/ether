@@ -6,6 +6,8 @@ import (
 	"regexp"
 	"strings"
 	"testing"
+
+	"github.com/braedonsaunders/ether/internal/core"
 )
 
 // Plex for Android builds pre-play selectors from the selected Media's
@@ -84,6 +86,84 @@ func TestAndroidTrackChoiceSurvivesStop(t *testing.T) {
 		t.Fatalf("replay decision %d: %s", replay.Code, replay.Body.String())
 	}
 	assertRemuxAudio(t, replay.Body.String(), "fre", "eng")
+}
+
+func TestDecisionListsAlternateTracksForAndroidOnly(t *testing.T) {
+	f := newFixture()
+	defer f.srv.Close()
+	path := "/library/metadata/" + fightClub.Key.String()
+	clients := []struct {
+		name     string
+		product  string
+		platform string
+		device   string
+		android  bool
+	}{
+		{"web", "Plex Web", "Chrome", "", false},
+		{"web reporting android", "Plex Web", "Android", "", false},
+		{"ios", "Plex for iOS", "iOS", "", false},
+		{"apple tv", "Plex for Apple TV", "tvOS", "", false},
+		{"android", "Plex for Android", "Android", "", true},
+		{"android tv", "Plex for Android (TV)", "Android", "SHIELD Android TV", true},
+		{"fire tv", "Plex for Android", "Android", "AFTKA", true},
+	}
+	for _, client := range clients {
+		t.Run(client.name, func(t *testing.T) {
+			hdr := []string{"X-Plex-Product", client.product, "X-Plex-Platform", client.platform}
+			if client.device != "" {
+				hdr = append(hdr, "X-Plex-Device", client.device)
+			}
+			f.trans.decision = core.Decision{Kind: core.DecisionDirectPlay, VideoCopy: true, AudioCopy: true, Container: "mkv"}
+			slug := strings.ReplaceAll(client.name, " ", "-")
+			direct := f.get(t, "/video/:/transcode/universal/decision?path="+path+"&protocol=hls&directPlay=1&directStream=1&session=alt-direct-"+slug, hdr...)
+			if direct.Code != http.StatusOK {
+				t.Fatalf("direct decision %d: %s", direct.Code, direct.Body.String())
+			}
+			assertAlternateTracks(t, direct.Body.String(), client.android, true)
+
+			f.trans.decision = core.Decision{Kind: core.DecisionRemux, VideoCopy: true, AudioCopy: true, Container: "mkv"}
+			remux := f.get(t, "/video/:/transcode/universal/decision?path="+path+"&protocol=hls&directPlay=0&directStream=1&session=alt-remux-"+slug, hdr...)
+			if remux.Code != http.StatusOK {
+				t.Fatalf("remux decision %d: %s", remux.Code, remux.Body.String())
+			}
+			assertAlternateTracks(t, remux.Body.String(), client.android, false)
+		})
+	}
+}
+
+func assertAlternateTracks(t *testing.T, body string, android, direct bool) {
+	t.Helper()
+	audios := audioTags(body)
+	subs := streamTagsOfType(body, "3")
+	if !android {
+		if len(audios) != 1 || len(subs) != 0 || strings.Contains(body, `languageCode="fre"`) {
+			t.Fatalf("non-Android decision listed alternate tracks:\n%s", body)
+		}
+		return
+	}
+	if len(audios) < 2 || audioByLang(audios, "fre") == "" || len(subs) < 2 {
+		t.Fatalf("Android decision hid alternate tracks: audio=%q subs=%d\n%s", audios, len(subs), body)
+	}
+	other := audioByLang(audios, "fre")
+	if direct {
+		if !strings.Contains(other, `location="direct"`) {
+			t.Fatalf("Android direct-play alternate: %s", other)
+		}
+		return
+	}
+	if strings.Contains(other, `decision="`) || !strings.Contains(other, `index="`) {
+		t.Fatalf("Android remux alternate: %s", other)
+	}
+}
+
+func streamTagsOfType(body, streamType string) []string {
+	var out []string
+	for _, tag := range streamTagRe.FindAllString(body, -1) {
+		if strings.Contains(tag, `streamType="`+streamType+`"`) {
+			out = append(out, tag)
+		}
+	}
+	return out
 }
 
 func friendMetadata(t *testing.T, f *variantFixture, target string) string {

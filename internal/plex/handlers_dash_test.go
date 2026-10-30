@@ -138,14 +138,15 @@ func TestDASHDecisionMedia(t *testing.T) {
 			}
 		}
 	}
-	if video != 1 || selectedAudio != 1 || otherAudio != 1 {
+	if video != 1 || selectedAudio != 1 || otherAudio != 0 {
 		t.Fatalf("video=%d selected audio=%d other audio=%d", video, selectedAudio, otherAudio)
 	}
 }
 
-// Two audio tracks on a DASH decision: only the selected one is a segment
-// representation. The other keeps the HLS shape (listed, no decision, no
-// location) so Plex Web does not request session/{id}/2/.
+// An Android DASH decision lists both audio tracks, and only the selected
+// one is a segment representation. The other keeps the HLS shape (source
+// index, no decision, no location) so the client does not request
+// session/{id}/2/.
 func TestDASHDecisionUnselectedAudioIsNotASegment(t *testing.T) {
 	f, _ := dashFixture()
 	defer f.srv.Close()
@@ -157,7 +158,8 @@ func TestDASHDecisionUnselectedAudioIsNotASegment(t *testing.T) {
 			{Index: 4, Type: "audio", Codec: "aac", Language: "fr", Channels: 2},
 		},
 	}
-	rec := f.get(t, "/video/:/transcode/universal/decision?"+strings.Replace(dashQuery, "session=web-1", "session=dash-two", 1), jsonAccept...)
+	rec := f.get(t, "/video/:/transcode/universal/decision?"+strings.Replace(dashQuery, "session=web-1", "session=dash-two", 1),
+		append(jsonAccept, "X-Plex-Product", "Plex for Android", "X-Plex-Platform", "Android")...)
 	if rec.Code != 200 {
 		t.Fatalf("decision: %d %s", rec.Code, rec.Body.String())
 	}
