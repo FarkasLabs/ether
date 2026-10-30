@@ -69,37 +69,33 @@ func TestDASHCopySessionLadderUnderCopyEnabled(t *testing.T) {
 	}
 	rec := httptest.NewRecorder()
 	s.ServeManifest(rec, httptest.NewRequest(http.MethodGet, "/start.mpd", nil))
-	body := rec.Body.String()
-	if !strings.Contains(body, `selectionPriority="1"`) {
-		t.Fatalf("copy primary missing startup bias:\n%s", body)
-	}
-	if n := strings.Count(body, "mimeType=\"video/mp4\""); n < 2 {
-		t.Fatalf("video representations = %d\n%s", n, body)
+	if n := strings.Count(rec.Body.String(), "mimeType=\"video/mp4\""); n < 2 {
+		t.Fatalf("video representations = %d\n%s", n, rec.Body.String())
 	}
 }
 
-// Real muxer coverage: encoded primary with lower ABR rungs on a short grid.
+// Real muxer coverage matters: the copied primary can have GOPs longer than
+// the grid, while encoded lower rungs must start on that same grid after seeks.
 func TestIntegrationDASHShortLadderLongGOPAndSeeks(t *testing.T) {
 	e := newRealEnv(t, WithoutHWDetection(), withRungDwell(0), WithSegmentTimeout(10*time.Second))
-	e.m.UpdateConfig(config.Transcode{ABRLadder: true})
+	e.m.UpdateConfig(config.Transcode{ABRLadder: true, ABRLadderUnderCopy: true})
 	e.gen(t, "ladder.mkv", 24, "-vf", "scale=1280:720", "-c:v", "libx264", "-preset", "ultrafast", "-crf", "18", "-g", "240", "-sc_threshold", "0", "-c:a", "aac", "-ac", "2")
 	info, err := e.m.Probe(context.Background(), e.url("ladder.mkv"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	d := core.Decision{
-		Kind: core.DecisionTranscode, VideoCodec: "h264", MaxHeight: 720, BitrateKbps: 8000,
-		AudioStream: 1, AudioCodec: "aac", Container: ContainerFMP4,
+	d := e.m.Decide(*info, plexWeb, allow())
+	if !d.VideoCopy {
+		t.Fatalf("expected copy primary: %+v", d)
 	}
 	ds := startDASH(t, e.m, core.HLSRequest{SessionID: "short-grid", InputURL: e.url("ladder.mkv"), Info: *info, Decision: d})
 	doc := dashManifest(t, ds)
 	if len(doc.Period.Sets[0].Reps) < 2 || doc.Period.Sets[0].Template.Duration != 2 {
 		t.Fatalf("missing short ladder: %+v", doc)
 	}
-	// Slot 3 lies inside the first ten-second GOP; it must remain decodable
-	// (encoded primaries may open slightly past the slot start).
-	if st, first := e.probeDASH(t, "base.mp4", dashGet(t, ds, 0, 3)); st.CodecName != "h264" || first > 6.1 {
-		t.Fatalf("base segment: %+v at %v", st, first)
+	// Slot 3 lies inside the first ten-second GOP; it must remain decodable.
+	if st, first := e.probeDASH(t, "copy.mp4", dashGet(t, ds, 0, 3)); st.CodecName != "h264" || first > 6 {
+		t.Fatalf("copy alias: %+v at %v", st, first)
 	}
 	// Request a lower rendition far forward and then back. Both tracks retain
 	// absolute times; independently decoded video starts with a keyframe.
@@ -114,9 +110,53 @@ func TestIntegrationDASHShortLadderLongGOPAndSeeks(t *testing.T) {
 	defer srv.Close()
 	e.playMPD(t, srv.URL+"/start.mpd", 24)
 
-	// Start cold mid-title: audio and every video rendition must open on the
-	// short encode grid at the requested media time.
+	// Start cold inside a long GOP: no earlier run can hide copied-audio
+	// preroll with already cached segments. Video keeps its decode keyframe,
+	// but audio must begin at the requested media time on either rendition.
 	cold := startDASH(t, e.m, core.HLSRequest{SessionID: "cold-seek", InputURL: e.url("ladder.mkv"), Info: *info, Decision: d, StartOffset: 18 * time.Second})
+	_, afirst := e.probeDASH(t, "cold-audio.mp4", dashGet(t, cold, 1, 9))
+	if math.Abs(afirst-18) > 0.1 {
+		t.Fatalf("cold seek audio starts %v, want 18", afirst)
+	}
+	_, vfirst := e.probeDASH(t, "cold-video.mp4", dashGet(t, cold, 0, 9))
+	if vfirst > 18 || vfirst < 9.9 {
+		t.Fatalf("cold copy seek lost its decode keyframe: %v", vfirst)
+	}
+	_, lower := e.probeDASH(t, "cold-lower.mp4", dashGet(t, cold, 2, 9))
+	if math.Abs(lower-afirst) > 0.1 {
+		t.Fatalf("cold lower rendition starts video=%v audio=%v", lower, afirst)
+	}
+}
+
+// Encode-primary counterpart: cold seeks land on the short encode grid.
+func TestIntegrationDASHEncodeShortLadderAndSeeks(t *testing.T) {
+	e := newRealEnv(t, WithoutHWDetection(), withRungDwell(0), WithSegmentTimeout(10*time.Second))
+	e.m.UpdateConfig(config.Transcode{ABRLadder: true})
+	e.gen(t, "ladder-enc.mkv", 24, "-vf", "scale=1280:720", "-c:v", "libx264", "-preset", "ultrafast", "-crf", "18", "-g", "240", "-sc_threshold", "0", "-c:a", "aac", "-ac", "2")
+	info, err := e.m.Probe(context.Background(), e.url("ladder-enc.mkv"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	d := core.Decision{
+		Kind: core.DecisionTranscode, VideoCodec: "h264", MaxHeight: 720, BitrateKbps: 8000,
+		AudioStream: 1, AudioCodec: "aac", Container: ContainerFMP4,
+	}
+	ds := startDASH(t, e.m, core.HLSRequest{SessionID: "enc-grid", InputURL: e.url("ladder-enc.mkv"), Info: *info, Decision: d})
+	doc := dashManifest(t, ds)
+	if len(doc.Period.Sets[0].Reps) < 2 || doc.Period.Sets[0].Template.Duration != 2 {
+		t.Fatalf("missing short ladder: %+v", doc)
+	}
+	if st, first := e.probeDASH(t, "base.mp4", dashGet(t, ds, 0, 3)); st.CodecName != "h264" || first > 6.1 {
+		t.Fatalf("base segment: %+v at %v", st, first)
+	}
+	for _, n := range []int{9, 2} {
+		_, vfirst := e.probeDASH(t, "lower.mp4", dashGet(t, ds, 2, n))
+		_, afirst := e.probeDASH(t, "audio.mp4", dashGet(t, ds, 1, n))
+		if math.Abs(vfirst-float64(2*n)) > 0.1 || math.Abs(afirst-vfirst) > 0.1 {
+			t.Fatalf("segment %d starts video=%v audio=%v", n, vfirst, afirst)
+		}
+	}
+	cold := startDASH(t, e.m, core.HLSRequest{SessionID: "enc-cold", InputURL: e.url("ladder-enc.mkv"), Info: *info, Decision: d, StartOffset: 18 * time.Second})
 	_, afirst := e.probeDASH(t, "cold-audio.mp4", dashGet(t, cold, 1, 9))
 	if math.Abs(afirst-18) > 0.1 {
 		t.Fatalf("cold seek audio starts %v, want 18", afirst)

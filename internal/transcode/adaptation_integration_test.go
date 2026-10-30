@@ -21,14 +21,14 @@ func TestIntegrationAdaptiveRapidMediaHandoff(t *testing.T) {
 		t.Fatal(err)
 	}
 	info.Keyframes = e.keyframeIndex(t, "adaptive.mkv")
-	e.m.UpdateConfig(config.Transcode{ABRLadder: true})
+	e.m.UpdateConfig(config.Transcode{ABRLadder: true, ABRLadderUnderCopy: true})
 	for _, transport := range []string{ContainerMPEGTS, ContainerFMP4, core.ProtocolDASH} {
 		t.Run(transport, func(t *testing.T) {
 			proto, container := core.ProtocolHLS, transport
 			if transport == core.ProtocolDASH {
 				proto, container = core.ProtocolDASH, ContainerFMP4
 			}
-			d := core.Decision{Kind: core.DecisionTranscode, Container: container, VideoCodec: "h264", MaxHeight: 720, BitrateKbps: 8000, AudioStream: 1, AudioCodec: "aac"}
+			d := core.Decision{Kind: core.DecisionRemux, Container: container, VideoCopy: true, AudioCopy: true, AudioStream: 1}
 			hs, err := e.m.StartHLS(t.Context(), core.HLSRequest{SessionID: "adaptive-" + transport, InputURL: e.url("adaptive.mkv"), Info: *info, Decision: d, Protocol: proto, SegmentDuration: 2 * time.Second})
 			if err != nil {
 				t.Fatal(err)

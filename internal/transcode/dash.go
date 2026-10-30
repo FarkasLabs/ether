@@ -46,9 +46,8 @@ type dashRep struct {
 	Bandwidth         int // bits per second
 	Width             int
 	Height            int
-	SampleRate        int
-	Channels          int
-	SelectionPriority int // >0 writes selectionPriority= (startup bias)
+	SampleRate int
+	Channels   int
 }
 
 func (r dashRep) mimeType() string {
@@ -130,9 +129,6 @@ func renderMPD(duration, segDur time.Duration, initURL, mediaURL string, reps []
 			if r.Width > 0 && r.Height > 0 {
 				fmt.Fprintf(&b, " width=\"%d\" height=\"%d\"", r.Width, r.Height)
 			}
-			if r.SelectionPriority > 0 {
-				fmt.Fprintf(&b, " selectionPriority=\"%d\"", r.SelectionPriority)
-			}
 			b.WriteString(">\n\t\t\t</Representation>\n")
 		}
 		b.WriteString("\t\t</AdaptationSet>\n")
@@ -156,9 +152,6 @@ func renderMPD(duration, segDur time.Duration, initURL, mediaURL string, reps []
 		} else {
 			if r.Width > 0 && r.Height > 0 {
 				fmt.Fprintf(&b, " width=\"%d\" height=\"%d\"", r.Width, r.Height)
-			}
-			if r.SelectionPriority > 0 {
-				fmt.Fprintf(&b, " selectionPriority=\"%d\"", r.SelectionPriority)
 			}
 			b.WriteString(">\n")
 		}
@@ -459,9 +452,6 @@ func renderLiveMPD(start, now time.Time, segDur time.Duration, last int, initURL
 		fmt.Fprintf(&b, `</SegmentTimeline></SegmentTemplate><Representation id="%d" mimeType="%s" codecs="%s" bandwidth="%d"`, r.ID, r.mimeType(), html.EscapeString(r.Codecs), r.Bandwidth)
 		if r.Width > 0 {
 			fmt.Fprintf(&b, ` width="%d" height="%d"`, r.Width, r.Height)
-		}
-		if r.SelectionPriority > 0 {
-			fmt.Fprintf(&b, ` selectionPriority="%d"`, r.SelectionPriority)
 		}
 		if r.SampleRate > 0 {
 			fmt.Fprintf(&b, ` audioSamplingRate="%d"`, r.SampleRate)

@@ -339,16 +339,6 @@ func dashRepsLadder(info core.MediaInfo, primary core.Decision, rungs []rung) []
 			reps = append(reps, r)
 		}
 	}
-	// Prefer the video-copy primary at startup when soft rungs are present
-	// (Firefox ABR otherwise tends to open on the cheapest Representation).
-	if primary.VideoCopy && len(rungs) > 1 {
-		for i := range reps {
-			if reps[i].Kind == "video" && reps[i].ID == 0 {
-				reps[i].SelectionPriority = 1
-				break
-			}
-		}
-	}
 	return reps
 }
 
