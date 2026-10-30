@@ -45,8 +45,8 @@ func TestDASHEncodeLadderHonorsExplicitDuration(t *testing.T) {
 	}
 }
 
-func TestDASHCopySessionHasNoLadder(t *testing.T) {
-	m := newTestManager(t, newFakeRunner(), config.Transcode{ABRLadder: true})
+func TestDASHCopySessionHasNoLadderWhenDisabled(t *testing.T) {
+	m := newTestManager(t, newFakeRunner(), config.Transcode{ABRLadder: true, ABRLadderUnderCopy: false})
 	s := startDASHSession(t, m, dashRequest(t, "copy-noladder", 10*time.Minute))
 	if !s.decision.VideoCopy {
 		t.Fatalf("fixture must be video copy: %+v", s.decision)
@@ -61,16 +61,11 @@ func TestDASHCopySessionHasNoLadder(t *testing.T) {
 	}
 }
 
-func TestDASHCopySessionLadderUnderCopyOptIn(t *testing.T) {
+func TestDASHCopySessionLadderUnderCopyEnabled(t *testing.T) {
 	m := newTestManager(t, newFakeRunner(), config.Transcode{ABRLadder: true, ABRLadderUnderCopy: true})
 	s := startDASHSession(t, m, dashRequest(t, "copy-under", 10*time.Minute))
 	if !s.decision.VideoCopy || len(s.rungs) < 2 {
 		t.Fatalf("under-copy ladder: copy=%v rungs=%+v", s.decision.VideoCopy, s.rungs)
-	}
-	for _, r := range s.rungs[1:] {
-		if r.decision.VideoCodec != "h264" || r.height < minCopyLadderHeight {
-			t.Errorf("soft rung %+v / %+v", r, r.decision)
-		}
 	}
 	rec := httptest.NewRecorder()
 	s.ServeManifest(rec, httptest.NewRequest(http.MethodGet, "/start.mpd", nil))

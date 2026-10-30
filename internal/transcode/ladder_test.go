@@ -55,22 +55,23 @@ func ladderInfo(h, bitrate int) core.MediaInfo {
 func TestBuildRungsBelowSourceOnly(t *testing.T) {
 	adapt := adaptiveSettings{Ladder: true}
 	info := ladderInfo(2160, 40000)
-	// Video copy (Direct Stream): no soft rungs unless abrLadderUnderCopy.
+	// Video copy without LadderUnderCopy: primary only.
 	copyPrimary := core.Decision{Kind: core.DecisionRemux, VideoCopy: true, AudioCopy: true, AudioStream: 1, Container: ContainerMPEGTS}
 	if got := buildRungs(info, copyPrimary, adapt); len(got) != 1 || got[0].id != "base" || got[0].height != 2160 {
 		t.Fatalf("copy ladder = %+v", got)
 	}
+	// With LadderUnderCopy: full soft range (legacy abrLadder under copy).
 	under := adaptiveSettings{Ladder: true, LadderUnderCopy: true}
 	got := buildRungs(info, copyPrimary, under)
 	var underIDs []string
 	for _, r := range got {
 		underIDs = append(underIDs, r.id)
 	}
-	if strings.Join(underIDs, ",") != "base,1080p8m,720p4m" {
-		t.Fatalf("under-copy ladder = %v (want base+1080+720 only)", underIDs)
+	if strings.Join(underIDs, ",") != "base,1080p8m,720p4m,480p1500k,360p800k" {
+		t.Fatalf("under-copy ladder = %v", underIDs)
 	}
 	for _, r := range got[1:] {
-		if r.decision.VideoCodec != "h264" || r.decision.VideoCopy || r.height < minCopyLadderHeight {
+		if r.decision.VideoCopy || r.decision.VideoCodec != "h264" {
 			t.Errorf("under-copy soft rung %+v / %+v", r, r.decision)
 		}
 	}

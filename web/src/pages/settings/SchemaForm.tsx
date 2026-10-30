@@ -379,7 +379,7 @@ function advancedFieldMeta(key: string): { label: string; help?: string } | unde
       return {
         label: t("Adaptive bitrate ladder · Direct Stream"),
         help: t(
-          "Off by default to match Plex Media Server. When on, Direct Stream sessions also advertise SDR 720p+ encode fallbacks for bandwidth drops.",
+          "On by default with the transcode ladder. When off, Direct Stream sessions advertise only the copy primary with no soft encode fallbacks.",
         ),
       };
     default:

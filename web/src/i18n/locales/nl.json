@@ -29,6 +29,7 @@
   "m_002e76b6340a46": "Volgt {link}. Wijzig hieronder iets om {name} eigen keuzes te geven.",
   "m_002eb9f37e57c6": "Tot",
   "m_0030896e629200": "Editor",
+  "m_00355a0c3f28ba": "Adaptieve bitrateschaal · Direct Stream",
   "m_0036fd7c0fbe0f": {
     "one": "titel zou worden verborgen",
     "other": "titels zouden worden verborgen"
@@ -315,6 +316,7 @@
   "m_023ba8488e3b27": "De indexers gaven niets bruikbaars terug voor deze titel.",
   "m_023be4145aa024": "trash eigen formaten",
   "m_023e08f3532e68": "Einde (UTC)",
+  "m_023e1222c317ed": "Standaard aan samen met de transcode-ladder. Uit betekent dat Direct Stream-sessies alleen de copy-primary aankondigen, zonder zachte encode-fallbacks.",
   "m_023e3ef44bb4b3": "Een kleine voetafdruk. Alleen de nuttige momenten.",
   "m_02413a2ace086e": "Voorbeeldcontext",
   "m_024331c508a2cd": "Sluiten",
@@ -3713,6 +3715,7 @@
   "m_1bcbabf3800f0d": "Elke kijker krijgt deze release als eerste, ongeacht het kwaliteitsprofiel, tenzij hun app hem niet kan decoderen, een kijker een andere versie kiest of de gezondheidscontrole mislukt. Offline downloads behouden hun eigen profiel.",
   "m_1bcca98c4d6c29": "Land",
   "m_1bcdbbe42c13f9": "Debrid-accounts",
+  "m_1bce5c1abf707f": "Adaptieve bitrateschaal · Transcode",
   "m_1bd432e5470026": "Kanaal verwijderen mislukt",
   "m_1bd4df6d055713": "Artwork van {name} aanpassen",
   "m_1bd5864b59f5f2": "Herstellen",
@@ -4140,6 +4143,7 @@
   "m_1eec347fe25b76": "Bottoken",
   "m_1eed4d9469a112": "Instellingen worden in de database opgeslagen. Een wijziging op een node bereikt de andere binnen 30 seconden.",
   "m_1ef30bfb482ac5": "Join-token intrekken?",
+  "m_1ef55a8dbf237a": "Biedt lagere encode-kwaliteiten tijdens transcodes zodat clients de kwaliteit aan de bandbreedte kunnen aanpassen.",
   "m_1ef8ef0f7b9e4b": "gebruikers vrienden accounts",
   "m_1ef9486033e861": "Releases met een lagere score worden niet afgespeeld.",
   "m_1f02244d04f6fa": "Bewerk het na het toevoegen zoals elk ander profiel.",

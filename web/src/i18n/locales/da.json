@@ -29,6 +29,7 @@
   "m_002e76b6340a46": "Følger {link}. Ændr noget nedenfor for at give {name} egne valg.",
   "m_002eb9f37e57c6": "Til",
   "m_0030896e629200": "Editor",
+  "m_00355a0c3f28ba": "Adaptiv bitrate-stige · Direct Stream",
   "m_0036fd7c0fbe0f": {
     "one": "titel ville blive skjult",
     "other": "titler ville blive skjult"
@@ -315,6 +316,7 @@
   "m_023ba8488e3b27": "Indexerne returnerede intet brugbart for denne titel.",
   "m_023be4145aa024": "trash brugerdefinerede formater",
   "m_023e08f3532e68": "Slut (UTC)",
+  "m_023e1222c317ed": "Slået til som standard sammen med transcode-stigen. Når den er slået fra, annoncerer Direct Stream-sessioner kun copy-primary uden bløde encode-fallbacks.",
   "m_023e3ef44bb4b3": "Et lille aftryk. Kun de nyttige øjeblikke.",
   "m_02413a2ace086e": "Forhåndsvisningskontekst",
   "m_024331c508a2cd": "Afvis",
@@ -3713,6 +3715,7 @@
   "m_1bcbabf3800f0d": "Hver seer får denne udgivelse først, uanset kvalitetsprofil, medmindre deres app ikke kan afkode den, en seer vælger en anden version, eller den fejler sit tilstandstjek. Offline-downloads beholder deres egen profil.",
   "m_1bcca98c4d6c29": "Land",
   "m_1bcdbbe42c13f9": "Debrid-konti",
+  "m_1bce5c1abf707f": "Adaptiv bitrate-stige · Transcode",
   "m_1bd432e5470026": "Kunne ikke slette kanalen",
   "m_1bd4df6d055713": "Tilpas grafik for {name}",
   "m_1bd5864b59f5f2": "Nulstil",
@@ -4140,6 +4143,7 @@
   "m_1eec347fe25b76": "Bot-token",
   "m_1eed4d9469a112": "Indstillinger gemmes i databasen. En ændring på en vilkårlig node når de andre inden for 30 sekunder.",
   "m_1ef30bfb482ac5": "Tilbagekald join-token?",
+  "m_1ef55a8dbf237a": "Annoncerer lavere encode-kvaliteter under transcodes, så klienter kan tilpasse kvaliteten til båndbredden.",
   "m_1ef8ef0f7b9e4b": "brugere venner konti",
   "m_1ef9486033e861": "Udgivelser med lavere score afspilles ikke.",
   "m_1f02244d04f6fa": "Rediger den som enhver anden profil, når den er tilføjet.",
