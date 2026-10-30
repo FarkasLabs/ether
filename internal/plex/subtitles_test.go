@@ -13,7 +13,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/braedonsaunders/ether/internal/config"
 	"github.com/braedonsaunders/ether/internal/core"
 	"github.com/braedonsaunders/ether/internal/langtag"
 	"github.com/braedonsaunders/ether/internal/store"
@@ -21,7 +20,7 @@ import (
 )
 
 // fakeSubtitles is Deps.Subtitles: cached sidecars per title, viewer picks,
-// canned search offers, and a record of prefetch/timeline calls.
+// and canned search offers.
 type fakeSubtitles struct {
 	mu         sync.Mutex
 	cached     map[core.RatingKey][]core.StreamInfo // automatic, one per language
@@ -31,7 +30,6 @@ type fakeSubtitles struct {
 	searchErr  error
 	searchLang string
 	searchRel  string
-	prefetched []core.RatingKey
 	atOffset   time.Duration
 	atFormat   string
 }
@@ -107,13 +105,6 @@ func (f *fakeSubtitles) CachedSidecars(_ context.Context, t *core.Title, _ *core
 		}
 	}
 	return out
-}
-
-func (f *fakeSubtitles) PrefetchSidecars(_ context.Context, t *core.Title, _ *core.User) bool {
-	f.mu.Lock()
-	defer f.mu.Unlock()
-	f.prefetched = append(f.prefetched, t.Key)
-	return true
 }
 
 func (f *fakeSubtitles) SearchSubtitles(_ context.Context, t *core.Title, _ *core.User, lang, release string) ([]SubtitleOffer, error) {
@@ -440,26 +431,14 @@ func TestTranscodeSidecarSubtitlesFollowSessionOffset(t *testing.T) {
 	}
 }
 
-func TestDetailPrefetchesSidecarsWhenNotWarmed(t *testing.T) {
-	f, subs := newSubtitleFixture(t)
-	f.get(t, "/library/metadata/"+fightClub.Key.String())
-	if len(subs.prefetched) != 1 || subs.prefetched[0] != fightClub.Key {
-		t.Fatalf("prefetch: %v", subs.prefetched)
+func TestDetailDoesNotDownloadSidecars(t *testing.T) {
+	f, _ := newSubtitleFixture(t)
+	rec := f.get(t, "/library/metadata/"+fightClub.Key.String())
+	if rec.Code != http.StatusOK {
+		t.Fatalf("detail: %d %s", rec.Code, rec.Body.String())
 	}
-	// Lists and non-playable pages do not prefetch.
-	f.get(t, "/library/metadata/"+breakingBad.Key.String())
-	f.get(t, "/library/sections/1/all?type=1")
-	if len(subs.prefetched) != 1 {
-		t.Fatalf("unexpected prefetch: %v", subs.prefetched)
-	}
-	base := f.srv.d.Config
-	f.srv.d.Config = func() config.Config {
-		c := base()
-		c.Cache.DisableSpeculation = true
-		return c
-	}
-	f.get(t, "/library/metadata/"+alien.Key.String())
-	if len(subs.prefetched) != 1 {
-		t.Fatalf("prefetch with speculation off: %v", subs.prefetched)
+	rec = f.get(t, "/library/metadata/"+breakingBad.Key.String())
+	if rec.Code != http.StatusOK {
+		t.Fatalf("show: %d", rec.Code)
 	}
 }

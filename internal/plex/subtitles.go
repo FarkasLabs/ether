@@ -6,14 +6,9 @@ package plex
 // (GET/PUT /library/metadata/{key}/subtitles) and the transcode sidecar
 // endpoint (/video/:/transcode/universal/subtitles).
 //
-// When sidecars are fetched: the detail-page playback warm-up resolves a
-// release and runs playback's AugmentMedia, which downloads the viewer's
-// missing preferred languages; when that warm-up does not run the detail
-// request asks the subtitle service for a budgeted background prefetch
-// (SubtitlePrefetcher); Play does the same synchronously (Prepare). Metadata
-// and play queues rendered before a session list whatever is already
-// cached; a live session lists its enriched streams plus any track picked
-// since.
+// Sidecar files are downloaded only when the viewer picks a search result.
+// Detail pages and playback list whatever is already cached (SubtitleCatalog);
+// a live session lists its enriched streams plus any track picked since.
 
 import (
 	"bytes"
@@ -38,12 +33,6 @@ import (
 // streams embedded already lists (by ExternalURL) or covers (by language).
 type SubtitleCatalog interface {
 	CachedSidecars(ctx context.Context, t *core.Title, u *core.User, embedded []core.StreamInfo) []core.StreamInfo
-}
-
-// SubtitlePrefetcher is optionally implemented by Deps.Subtitles: start a
-// budgeted background fetch of the viewer's missing languages for a title.
-type SubtitlePrefetcher interface {
-	PrefetchSidecars(ctx context.Context, t *core.Title, u *core.User) bool
 }
 
 // SubtitleOffer is one subtitle search result.
@@ -87,17 +76,6 @@ func (s *Server) withCachedSidecars(ctx context.Context, u *core.User, t *core.T
 	out := info
 	out.Streams = append(append(make([]core.StreamInfo, 0, len(info.Streams)+len(extra)), info.Streams...), extra...)
 	return out
-}
-
-// prefetchSidecars asks for a background sidecar fetch for a detail page
-// whose playback warm-up did not run. Off with the owner's speculation
-// switch, like the warm-up itself.
-func (s *Server) prefetchSidecars(ctx context.Context, pr *Request, t *core.Title) {
-	p, ok := s.d.Subtitles.(SubtitlePrefetcher)
-	if !ok || pr.User == nil || s.cfg().Cache.DisableSpeculation {
-		return
-	}
-	p.PrefetchSidecars(context.WithoutCancel(ctx), t, pr.User)
 }
 
 // resolveSubtitle finds a chosen subtitle stream in info: the same sidecar
