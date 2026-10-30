@@ -690,3 +690,28 @@ func TestManagerWallClockResumeAndRetry(t *testing.T) {
 		t.Fatal("backwards clock correction postponed checks beyond a period")
 	}
 }
+
+// OnAvailable hears each newly found version once, without the manager's
+// lock held (it may read Status).
+func TestOnAvailableOncePerVersionOutsideLock(t *testing.T) {
+	var heard []string
+	var h *harness
+	h = newHarness(t, func(o *ManagerOptions) {
+		o.OnAvailable = func(v string) {
+			_ = h.m.Status() // deadlocks if called under the lock
+			heard = append(heard, v)
+		}
+		o.SelfApply, o.NotifyReason = false, "notify only"
+	})
+	h.run(3 * DefaultPollInterval)
+	if len(heard) != 1 || heard[0] != "2.0.0" {
+		t.Fatalf("heard %v", heard)
+	}
+	h.checker.mu.Lock()
+	h.checker.upd = binUpdate("2.1.0", []byte("2.1.0"))
+	h.checker.mu.Unlock()
+	h.run(2 * DefaultPollInterval)
+	if len(heard) != 2 || heard[1] != "2.1.0" {
+		t.Fatalf("heard %v", heard)
+	}
+}

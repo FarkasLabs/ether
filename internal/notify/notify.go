@@ -42,7 +42,7 @@ ALTER TABLE notify_queue ADD COLUMN claimed_at INTEGER NOT NULL DEFAULT 0;
 
 const Redacted = "[configured]"
 
-var Kinds = []string{"server.started", "server.stopping", "server.crash", "provider.recovered", "indexer.recovered", "cache.recovered", "playback.start", "playback.stop", "playback.error", "playback.failover", "provider.outage", "indexer.outage", "indexer.budget", "cache.full", "cert.renewed", "update.available", "user.joined", "title.available", "newsletter.weekly", "test"}
+var Kinds = []string{"server.started", "server.stopping", "server.crash", "provider.recovered", "indexer.recovered", "cache.recovered", "playback.start", "playback.stop", "playback.error", "playback.failover", "provider.outage", "indexer.outage", "indexer.budget", "cache.full", "cert.renewed", "update.available", "backup.failed", "user.joined", "title.available", "newsletter.weekly", "test"}
 
 type Channel struct {
 	SMTPMode      string            `json:"smtpMode,omitempty"`

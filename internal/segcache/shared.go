@@ -430,6 +430,7 @@ func (s *sharedCache) evictWhere(id string, expire bool) error {
 		return ErrClosed
 	}
 	prot, _ := s.c.protected()
+	need := s.c.floorNeed()
 	ctx, cancel := s.context()
 	defer cancel()
 	var files []string
@@ -439,7 +440,16 @@ func (s *sharedCache) evictWhere(id string, expire bool) error {
 		if err := tx.QueryRowContext(ctx, `SELECT used FROM segcache_pool WHERE id=1`).Scan(&used); err != nil {
 			return err
 		}
-		if id == "" && !expire && (budget <= 0 || used <= budget) {
+		// The budget, lowered while the volume is below its free-space floor.
+		limit := int64(-1)
+		if budget > 0 {
+			limit = budget
+		}
+		if need > 0 && (limit < 0 || used-need < limit) {
+			limit = max(used-need, 0)
+		}
+		within := func() bool { return limit < 0 || used <= limit }
+		if id == "" && !expire && within() {
 			return nil
 		}
 		// Segment-granular eviction, with a bounded batch per sweep. Shared pins
@@ -487,7 +497,7 @@ func (s *sharedCache) evictWhere(id string, expire bool) error {
 		deltas := map[string][2]int64{}
 		for _, v := range cs {
 			expired := expire && (p.Mode == "off" || (p.Retention > 0 && time.Since(time.Unix(v.touched, 0)) >= p.Retention))
-			if prot[v.id] || (id == "" && !expired && (budget <= 0 || used <= budget)) {
+			if prot[v.id] || (id == "" && !expired && within()) {
 				continue
 			}
 			if _, err = tx.ExecContext(ctx, `DELETE FROM segcache_segments WHERE release_id=? AND segment=? AND file=?`, v.id, v.seg, v.file); err != nil {
@@ -518,6 +528,9 @@ func (s *sharedCache) evictWhere(id string, expire bool) error {
 	s.c.mu.Lock()
 	s.c.metrics.EvictedBytes += reclaimed
 	s.c.mu.Unlock()
+	// Shared usage is not tracked in c.used; credit the bytes freed so the
+	// next sweep before a fresh measurement does not free them again.
+	s.c.floorFreed(reclaimed)
 	return nil
 }
 func (s *sharedCache) heartbeat() {

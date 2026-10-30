@@ -76,6 +76,10 @@ type Cache struct {
 
 	saveMu sync.Mutex // serialises pins.json writes
 
+	floorMu sync.Mutex // guards diskFn and floor; taken before mu
+	diskFn  DiskUsageFunc
+	floor   floorStat
+
 	protMu    sync.Mutex
 	protFn    func() map[string]bool
 	protSet   map[string]bool
@@ -614,6 +618,26 @@ func (c *Cache) dropLocked(e *entry) {
 
 func (c *Cache) overBudgetLocked() bool { return c.budget > 0 && c.used > c.budget }
 
+// overLimitLocked reports whether usage is above limit (see limitLocked).
+func (c *Cache) overLimitLocked(limit int64) bool { return limit >= 0 && c.used > limit }
+
+// limitLocked is the usage eviction aims for: the budget, lowered so that
+// need more bytes are freed when the volume is below its floor. -1 means
+// no limit.
+func (c *Cache) limitLocked(need int64) int64 {
+	limit := int64(-1)
+	if c.budget > 0 {
+		limit = c.budget
+	}
+	if need > 0 {
+		floorLimit := max(c.used-need, 0)
+		if limit < 0 || floorLimit < limit {
+			limit = floorLimit
+		}
+	}
+	return limit
+}
+
 func (c *Cache) pinnedLocked(releaseID string) bool { return len(c.pins[releaseID]) > 0 }
 
 // evict brings usage down to the budget, skipping pinned and protected
@@ -624,8 +648,9 @@ func (c *Cache) evict() {
 		c.shared.sweep(false)
 		return
 	}
+	need := c.floorNeed()
 	c.mu.Lock()
-	if c.closed || !c.overBudgetLocked() {
+	if c.closed || !c.overLimitLocked(c.limitLocked(need)) {
 		c.mu.Unlock()
 		return
 	}
@@ -642,7 +667,8 @@ func (c *Cache) evict() {
 		c.parkDirty = false
 	}
 	var victims []*entry
-	for c.overBudgetLocked() {
+	limit := c.limitLocked(need)
+	for c.overLimitLocked(limit) {
 		e := c.victimLocked(prot)
 		if e == nil {
 			break
@@ -657,11 +683,16 @@ func (c *Cache) evict() {
 		c.dropLocked(e)
 		victims = append(victims, e)
 	}
-	if c.overBudgetLocked() {
+	if c.overLimitLocked(limit) {
 		if now := c.now(); now.Sub(c.lastOverLog) >= overBudgetLogEvery {
 			c.lastOverLog = now
-			c.logger.Warn("segment cache over budget: everything left is pinned or protected",
-				"used", c.used, "budget", c.budget, "segments", c.segCount)
+			if c.overBudgetLocked() {
+				c.logger.Warn("segment cache over budget: everything left is pinned or protected",
+					"used", c.used, "budget", c.budget, "segments", c.segCount)
+			} else {
+				c.logger.Warn("segment cache volume below its free-space floor: everything left is pinned or protected",
+					"used", c.used, "shortBytes", c.used-limit, "segments", c.segCount)
+			}
 		}
 	}
 	c.mu.Unlock()

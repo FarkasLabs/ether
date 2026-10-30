@@ -585,6 +585,10 @@ only updates the draft until you review and save.
   adaptive mode gives repeat watches extra retention credit. Detail-page opening
   windows, resume windows and next-episode warming are independently
   configurable and always yield priority to active streams.
+- **Free-space floor:** Whatever the budget, the cache keeps at least 10 GiB or
+  5% of its volume free (whichever is smaller), evicting the oldest unprotected
+  segments when other files fill the disk. Segments of active streams and
+  pinned titles are never evicted for it.
 - **Managed preloading:** Opt-in movie and TV preloading ranks candidates using
   a configurable blend of household watch history and catalogue popularity, with
   a rolling episode window around each active viewer's progress. Preloading

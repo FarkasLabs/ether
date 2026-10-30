@@ -125,6 +125,10 @@ type ManagerOptions struct {
 	// NodeName labels this node in status (the lease holder is compared
 	// with it); optional.
 	NodeName string
+	// OnAvailable, when set, hears each newly found release version. It is
+	// called without the manager's lock held; repeated checks that find the
+	// same version do not call it again in this process.
+	OnAvailable func(version string)
 
 	Now             func() time.Time
 	Location        *time.Location // maintenance window zone (default time.Local)
@@ -411,6 +415,13 @@ func (m *Manager) check(ctx context.Context, now time.Time) {
 
 	upd, err := client.Check(ctx)
 
+	var announce string
+	defer func() {
+		// Runs after the unlock below.
+		if announce != "" && m.opts.OnAvailable != nil {
+			m.opts.OnAvailable(announce)
+		}
+	}()
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.lastCheck = now
@@ -438,6 +449,7 @@ func (m *Manager) check(ctx context.Context, now time.Time) {
 	if m.available == nil || m.available.Version() != upd.Version() {
 		m.resetAvailableLocked()
 		m.log.Info("updater: update available", "current", m.opts.CurrentVersion, "available", upd.Version(), "kind", upd.Artifact.Kind)
+		announce = upd.Version()
 	}
 	m.available = upd
 }

@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"sync"
+	"time"
 
 	"github.com/braedonsaunders/ether/internal/config"
 	"github.com/braedonsaunders/ether/internal/service"
@@ -98,6 +99,17 @@ func (a *App) initUpdates() {
 		RequestRestart: a.requestRestart,
 		Boot:           a.updates.boot,
 		Logger:         log,
+		OnAvailable: func(version string) {
+			if a.notifications == nil {
+				return
+			}
+			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+			defer cancel()
+			// Once per version across restarts and cluster nodes.
+			if err := a.notifications.UpdateAvailable(ctx, a.opts.Version, version); err != nil {
+				log.Warn("update notification", "version", version, "err", err)
+			}
+		},
 	})
 	if !a.updates.mgr.Enabled() {
 		log.Debug("update checks disabled", "reason", a.updates.mgr.Status().DisabledReason)
