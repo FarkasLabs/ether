@@ -30,7 +30,11 @@ var errRequireRemux = errors.New("playback: failover requires remux")
 func (m *Manager) openInitial(ctx context.Context, s *session, profile core.QualityProfile) (*generation, error) {
 	var res *core.Resolution
 	var cached *probeCache
-	if warm := m.takeWarmResolution(ctx, s.ident, profile, s.caps, s.prefer); warm != nil {
+	original := ""
+	if s.title != nil {
+		original = s.title.Language
+	}
+	if warm := m.takeWarmResolution(ctx, s.ident, profile, s.caps, s.prefer, original); warm != nil {
 		res, cached = warm.res, warm.probe
 	}
 	if res == nil {

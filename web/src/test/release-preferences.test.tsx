@@ -130,4 +130,16 @@ describe("release preferences", () => {
       ]),
     ).toMatch(/cannot match the same release/);
   });
+
+  it("adds original-language audio without a typed value", async () => {
+    const { drawer } = await openProfile();
+    await addPreference(drawer, "Original audio", "Original-language audio", "Prefer");
+    expect(within(drawer).getAllByDisplayValue("Original audio")).toHaveLength(1);
+    expect(
+      within(drawer).getAllByText(
+        /Subtitles do not count, and a filename alone cannot make the comparison/,
+      ).length,
+    ).toBeGreaterThan(0);
+    expect(within(drawer).getByText(/cannot be compared from a filename/)).toBeInTheDocument();
+  });
 });

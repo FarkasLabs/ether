@@ -845,6 +845,16 @@ func (s *Service) missingSources() error {
 	return nil
 }
 
+// titleOriginalLanguage is the catalogue field Title.Language.
+// An unknown title language stays empty. Custom-format scoring may
+// assume English for an untagged release; this comparison must not.
+func titleOriginalLanguage(t *core.Title) string {
+	if t == nil {
+		return ""
+	}
+	return strings.TrimSpace(t.Language)
+}
+
 func searchCacheKey(req core.SearchRequest) string {
 	return fmt.Sprintf("%s|%v|%s|%d|%d|%d", req.Type, req.IDs, strings.ToLower(req.Title), req.Year, req.Season, req.Episode)
 }
@@ -1000,7 +1010,10 @@ func (s *Service) rankCandidates(ctx context.Context, req core.ResolveRequest, s
 		ct := CandidateTrace{ReleaseID: rel.ID, Name: rel.Name, Indexer: rel.Indexer, Size: rel.Size}
 		pinned := pinID != "" && rel.ID == pinID
 		ct.Pinned = pinned
-		policyResult := policy.Evaluate(rel)
+		// Catalogue language is applied here, after the search cache.
+		// The cache stores indexer results only; it does not freeze a
+		// previous title's original language or a custom-format guess.
+		policyResult := policy.Evaluate(rel, releasepolicy.Context{OriginalLanguage: titleOriginalLanguage(t)})
 		if len(profile.ReleaseRules) > 0 {
 			ct.Preferences = &policyResult
 		}

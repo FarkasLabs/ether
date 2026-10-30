@@ -35,6 +35,15 @@ type Result struct {
 	Preferences  []int         `json:"preferences"`
 	Explanations []Explanation `json:"explanations"`
 }
+
+// Context is evidence that belongs to the title, not the release.
+// OriginalLanguage is the catalogue title's original language
+// (Title.Language) when the caller has that title. An empty value means
+// the comparison is unavailable. It is never a guessed language, and it
+// is not part of the profile selection hash or the search cache key.
+type Context struct {
+	OriginalLanguage string
+}
 type condition struct {
 	core.ReleaseCondition
 	re *regexp.Regexp
@@ -100,6 +109,14 @@ func compileCondition(c core.ReleaseCondition) (condition, error) {
 	out := condition{ReleaseCondition: c}
 	numeric := c.Field == "height" || c.Field == "size_gib"
 	switch c.Field {
+	case "audio_matches_original":
+		if c.Operator != "" && c.Operator != "equals" {
+			return out, fmt.Errorf("unsupported comparison %q", c.Operator)
+		}
+		if strings.TrimSpace(c.Value) != "" {
+			return out, fmt.Errorf("original-language audio takes no value")
+		}
+		return out, nil
 	case "language", "subtitles", "name", "group", "source", "video", "audio", "height", "size_gib", "indexer", "protocol", "edition", "hdr":
 	default:
 		return out, fmt.Errorf("unsupported field %q", c.Field)
@@ -129,14 +146,14 @@ func compileCondition(c core.ReleaseCondition) (condition, error) {
 	}
 	return out, nil
 }
-func (p *Policy) Evaluate(rel core.Release) Result {
+func (p *Policy) Evaluate(rel core.Release, ctx Context) Result {
 	out := Result{Preferences: []int{}, Explanations: []Explanation{}}
 	for _, r := range p.rules {
 		if r.source.Disabled {
 			continue
 		}
-		e := Explanation{ID: r.source.ID, Name: r.source.Name, Action: r.source.Action, State: group(r.conditions, r.source.Match, rel), Outcome: "pass"}
-		if len(r.unless) > 0 && group(r.unless, "any", rel) == Match {
+		e := Explanation{ID: r.source.ID, Name: r.source.Name, Action: r.source.Action, State: group(r.conditions, r.source.Match, rel, ctx), Outcome: "pass"}
+		if len(r.unless) > 0 && group(r.unless, "any", rel, ctx) == Match {
 			e.Outcome = "skip"
 			out.Preferences = append(out.Preferences, 0)
 			out.Explanations = append(out.Explanations, e)
@@ -146,7 +163,7 @@ func (p *Policy) Evaluate(rel core.Release) Result {
 		switch r.source.Action {
 		case "require":
 			if e.State != Match {
-				if len(r.fallback) > 0 && group(r.fallback, "any", rel) == Match {
+				if len(r.fallback) > 0 && group(r.fallback, "any", rel, ctx) == Match {
 					out.Fallback++
 					e.Outcome = "fallback"
 				} else {
@@ -257,10 +274,28 @@ func singleValueField(field string) bool {
 	}
 }
 
-func group(cs []condition, mode string, r core.Release) State {
+// UsesOriginalAudio reports whether evaluation of these rules needs
+// the catalogue original language. Disabled rules do not.
+func UsesOriginalAudio(rules []core.ReleaseRule) bool {
+	for _, r := range rules {
+		if r.Disabled {
+			continue
+		}
+		for _, group := range [][]core.ReleaseCondition{r.Conditions, r.Unless, r.Fallback} {
+			for _, c := range group {
+				if c.Field == "audio_matches_original" {
+					return true
+				}
+			}
+		}
+	}
+	return false
+}
+
+func group(cs []condition, mode string, r core.Release, ctx Context) State {
 	unknown := false
 	for _, c := range cs {
-		s := c.evaluate(r)
+		s := c.evaluate(r, ctx)
 		if mode == "any" && s == Match {
 			return Match
 		}
@@ -277,7 +312,10 @@ func group(cs []condition, mode string, r core.Release) State {
 	}
 	return Match
 }
-func (c condition) evaluate(r core.Release) State {
+func (c condition) evaluate(r core.Release, ctx Context) State {
+	if c.Field == "audio_matches_original" {
+		return c.originalAudioState(r, ctx)
+	}
 	if c.Operator == "range" {
 		n := float64(r.Info.Height)
 		if c.Field == "size_gib" {
@@ -376,6 +414,37 @@ func (c condition) evaluate(r core.Release) State {
 // and zh-CN for Simplified. A script never supplies a region: zh-Hant
 // is not Taiwan, and zh-Hans is not mainland China. A tag that states
 // both keeps both. No other language gets the region-to-script alias.
+// originalAudioState matches positively declared audio to the
+// catalogue original language. Subtitles, filename words, multi,
+// and an assumed language are not evidence. A missing catalogue
+// language or a missing audio declaration is unknown, not a miss
+// and not English.
+func (c condition) originalAudioState(r core.Release, ctx Context) State {
+	original := strings.TrimSpace(ctx.OriginalLanguage)
+	if original == "" || declaredLanguage(original).name == "" {
+		return Unknown
+	}
+	want := declaredLanguage(original)
+	known := false
+	unspecified := false
+	for _, v := range r.Info.Languages {
+		if v == "" || v == "multi" || v == "und" {
+			continue
+		}
+		known = true
+		switch compareLanguage(declaredLanguage(v), want) {
+		case langExact:
+			return Match
+		case langUnspecified:
+			unspecified = true
+		}
+	}
+	if !known || unspecified {
+		return Unknown
+	}
+	return Miss
+}
+
 func (c condition) languageState(r core.Release) State {
 	values := r.Info.Languages
 	if c.Field == "subtitles" {

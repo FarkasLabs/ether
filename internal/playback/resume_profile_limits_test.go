@@ -208,12 +208,43 @@ func TestWarmCacheRuleEditInvalidatesSameName(t *testing.T) {
 		profileObj: core.QualityProfile{Name: "1080p", MaxHeight: 1080, MinHeight: 720, ReleaseRules: rules},
 	}
 	caps := core.ClientCaps{MaxHeight: 1080, VideoCodecs: []string{"h264"}}
-	if !warmAcceptable(e, e.profileObj, caps) {
+	if !warmAcceptable(e, e.profileObj, caps, "") {
 		t.Fatal("unchanged rules rejected a warm release")
 	}
 	edited := e.profileObj
 	edited.ReleaseRules = []core.ReleaseRule{{ID: "a", Name: "Norwegian", Action: "require", Conditions: []core.ReleaseCondition{{Field: "language", Operator: "equals", Value: "sv"}}}}
-	if warmAcceptable(e, edited, caps) {
+	if warmAcceptable(e, edited, caps, "") {
 		t.Fatal("same-name rule edit reused the warm release")
+	}
+}
+func TestWarmCatalogueLanguageIsContextNotAProfileFact(t *testing.T) {
+	rules := []core.ReleaseRule{{ID: "o", Name: "Original audio", Action: "prefer", Conditions: []core.ReleaseCondition{{Field: "audio_matches_original", Operator: "equals"}}}}
+	e := &warmEntry{
+		res:              &core.Resolution{Release: core.Release{ID: "r", Info: core.ReleaseInfo{Height: 1080, VideoCodec: "h264"}}},
+		profileObj:       core.QualityProfile{Name: "1080p", MaxHeight: 1080, MinHeight: 720, ReleaseRules: rules},
+		originalAudio:    true,
+		originalLanguage: "ja",
+	}
+	caps := core.ClientCaps{MaxHeight: 1080, VideoCodecs: []string{"h264"}}
+	if !warmAcceptable(e, e.profileObj, caps, "ja") {
+		t.Fatal("same catalogue language rejected a warm release")
+	}
+	if warmAcceptable(e, e.profileObj, caps, "ko") || warmAcceptable(e, e.profileObj, caps, "") {
+		t.Fatal("catalogue language change reused a warm release")
+	}
+	plainProfile := e.profileObj
+	plainProfile.ReleaseRules = nil
+	plain := &warmEntry{
+		res:        e.res,
+		profileObj: plainProfile,
+	}
+	if !warmAcceptable(plain, plain.profileObj, caps, "ko") {
+		t.Fatal("a profile without original-audio was pinned to a catalogue language")
+	}
+	with := e.profileObj
+	without := with
+	without.ReleaseRules = nil
+	if with.ComputeSelectionKey() == without.ComputeSelectionKey() {
+		t.Fatal("original-audio rule did not change the profile selection key")
 	}
 }

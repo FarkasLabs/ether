@@ -78,6 +78,9 @@ func (h *consoleAPI) previewRules(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	out := []ConsoleRelease{}
+	// Filename preview has no catalogue title. Title preview passes
+	// that title's Language into the same Context Resolve uses.
+	note := originalLanguageNote(in.Profile.ReleaseRules, title)
 	if title != nil {
 		var trace Trace
 		// Console preview is device-neutral, just like normal release search.
@@ -102,7 +105,7 @@ func (h *consoleAPI) previewRules(w http.ResponseWriter, r *http.Request) {
 		})
 	} else {
 		for _, rel := range results {
-			v := policy.Evaluate(rel)
+			v := policy.Evaluate(rel, releasepolicy.Context{})
 			out = append(out, ConsoleRelease{Release: browserRelease(rel), Preferences: &v, Rejected: v.Rejected})
 		}
 		sort.SliceStable(out, func(i, j int) bool {
@@ -122,5 +125,23 @@ func (h *consoleAPI) previewRules(w http.ResponseWriter, r *http.Request) {
 	consoleJSON(w, 200, struct {
 		Releases []ConsoleRelease `json:"releases"`
 		Warning  string           `json:"warning,omitempty"`
-	}{Releases: out, Warning: warning})
+		Note     string           `json:"note,omitempty"`
+	}{Releases: out, Warning: warning, Note: note})
+}
+
+// originalLanguageNote tells a filename preview, or a title with no
+// catalogue language, that original-language audio cannot be decided.
+// A selected title with Title.Language set returns no note; the
+// comparison then runs inside Evaluate.
+func originalLanguageNote(rules []core.ReleaseRule, title *core.Title) string {
+	if !releasepolicy.UsesOriginalAudio(rules) {
+		return ""
+	}
+	if title == nil {
+		return "original_language_unavailable"
+	}
+	if strings.TrimSpace(title.Language) == "" {
+		return "original_language_unknown"
+	}
+	return ""
 }

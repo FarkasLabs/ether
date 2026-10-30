@@ -17,7 +17,15 @@ func evaluate(t *testing.T, rules []core.ReleaseRule, rel core.Release) Result {
 	if err != nil {
 		t.Fatal(err)
 	}
-	return p.Evaluate(rel)
+	return p.Evaluate(rel, Context{})
+}
+func evaluateWith(t *testing.T, rules []core.ReleaseRule, rel core.Release, ctx Context) Result {
+	t.Helper()
+	p, err := Compile(rules)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return p.Evaluate(rel, ctx)
 }
 func TestLanguageEvidenceAndExplicitFallback(t *testing.T) {
 	r := languageRule()
@@ -232,5 +240,94 @@ func TestEmptyProtocolIsUsenetAndUnstatedIsUnknown(t *testing.T) {
 	preview := evaluate(t, []core.ReleaseRule{rule}, core.Release{Protocol: core.ProtocolUnstated})
 	if !preview.Rejected || !preview.Unknown {
 		t.Fatalf("unstated protocol fabricated Usenet: %+v", preview)
+	}
+}
+
+func originalAudioRules() []core.ReleaseRule {
+	return []core.ReleaseRule{
+		{
+			ID: "audio-or-tag", Name: "Norwegian audio or Nordic name", Action: "prefer", Match: "any",
+			Conditions: []core.ReleaseCondition{
+				{Field: "language", Operator: "equals", Value: "no"},
+				{Field: "name", Operator: "regex", Value: `\bNORDIC\b`},
+			},
+		},
+		{
+			ID: "subs-and-original", Name: "Nordic subs with original audio", Action: "prefer", Match: "all",
+			Conditions: []core.ReleaseCondition{
+				{Field: "subtitles", Operator: "equals", Value: "no"},
+				{Field: "audio_matches_original", Operator: "equals"},
+			},
+		},
+	}
+}
+
+func TestOriginalAudioUsesCatalogueLanguageOnly(t *testing.T) {
+	rules := []core.ReleaseRule{{
+		ID: "orig", Name: "Original audio", Action: "require",
+		Conditions: []core.ReleaseCondition{{Field: "audio_matches_original", Operator: "equals"}},
+	}}
+	rel := func(audio, subs []string, name string) core.Release {
+		return core.Release{Name: name, Info: core.ReleaseInfo{Languages: audio, SubtitleLanguages: subs}}
+	}
+	ja := Context{OriginalLanguage: "ja"}
+	for _, tc := range []struct {
+		name            string
+		ctx             Context
+		rel             core.Release
+		reject, unknown bool
+	}{
+		{"foreign original", ja, rel([]string{"japanese"}, nil, "Film"), false, false},
+		{"original among other audio", ja, rel([]string{"english", "japanese"}, nil, "Film"), false, false},
+		{"different declared audio", ja, rel([]string{"english"}, nil, "Film"), true, false},
+		{"subtitles only", ja, rel(nil, []string{"japanese"}, "Film"), true, true},
+		{"unknown catalogue language", Context{}, rel([]string{"english"}, nil, "Film"), true, true},
+		{"blank catalogue language", Context{OriginalLanguage: " "}, rel([]string{"japanese"}, nil, "Film"), true, true},
+		{"unknown release audio", ja, rel(nil, nil, "Film"), true, true},
+		{"multi is not audio", ja, rel([]string{"multi"}, nil, "Film"), true, true},
+		{"nordic name is not norwegian audio", Context{OriginalLanguage: "no"}, rel(nil, nil, "Film.NORDIC"), true, true},
+		{"generic audio is not a specific original", Context{OriginalLanguage: "pt-BR"}, rel([]string{"portuguese"}, nil, "Film"), true, true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			got := evaluateWith(t, rules, tc.rel, tc.ctx)
+			if got.Rejected != tc.reject || got.Unknown != tc.unknown {
+				t.Fatalf("%+v", got)
+			}
+		})
+	}
+	if _, err := Compile([]core.ReleaseRule{{
+		ID: "bad", Name: "Original", Action: "prefer",
+		Conditions: []core.ReleaseCondition{{Field: "audio_matches_original", Operator: "equals", Value: "en"}},
+	}}); err == nil {
+		t.Fatal("original-language audio accepted a guessed value")
+	}
+}
+
+func TestCorFaceOrderIsTwoPrefersThenResidual(t *testing.T) {
+	rules := originalAudioRules()
+	ja := Context{OriginalLanguage: "ja"}
+	nordic := core.Release{Name: "Film.NORDIC", Info: core.ReleaseInfo{}}
+	original := core.Release{Name: "Film.WEB", Info: core.ReleaseInfo{Languages: []string{"japanese"}, SubtitleLanguages: []string{"norwegian"}}}
+	other := core.Release{Name: "Film.ENG", Info: core.ReleaseInfo{Languages: []string{"english"}}}
+	ranked := []Result{
+		evaluateWith(t, rules, nordic, ja),
+		evaluateWith(t, rules, original, ja),
+		evaluateWith(t, rules, other, ja),
+	}
+	if ranked[0].Preferences[0] != 1 || ranked[0].Preferences[1] != 0 || ranked[0].Rejected {
+		t.Fatalf("nordic name did not stay a first preference without becoming audio: %+v", ranked[0])
+	}
+	if ranked[1].Preferences[0] != 0 || ranked[1].Preferences[1] != 1 || ranked[1].Rejected {
+		t.Fatalf("subs plus original audio: %+v", ranked[1])
+	}
+	if ranked[2].Preferences[0] != 0 || ranked[2].Preferences[1] != 0 || ranked[2].Rejected {
+		t.Fatalf("residual release was excluded: %+v", ranked[2])
+	}
+	if !Better(ranked[0], ranked[1]) || !Better(ranked[1], ranked[2]) {
+		t.Fatal("preference order was not name-or-audio, then subs-and-original, then anything else")
+	}
+	withoutTitle := evaluateWith(t, rules, original, Context{})
+	if withoutTitle.Preferences[1] != 0 || withoutTitle.Rejected || withoutTitle.Explanations[1].Outcome != "unknown" {
+		t.Fatalf("filename context confirmed original audio: %+v", withoutTitle)
 	}
 }

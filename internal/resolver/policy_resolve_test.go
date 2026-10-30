@@ -146,7 +146,7 @@ func TestPreferenceReasonNamesTheHardRejection(t *testing.T) {
 		t.Fatal(err)
 	}
 	rel := core.Release{Name: "Film.2026.1080p", Info: core.ReleaseInfo{Languages: []string{"portuguese"}}}
-	result := policy.Evaluate(rel)
+	result := policy.Evaluate(rel, releasepolicy.Context{})
 	if !result.Rejected || len(result.Explanations) != 2 {
 		t.Fatalf("%+v", result)
 	}
@@ -186,5 +186,32 @@ func TestPinAndPreferStayAheadOfPolicyTiers(t *testing.T) {
 	got, err = unhealthy.Resolve(ctx, core.ResolveRequest{Title: matrixTitle(), Client: webCaps()})
 	if err != nil || got.Release.ID != "primary" {
 		t.Fatalf("unhealthy pin did not leave the primary tier first: %+v %v", got, err)
+	}
+}
+
+func TestSearchCacheDoesNotFreezeOriginalLanguage(t *testing.T) {
+	rules := []core.ReleaseRule{{
+		ID: "subs-and-original", Name: "Nordic subs with original audio", Action: "prefer", Match: "all",
+		Conditions: []core.ReleaseCondition{
+			{Field: "subtitles", Operator: "equals", Value: "no"},
+			{Field: "audio_matches_original", Operator: "equals"},
+		},
+	}}
+	original := rel("original", "The.Signal.1999.720p.WEB-DL-GRP", 4000)
+	original.Info = core.ReleaseInfo{Title: "The Signal", Year: 1999, Height: 720, Source: core.SourceWEBDL, VideoCodec: "h264", Languages: []string{"japanese"}, SubtitleLanguages: []string{"norwegian"}}
+	other := rel("other", "The.Signal.1999.1080p.WEB-DL.ENG-GRP", 9000)
+	other.Info = core.ReleaseInfo{Title: "The Signal", Year: 1999, Height: 1080, Source: core.SourceWEBDL, VideoCodec: "h264", Languages: []string{"english"}}
+	s := serviceWithRules(t, &fakeIndexer{releases: []core.Release{other, original}}, fakeHealth{}, rules)
+	ja := matrixTitle()
+	ja.Language = "ja"
+	first, err := s.Resolve(context.Background(), core.ResolveRequest{Title: ja, Client: plainCaps()})
+	if err != nil || first.Release.ID != "original" {
+		t.Fatalf("japanese original lost: %+v %v", first, err)
+	}
+	ko := matrixTitle()
+	ko.Language = "ko"
+	second, err := s.Resolve(context.Background(), core.ResolveRequest{Title: ko, Client: plainCaps()})
+	if err != nil || second.Release.ID != "other" {
+		t.Fatalf("search cache reused the Japanese ranking for a Korean title: %+v %v", second, err)
 	}
 }

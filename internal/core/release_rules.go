@@ -17,6 +17,8 @@ type ReleaseRule struct {
 // ReleaseCondition inspects declared release metadata, never presumed language.
 // Language and subtitle facts describe the indexer's/name's declarations, not
 // verified tracks. A missing fact is unknown, not a successful negative match.
+// audio_matches_original takes no value: evaluation compares declared audio
+// with the catalogue original language supplied beside the release.
 type ReleaseCondition struct {
 	Field    string  `json:"field"`
 	Operator string  `json:"operator"` // equals, contains, regex, range

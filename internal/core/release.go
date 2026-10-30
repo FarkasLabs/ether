@@ -135,8 +135,9 @@ type QualityProfile struct {
 	// SelectionKey is the canonical hash of this profile's configured
 	// definition, computed by resolver.SelectProfile from the pristine
 	// configured profile before download reshaping or client-cap
-	// clamping. Release rules are part of that definition. Runtime-only,
-	// never persisted with the profile.
+	// clamping. Release rules are part of that definition. The catalogue
+	// original language is not: it is per-title evaluation context, not a
+	// profile fact. Runtime-only, never persisted with the profile.
 	SelectionKey string `json:"-"`
 }
 

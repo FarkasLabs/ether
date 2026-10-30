@@ -11,7 +11,7 @@ import {
 import { ArrowDown, ArrowUp, ChevronDown, Plus, Trash2, Upload, Download } from "lucide-react";
 import { useEffect, useId, useRef, useState } from "react";
 import { DragHandle, SortableList } from "../../components/Sortable";
-import { t, getLocale } from "../../i18n";
+import { t, getLocale, localized } from "../../i18n";
 import { useLocale } from "../../i18n/react";
 import { searchSelectLabels } from "../../i18n/appkit-labels";
 import { apiFetch, errorMessage, isAbort } from "../../lib/api";
@@ -19,9 +19,10 @@ import type { QualityProfile, ReleaseCondition, ReleaseRule } from "../../lib/ty
 import type { ConsoleRelease } from "../../lib/releases";
 import { TitlePicker } from "./Search";
 
-const FIELDS = (): [string, string][] => [
+const FIELDS = localized((): [string, string][] => [
   ["language", t("Declared audio language")],
   ["subtitles", t("Declared subtitle language")],
+  ["audio_matches_original", t("Original-language audio")],
   ["name", t("Release name")],
   ["group", t("Release group")],
   ["source", t("Source")],
@@ -33,7 +34,7 @@ const FIELDS = (): [string, string][] => [
   ["edition", t("Edition")],
   ["indexer", t("Indexer")],
   ["protocol", t("Protocol")],
-];
+]);
 
 const SINGLE_VALUE = new Set([
   "group",
@@ -59,7 +60,13 @@ const CHOICES: Record<string, string[]> = {
 };
 
 function fieldLabel(field: string) {
-  return FIELDS().find(([value]) => value === field)?.[1] ?? field;
+  return FIELDS.find(([value]) => value === field)?.[1] ?? field;
+}
+
+function mentionsOriginal(rule: ReleaseRule) {
+  return [rule.conditions, rule.unless ?? [], rule.fallback ?? []].some((group) =>
+    group.some((c) => c.field === "audio_matches_original"),
+  );
 }
 
 function languageSuggestions() {
@@ -179,6 +186,7 @@ function ConditionEditor({
 }) {
   const numeric = ["height", "size_gib"].includes(c.field);
   const language = ["language", "subtitles"].includes(c.field);
+  const original = c.field === "audio_matches_original";
   return (
     <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center">
       <div className="min-w-0 sm:min-w-40 sm:flex-1">
@@ -186,11 +194,17 @@ function ConditionEditor({
           {...searchSelectLabels()}
           ariaLabel={t("What it describes")}
           value={c.field}
-          options={FIELDS().map(([value, label]) => ({ value, label }))}
+          options={FIELDS.map(([value, label]) => ({ value, label }))}
           onChange={(v) => onChange(retarget(c, v))}
         />
       </div>
-      {numeric ? (
+      {original ? (
+        <p className="text-xs text-fg-muted sm:flex-1">
+          {t(
+            "Declared audio must match this title's original language. Subtitles do not count, and a filename alone cannot make the comparison.",
+          )}
+        </p>
+      ) : numeric ? (
         <div className="flex items-center gap-2">
           <Input
             className="w-24"
@@ -286,7 +300,7 @@ function ConditionGroup({
   );
 }
 
-type PreviewBody = { releases?: ConsoleRelease[]; warning?: string };
+type PreviewBody = { releases?: ConsoleRelease[]; warning?: string; note?: string };
 
 export function ReleasePreferences({
   profile,
@@ -318,7 +332,9 @@ export function ReleasePreferences({
     const value = term.trim();
     if (!value || rules.length >= 32) return;
     const c = condition(field);
-    if (c.operator === "range") {
+    if (field === "audio_matches_original") {
+      c.value = "";
+    } else if (c.operator === "range") {
       const [min, max] = value.split(/[-–]/).map((part) => part.trim());
       c.min = min ? Number(min) : 0;
       c.max = max != null && max !== "" ? Number(max) : c.min;
@@ -411,7 +427,7 @@ export function ReleasePreferences({
                 {...searchSelectLabels()}
                 ariaLabel={t("What it describes")}
                 value={field}
-                options={FIELDS().map(([value, label]) => ({ value, label }))}
+                options={FIELDS.map(([value, label]) => ({ value, label }))}
                 onChange={setField}
               />
             </div>
@@ -433,6 +449,13 @@ export function ReleasePreferences({
           <p className="text-xs text-fg-muted">
             {t("Suggestions are optional. You can type any language, region, group or text.")}
           </p>
+          {field === "audio_matches_original" && (
+            <p className="text-xs text-fg-muted">
+              {t(
+                "Declared audio must match this title's original language. Subtitles do not count, and a filename alone cannot make the comparison.",
+              )}
+            </p>
+          )}
         </div>
         {(error || importError || conflict) && (
           <p role="alert" className="text-sm text-danger">
@@ -620,6 +643,30 @@ export function ReleasePreferences({
   );
 }
 
+function originalPreviewNote(mode: "names" | "title", rules: ReleaseRule[], serverNote: string) {
+  if (!rules.some(mentionsOriginal)) return "";
+  if (mode === "names" || serverNote === "original_language_unavailable") {
+    return t(
+      "Original-language audio cannot be compared from a filename. Search a title to use the catalog language.",
+    );
+  }
+  if (serverNote === "original_language_unknown") {
+    return t("This title has no original language, so original-language audio stays unverified.");
+  }
+  return "";
+}
+
+function explanationLabel(outcome: string, state: string, original: boolean) {
+  if (outcome === "unknown" && original) return t("Original-language audio was not confirmed.");
+  if (outcome === "unknown") return t("Needs verification");
+  if (outcome === "exclude") return t("Excluded");
+  if (outcome === "fallback") return t("Fallback");
+  if (outcome === "prefer") return t("Preferred");
+  if (outcome === "skip") return t("Exception matched");
+  if (state === "match") return t("Matches");
+  return t("Does not match");
+}
+
 function RulePreview({ profile }: { profile: QualityProfile }) {
   const [mode, setMode] = useState<"names" | "title">("names");
   const [names, setNames] = useState("");
@@ -627,17 +674,21 @@ function RulePreview({ profile }: { profile: QualityProfile }) {
   const [title, setTitle] = useState("");
   const [result, setResult] = useState<ConsoleRelease[] | null>(null);
   const [warning, setWarning] = useState("");
+  const [note, setNote] = useState("");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const [requested, setRequested] = useState(false);
   const [attempt, setAttempt] = useState(0);
+  const rules = profile.releaseRules ?? [];
   const serialized = JSON.stringify(profile);
+  const originalNote = originalPreviewNote(mode, rules, note);
   useEffect(() => {
     if (!requested) return;
     const empty = mode === "title" ? !key : !names.trim();
     if (empty) {
       setResult(null);
       setWarning("");
+      setNote("");
       setError("");
       setBusy(false);
       return;
@@ -659,6 +710,7 @@ function RulePreview({ profile }: { profile: QualityProfile }) {
           if (!current) return;
           setResult(body.releases ?? []);
           setWarning(body.warning ?? "");
+          setNote(body.note ?? "");
         })
         .catch((e) => {
           if (!current || isAbort(e)) return;
@@ -685,6 +737,7 @@ function RulePreview({ profile }: { profile: QualityProfile }) {
           setRequested(false);
           setResult(null);
           setWarning("");
+          setNote("");
           setError("");
           setBusy(false);
           setMode(e.target.value as "names" | "title");
@@ -732,6 +785,7 @@ function RulePreview({ profile }: { profile: QualityProfile }) {
         {busy ? t("Checking…") : requested ? t("Check again") : t("Preview")}
       </Button>
       <div aria-live="polite" className="space-y-2">
+        {originalNote && <p className="text-sm text-fg-muted">{originalNote}</p>}
         {warning && (
           <p role="alert" className="text-sm text-danger">
             {warning}
@@ -768,19 +822,11 @@ function RulePreview({ profile }: { profile: QualityProfile }) {
               <p key={e.id} className="text-xs text-fg-muted">
                 <span className="font-medium">{e.name}</span>
                 {" · "}
-                {e.outcome === "unknown"
-                  ? t("Needs verification")
-                  : e.outcome === "exclude"
-                    ? t("Excluded")
-                    : e.outcome === "fallback"
-                      ? t("Fallback")
-                      : e.outcome === "prefer"
-                        ? t("Preferred")
-                        : e.outcome === "skip"
-                          ? t("Exception matched")
-                          : e.state === "match"
-                            ? t("Matches")
-                            : t("Does not match")}
+                {explanationLabel(
+                  e.outcome,
+                  e.state,
+                  rules.some((rule) => rule.id === e.id && mentionsOriginal(rule)),
+                )}
               </p>
             ))}
           </div>
