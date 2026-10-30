@@ -87,8 +87,6 @@ type SubtitleExtractor interface {
 	ExtractSubtitle(ctx context.Context, inputURL string, streamIndex int, codec string, w io.Writer) error
 }
 
-
-
 // DecideOptions are per-request choices from the Plex decision request.
 type DecideOptions struct {
 	// DisableVideoTranscode prevents optional enhancement from promoting direct playback.

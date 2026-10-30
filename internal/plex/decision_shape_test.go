@@ -26,6 +26,7 @@ func coreDecision(kind string) core.Decision {
 //     (same shape PMS uses for streams in library metadata)
 //   - local fix (shaped): decision copy/transcode + segments-av /
 //     segments-subtitle / sidecar location, like the selected stream
+//
 // This test pins the wire bytes so a real PMS capture can be diffed
 // attribute-by-attribute instead of argued from memory.
 func TestAndroidDecisionListsAllTracks(t *testing.T) {
