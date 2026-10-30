@@ -1870,6 +1870,10 @@ export function createFakeServer(opts: FakeOptions = {}) {
         return json({ ok: true });
       case "POST /auth/pin":
         return json({ handle: "h1", code: "ABCD", authUrl: "https://app.plex.tv/auth#?code=ABCD" });
+      case "POST /auth/session":
+        return json({ done: true, token: "ether-admin-mock", expiresAt: 0 });
+      case "DELETE /auth/session":
+        return json({ ok: true });
       case "GET /llm/providers":
         return json({ providers: MOCK_LLM_PROVIDERS });
       case "POST /llm/models": {

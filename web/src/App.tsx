@@ -190,7 +190,9 @@ function HealthIndicator() {
     : overall === "ok" || overall === "off"
       ? t("All systems normal")
       : overall === "unknown"
-        ? t("Checking…")
+        ? dashboard
+          ? t("Status incomplete")
+          : t("Checking…")
         : LEVEL_LABEL[overall];
   return (
     <Popover
@@ -232,9 +234,12 @@ function HealthIndicator() {
                 <span className="min-w-0 flex-1">
                   <span className="flex items-center justify-between gap-2 text-sm font-medium text-fg">
                     {h.label}
-                    <LevelBadge level={h.level} />
+                    <LevelBadge level={h.level} label={h.statusLabel} />
                   </span>
                   <span className="block truncate text-xs text-fg-muted">{h.summary}</span>
+                  {h.note ? (
+                    <span className="mt-1 block text-xs text-fg-subtle">{h.note}</span>
+                  ) : null}
                 </span>
               </Link>
             </li>
@@ -349,8 +354,15 @@ function Shell() {
               variant="ghost"
               size="sm"
               onClick={() => {
-                setToken("");
-                window.location.reload();
+                // End the session on the server too, so a copy cannot outlive
+                // sign-out; leave the browser either way.
+                void api
+                  .signOut()
+                  .catch(() => undefined)
+                  .finally(() => {
+                    setToken("");
+                    window.location.reload();
+                  });
               }}
             >
               <LogOut size={15} /> <span className="hidden sm:inline">{t("Sign out")}</span>

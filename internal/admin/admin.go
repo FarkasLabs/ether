@@ -67,6 +67,17 @@ type SignIn interface {
 	PINToken(ctx context.Context, id string) (string, error)
 }
 
+// Sessions issues and revokes owner console sessions (satisfied by
+// *auth.Service). Sign-in hands the browser a session that only opens this
+// API, never the owner's plex.tv account token.
+type Sessions interface {
+	// IssueOwnerSession exchanges an owner credential for a session. It
+	// fails with core.ErrUnauthorized unless credential is the owner's.
+	IssueOwnerSession(ctx context.Context, credential string) (token string, expires time.Time, err error)
+	// RevokeOwnerSession ends a session; other tokens are ignored.
+	RevokeOwnerSession(ctx context.Context, token string) error
+}
+
 // UserStore is the user-administration surface (satisfied by core.Auth
 // implementations; only the two admin methods are required here).
 type UserStore interface {
@@ -107,8 +118,12 @@ type Deps struct {
 	// SignIn powers "Sign in with Plex" on the admin login screen.
 	SignIn SignIn
 
-	// IsOwnerToken reports whether a bearer token belongs to the owner.
+	// IsOwnerToken reports whether a bearer token (an owner credential or
+	// a console session) belongs to the owner.
 	IsOwnerToken func(ctx context.Context, token string) bool
+
+	// Sessions backs console sign-in and sign-out.
+	Sessions Sessions
 
 	// Provider/integration testers used by the wizard and settings pages.
 	TestUsenet        func(ctx context.Context, p config.UsenetProvider) error
@@ -249,10 +264,12 @@ func (h *Handler) routes() *http.ServeMux {
 	// Public bootstrap: minimal, non-sensitive; the SPA needs it before auth.
 	mux.HandleFunc("GET /api/bootstrap", h.handleBootstrap)
 	mux.HandleFunc("GET /api/health", h.handleBootstrap)
-	// Public sign-in: yields a token only to the browser that started the
-	// PIN, and only if it belongs to the owner.
+	// Public sign-in: yields a console session only to the browser that
+	// started the PIN, and only if the account owns the server.
 	mux.HandleFunc("POST /api/auth/pin", h.limitAuth(h.handleSignInStart))
 	mux.HandleFunc("GET /api/auth/pin/{handle}", h.limitAuth(h.handleSignInPoll))
+	mux.HandleFunc("POST /api/auth/session", h.limitAuth(h.handleSessionCreate))
+	mux.HandleFunc("DELETE /api/auth/session", h.limitAuth(h.handleSessionDelete))
 
 	api("GET /api/config", h.handleGetConfig)
 	api("PUT /api/config", h.handlePutConfig)

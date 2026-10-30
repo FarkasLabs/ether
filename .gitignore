@@ -22,3 +22,4 @@ node_modules/
 !/docs/install.md
 !/docs/user-guide.md
 !/packaging/community/README.md
+!/release-notes/*.md
