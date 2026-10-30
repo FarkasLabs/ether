@@ -852,6 +852,11 @@ func (s *Service) queueDownload(ctx context.Context, rel core.Release, e *entry,
 	return p, true, err
 }
 
+// errBackgroundUndecided is a background check that could not look at a
+// torrent without adding it: availability stays unknown, and a foreground
+// attempt may still add and play it.
+var errBackgroundUndecided = fmt.Errorf("%w: %w", ErrUnsupported, core.ErrForegroundOnly)
+
 // acquireOn resolves a torrent on one provider: reuse an existing torrent
 // by hash, else add it; then generate a direct link.
 func (s *Service) acquireOn(ctx context.Context, e *entry, base Payload, choose func([]File) (File, error)) (Payload, error) {
@@ -911,18 +916,18 @@ func (s *Service) acquireOn(ctx context.Context, e *entry, base Payload, choose 
 	if core.IsBackgroundCheck(ctx) && torrentID == "" {
 		fast, ok := e.p.(backgroundCacheOnlyProvider)
 		if !ok || !fast.supportsBackgroundCacheOnly() {
-			return Payload{}, ErrUnsupported
+			return Payload{}, errBackgroundUndecided
 		}
 		cached, err := e.p.CheckCached(ctx, []string{hash})
 		if err != nil {
 			if errors.Is(err, ErrUnsupported) {
-				return Payload{}, ErrUnsupported
+				return Payload{}, errBackgroundUndecided
 			}
 			observe(err)
 			if errors.Is(err, ErrAuth) {
 				return Payload{}, err
 			}
-			return Payload{}, ErrUnsupported // availability stays unknown
+			return Payload{}, errBackgroundUndecided // availability stays unknown
 		}
 		if !cached[strings.ToLower(hash)] {
 			return Payload{}, ErrUnsupported
