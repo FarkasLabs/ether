@@ -104,6 +104,9 @@ type Options struct {
 	// MigrationGate, when set, decides on PostgreSQL whether this node may
 	// apply its pending migrations now (see MigrationGate).
 	MigrationGate MigrationGate
+	// SnapshotFiles are stored with a SQLite pre-migrate snapshot (the
+	// settings and credential key matching the database), if one is taken.
+	SnapshotFiles []SnapshotFile
 }
 
 // Querier is the read side of *sql.DB and *sql.Tx.
@@ -189,14 +192,14 @@ func OpenWith(ctx context.Context, o Options) (*sql.DB, Dialect, error) {
 		if o.DataDir == "" {
 			return nil, d, errors.New("store: sqlite requires a data directory")
 		}
-		db, err := openSQLite(ctx, filepath.Join(o.DataDir, "ether.db"))
+		db, err := openSQLite(ctx, filepath.Join(o.DataDir, "ether.db"), o.SnapshotFiles)
 		return db, d, err
 	}
 }
 
 // Open opens (creating if needed) ether.db in dataDir and migrates it.
 func Open(ctx context.Context, dataDir string) (*sql.DB, error) {
-	return openSQLite(ctx, filepath.Join(dataDir, "ether.db"))
+	return openSQLite(ctx, filepath.Join(dataDir, "ether.db"), nil)
 }
 
 // OpenPath opens a database file; ":memory:" works for tests (single conn).
@@ -208,10 +211,10 @@ func OpenPath(ctx context.Context, path string) (*sql.DB, error) {
 			return OpenTestPostgres(ctx, u)
 		}
 	}
-	return openSQLite(ctx, path)
+	return openSQLite(ctx, path, nil)
 }
 
-func openSQLite(ctx context.Context, path string) (*sql.DB, error) {
+func openSQLite(ctx context.Context, path string, files []SnapshotFile) (*sql.DB, error) {
 	// journal_size_limit caps the WAL left on disk after a checkpoint; without
 	// it one large transaction leaves a WAL file that never shrinks.
 	dsn := "file:" + path + "?_txlock=immediate&_pragma=busy_timeout(10000)&_pragma=journal_mode(WAL)&_pragma=foreign_keys(1)&_pragma=synchronous(NORMAL)&_pragma=cache_size(-65536)&_pragma=temp_store(MEMORY)&_pragma=mmap_size(268435456)" +
@@ -227,7 +230,7 @@ func openSQLite(ctx context.Context, path string) (*sql.DB, error) {
 	}
 	if path == ":memory:" {
 		db.SetMaxOpenConns(1)
-	} else if ok, err := snapshotBeforeMigrate(ctx, db, path, registered()); err != nil {
+	} else if ok, err := snapshotBeforeMigrate(ctx, db, path, registered(), files); err != nil {
 		// Best effort: a full disk or read-only directory must not stop
 		// the server from starting.
 		slog.Warn("store: could not snapshot the database before migrating", "path", path+PreMigrateSuffix, "err", err)
@@ -240,6 +243,7 @@ func openSQLite(ctx context.Context, path string) (*sql.DB, error) {
 	}
 	if path != ":memory:" {
 		finishPreMigrate(path)
+		warnSchemaAhead(ctx, db, slog.Default(), path+PreMigrateSuffix)
 	}
 	// Recommended at open by the SQLite docs: analyse tables whose stats are
 	// missing or stale, bounded by the 0x10000 analysis limit so it is cheap.

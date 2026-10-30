@@ -550,8 +550,15 @@ including its node weight.
 
 Use **Activity & notifications** for playback activity and alerts. **Logs** shows
 newest entries first. If playback fails, check provider and indexer connectivity,
-quality limits and the client's supported formats. Share redacted logs when
-reporting an issue.
+quality limits and the client's supported formats.
+
+To report an issue, use **Logs → Download logs**. It saves this server's log
+files (oldest first) as one text file with its version and platform. Ether
+removes tokens, passwords, API keys, URL credentials, `Authorization` and cookie
+headers from every log line as it is written, and again in the download.
+Settings, the credential key and the database are never included. Skim the file
+before sharing it: the scrubbing recognises credentials by name and position,
+not every possible secret.
 
 ## Owner sign-in and playback access
 

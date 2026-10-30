@@ -25,6 +25,7 @@ import (
 	"github.com/braedonsaunders/ether/internal/extras"
 	"github.com/braedonsaunders/ether/internal/livetv"
 	"github.com/braedonsaunders/ether/internal/llm"
+	"github.com/braedonsaunders/ether/internal/logredact"
 	"github.com/braedonsaunders/ether/internal/markers"
 	"github.com/braedonsaunders/ether/internal/migrate"
 	"github.com/braedonsaunders/ether/internal/newznab"
@@ -188,7 +189,8 @@ func New(ctx context.Context, opts Options) (*App, error) {
 	if base == nil {
 		base = slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelInfo}))
 	}
-	a.log = slog.New(admin.TeeHandler(base.Handler(), a.logs))
+	// The in-memory buffer behind Logs gets the same scrubbing as the file.
+	a.log = slog.New(logredact.Handler(admin.TeeHandler(base.Handler(), a.logs)))
 	slog.SetDefault(a.log)
 	var err error
 	if a.instanceLock, err = acquireInstanceLock(opts.DataDir); err != nil {
@@ -205,6 +207,10 @@ func New(ctx context.Context, opts Options) (*App, error) {
 		return nil, err
 	}
 
+	// Opening the config may rewrite it for this version, so capture the
+	// files as they are now: a pre-migrate database snapshot stores them, so
+	// the snapshot can be restored together with its matching settings.
+	snapshotFiles := preUpgradeFiles(opts.DataDir)
 	if a.cfg, err = config.Open(opts.DataDir); err != nil {
 		return nil, fmt.Errorf("config: %w", err)
 	}
@@ -267,6 +273,7 @@ func New(ctx context.Context, opts Options) (*App, error) {
 	if a.db, dialect, err = store.OpenWithRetry(ctx, store.Options{
 		DataDir: opts.DataDir, Driver: dbCfg.Driver, URL: dbCfg.URL,
 		Logger: a.log.With("component", "store"), MigrationGate: gate,
+		SnapshotFiles: snapshotFiles,
 	}, store.RetryOptions{
 		MinBackoff: a.opts.DBRetryMin, MaxBackoff: a.opts.DBRetryMax,
 		OnRetry: func(attempt int, wait time.Duration, err error) {

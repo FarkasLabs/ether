@@ -2065,6 +2065,12 @@ export function createFakeServer(opts: FakeOptions = {}) {
       case "DELETE /logs":
         state.logs = [];
         return json({ ok: true });
+      case "GET /logs/download":
+        return new Response(
+          "# Ether mock logs\n" +
+            state.logs.map((e) => `${e.time} ${e.level} ${e.message}`).join("\n"),
+          { status: 200, headers: { "Content-Type": "text/plain; charset=utf-8" } },
+        );
       case "GET /collections":
         return json({ collections: state.collections });
       case "POST /collections": {

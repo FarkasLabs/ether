@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"path/filepath"
 	"strconv"
 	"sync"
 	"time"
@@ -27,6 +28,7 @@ func (a *App) buildAdmin() http.Handler {
 		ValidateExtra: a.validateExtra,
 		Logger:        a.log.With("component", "admin"),
 		Logs:          a.logs,
+		LogDir:        filepath.Join(a.opts.DataDir, "logs"),
 		Version:       a.opts.Version,
 		PlexAuth:      &plexAuth{app: a, pins: map[string]*plextv.PIN{}},
 		SignIn:        &plexSignIn{app: a, pins: map[string]*plextv.PIN{}},
