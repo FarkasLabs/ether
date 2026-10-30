@@ -352,6 +352,33 @@ func warmAcceptable(e *warmEntry, profile core.QualityProfile, caps core.ClientC
 	return true
 }
 
+// WarmProbeInfo returns the probed media info of a completed warm-up for
+// this user/client/key, for metadata/play-queue rendering before Play
+// (core.WarmProber). It never blocks on a warm-up still in flight and never
+// consumes the entry: the later Play still takes it via takeWarmResolution.
+func (m *Manager) WarmProbeInfo(user *core.User, caps core.ClientCaps, key core.RatingKey) (core.MediaInfo, bool) {
+	if user == nil || caps.ClientID == "" {
+		return core.MediaInfo{}, false
+	}
+	id := identity{userID: user.ID, clientID: caps.ClientID, key: key}
+	m.mu.Lock()
+	e := m.warm[id]
+	live := e != nil && m.now().Before(e.expires)
+	m.mu.Unlock()
+	if !live {
+		return core.MediaInfo{}, false
+	}
+	select {
+	case <-e.done:
+	default:
+		return core.MediaInfo{}, false
+	}
+	if e.probe == nil || e.probe.info.Estimated || len(e.probe.info.Streams) == 0 {
+		return core.MediaInfo{}, false
+	}
+	return e.probe.info, true
+}
+
 // takeWarmResolution consumes the warm entry for id when its release is
 // acceptable for the Play-time profile and caps (and, for a variant,
 // is the picked release); an unacceptable entry is discarded.
