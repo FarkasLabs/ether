@@ -621,17 +621,15 @@ func (s *Server) decisionMedia(t *core.Title, ps *core.PlaySession, dec core.Dec
 	return m
 }
 
-// directPlayMedia preserves stream ordering and keeps selected tracks only.
+// directPlayMedia preserves stream ordering. Every audio and subtitle
+// stays in the list; selected marks the one that will play. Plex Android
+// builds its playback track menu from this response, so dropping the
+// alternates leaves the menu empty.
 func directPlayMedia(m model.Media, streams []model.Stream) model.Media {
 	part := &m.Part[0]
-	// Like PMS, list the video and the selected audio and subtitle
-	// streams only.
 	part.Decision = "directplay"
 	var kept []model.Stream
 	for _, st := range streams {
-		if st.StreamType != 1 && (st.Selected == nil || !*st.Selected) {
-			continue
-		}
 		st.Location = "direct"
 		kept = append(kept, st)
 	}
@@ -688,6 +686,7 @@ func applyTranscodeMedia(m *model.Media, dec core.Decision, protocol string) {
 
 // applyStreamDecision shapes one already-resolved stream without registry I/O.
 func applyStreamDecision(st model.Stream, src core.StreamInfo, dec core.Decision) (model.Stream, bool) {
+	idx := st.Index
 	st.Index = nil // segments carry their own stream layout
 	switch st.StreamType {
 	case 1:
@@ -728,7 +727,8 @@ func applyStreamDecision(st model.Stream, src core.StreamInfo, dec core.Decision
 		st.Location = "segments-av"
 	case 2:
 		if st.Selected == nil || !*st.Selected {
-			return st, false
+			st.Index = idx
+			return st, true
 		}
 		st.Decision = "copy"
 		if !dec.AudioCopy {
@@ -742,7 +742,8 @@ func applyStreamDecision(st model.Stream, src core.StreamInfo, dec core.Decision
 		st.Location = "segments-av"
 	case 3:
 		if st.Selected == nil || !*st.Selected {
-			return st, false
+			st.Index = idx
+			return st, true
 		}
 		switch {
 		case dec.BurnSubtitles:
