@@ -271,6 +271,13 @@ cause.
    rows are **Waiting for a stream** and **Now available**. Check that your
    saved row policies do not hide them, and reload Plex Home.
 
+A watchlisted show becomes available through its first episode. After that,
+Ether keeps looking for each new regular episode as it airs (hourly for the
+first two days, then on the normal check interval). When a playable release
+turns up it sends one **Watchlist title available** alert for that episode and
+warms its opening, however many viewers follow the show. Specials and
+unaired episodes never trigger an alert.
+
 Plex watchlist access covers the owner and supported Plex Home members.
 Sharing a server with a friend does not grant access to that friend's Plex
 Watchlist. Trakt watchlist monitoring is a separate option and requires that
