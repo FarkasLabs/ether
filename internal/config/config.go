@@ -314,6 +314,7 @@ type Transcode struct {
 	FastStartSegment   Duration `json:"fastStartSegment"`   // ramp segment length (default 2s)
 	FastStartMaxHeight int      `json:"fastStartMaxHeight"` // ramp encode height cap (default 720)
 	ABRLadder          bool     `json:"abrLadder"`          // multi-rung master playlist / MPD
+	ABRLadderUnderCopy bool     `json:"abrLadderUnderCopy"` // soft encode rungs under Direct Stream / video-copy (off matches PMS)
 	VBVReservoir       bool     `json:"vbvReservoir"`       // constant-quality + generous VBV for capped transcodes
 	VBVBufferSeconds   int      `json:"vbvBufferSeconds"`   // VBV buffer depth in seconds of maxrate (default 8)
 	SpikeGovernor      bool     `json:"spikeGovernor"`      // clamp VBR spikes in copy streams to measured goodput

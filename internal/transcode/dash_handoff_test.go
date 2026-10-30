@@ -30,7 +30,8 @@ func TestDASHHandoffRequiresDeliveredMedia(t *testing.T) {
 func TestCachedOldDASHRepresentationDoesNotSelectAnEncoder(t *testing.T) {
 	fr := newFakeRunner()
 	m := newTestManager(t, fr, config.Transcode{ABRLadder: true})
-	s := startDASHSession(t, m, dashRequest(t, "cached-rung", 10*time.Minute))
+	// Encode primary so soft rungs exist (copy sessions omit the ladder by default).
+	s := startDASHSession(t, m, ladderEncodeDASHRequest(t, "cached-rung", 10*time.Minute))
 	old := httptest.NewRecorder()
 	s.ServeMedia(old, httptest.NewRequest(http.MethodGet, "/0/0.m4s", nil), 0, 0)
 	if old.Code != http.StatusOK {

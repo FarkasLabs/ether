@@ -61,6 +61,28 @@ func TestDASHCopySessionHasNoLadder(t *testing.T) {
 	}
 }
 
+func TestDASHCopySessionLadderUnderCopyOptIn(t *testing.T) {
+	m := newTestManager(t, newFakeRunner(), config.Transcode{ABRLadder: true, ABRLadderUnderCopy: true})
+	s := startDASHSession(t, m, dashRequest(t, "copy-under", 10*time.Minute))
+	if !s.decision.VideoCopy || len(s.rungs) < 2 {
+		t.Fatalf("under-copy ladder: copy=%v rungs=%+v", s.decision.VideoCopy, s.rungs)
+	}
+	for _, r := range s.rungs[1:] {
+		if r.decision.VideoCodec != "h264" || r.height < minCopyLadderHeight {
+			t.Errorf("soft rung %+v / %+v", r, r.decision)
+		}
+	}
+	rec := httptest.NewRecorder()
+	s.ServeManifest(rec, httptest.NewRequest(http.MethodGet, "/start.mpd", nil))
+	body := rec.Body.String()
+	if !strings.Contains(body, `selectionPriority="1"`) {
+		t.Fatalf("copy primary missing startup bias:\n%s", body)
+	}
+	if n := strings.Count(body, "mimeType=\"video/mp4\""); n < 2 {
+		t.Fatalf("video representations = %d\n%s", n, body)
+	}
+}
+
 // Real muxer coverage: encoded primary with lower ABR rungs on a short grid.
 func TestIntegrationDASHShortLadderLongGOPAndSeeks(t *testing.T) {
 	e := newRealEnv(t, WithoutHWDetection(), withRungDwell(0), WithSegmentTimeout(10*time.Second))

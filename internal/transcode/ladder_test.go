@@ -55,10 +55,24 @@ func ladderInfo(h, bitrate int) core.MediaInfo {
 func TestBuildRungsBelowSourceOnly(t *testing.T) {
 	adapt := adaptiveSettings{Ladder: true}
 	info := ladderInfo(2160, 40000)
-	// Video copy (Direct Stream): never advertise lower encode rungs.
+	// Video copy (Direct Stream): no soft rungs unless abrLadderUnderCopy.
 	copyPrimary := core.Decision{Kind: core.DecisionRemux, VideoCopy: true, AudioCopy: true, AudioStream: 1, Container: ContainerMPEGTS}
 	if got := buildRungs(info, copyPrimary, adapt); len(got) != 1 || got[0].id != "base" || got[0].height != 2160 {
 		t.Fatalf("copy ladder = %+v", got)
+	}
+	under := adaptiveSettings{Ladder: true, LadderUnderCopy: true}
+	got := buildRungs(info, copyPrimary, under)
+	var underIDs []string
+	for _, r := range got {
+		underIDs = append(underIDs, r.id)
+	}
+	if strings.Join(underIDs, ",") != "base,1080p8m,720p4m" {
+		t.Fatalf("under-copy ladder = %v (want base+1080+720 only)", underIDs)
+	}
+	for _, r := range got[1:] {
+		if r.decision.VideoCodec != "h264" || r.decision.VideoCopy || r.height < minCopyLadderHeight {
+			t.Errorf("under-copy soft rung %+v / %+v", r, r.decision)
+		}
 	}
 	// Transcode primary: cheaper rungs below the source.
 	primary := core.Decision{Kind: core.DecisionTranscode, VideoCodec: "h264", MaxHeight: 2160, BitrateKbps: 40000, AudioStream: 1, AudioCodec: "aac", Container: ContainerMPEGTS}

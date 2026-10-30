@@ -56,7 +56,8 @@ func TestH264EncodeOfHDRAlwaysToneMaps(t *testing.T) {
 
 // Ladder rungs below a Dolby Vision profile 5 primary (no HDR10 base) must
 // not be "HDR-kept" HEVC encodes of the IPT picture. Video-copy Direct
-// Stream sessions get no ladder at all.
+// Stream sessions get no ladder by default; opt-in under-copy rungs are
+// SDR H.264 at ≥720p.
 func TestLadderRungsOfDolbyVisionProfile5(t *testing.T) {
 	info := mustParse(t, "mkv_dv_p8.json")
 	info.Streams[0].DolbyVisionProfile = 5
@@ -64,6 +65,15 @@ func TestLadderRungsOfDolbyVisionProfile5(t *testing.T) {
 	copyPrimary := core.Decision{Kind: core.DecisionRemux, Container: ContainerFMP4, VideoCopy: true, VideoCodec: "hevc", AudioCopy: true, AudioStream: 1}
 	if rungs := buildRungs(info, copyPrimary, adaptiveFromConfig(config.Transcode{ABRLadder: true})); len(rungs) != 1 {
 		t.Fatalf("copy session ladder = %d", len(rungs))
+	}
+	under := buildRungs(info, copyPrimary, adaptiveFromConfig(config.Transcode{ABRLadder: true, ABRLadderUnderCopy: true}))
+	if len(under) < 2 {
+		t.Fatalf("under-copy ladder = %d", len(under))
+	}
+	for _, r := range under[1:] {
+		if r.decision.VideoCodec != "h264" || !r.decision.ToneMap || r.height < minCopyLadderHeight {
+			t.Errorf("under-copy soft rung %s: codec %s toneMap %v height %d", r.id, r.decision.VideoCodec, r.decision.ToneMap, r.height)
+		}
 	}
 	primary := core.Decision{Kind: core.DecisionTranscode, Container: ContainerFMP4, VideoCodec: "hevc", MaxHeight: 2160, BitrateKbps: 20000, AudioStream: 1, AudioCodec: "aac"}
 	rungs := buildRungs(info, primary, adaptiveFromConfig(config.Transcode{ABRLadder: true}))
@@ -118,18 +128,25 @@ func TestLadderBandwidthsAreHonest(t *testing.T) {
 	if got := buildRungs(info, toAAC, adapt)[0].avgKbps; got != want {
 		t.Errorf("base rung %d kbps, want %d", got, want)
 	}
-	// FLAC copied into every rung.
+	// FLAC copied into every rung (opt-in under-copy ladder; floor is 720p).
 	flac := core.Decision{Kind: core.DecisionRemux, VideoCopy: true, AudioStream: 2, AudioCopy: true, AudioCodec: "flac"}
-	rungs := buildRungs(info, flac, adapt)
+	under := adaptiveFromConfig(config.Transcode{ABRLadder: true, ABRLadderUnderCopy: true})
+	rungs := buildRungs(info, flac, under)
+	if len(rungs) < 2 {
+		t.Fatalf("under-copy ladder = %+v", rungs)
+	}
 	prev := rungs[0].avgKbps
 	for _, r := range rungs[1:] {
 		if r.avgKbps >= prev || r.avgKbps < minRungVideoKbps+1500 || r.decision.BitrateKbps != r.avgKbps {
 			t.Errorf("rung %s advertises %d kbps (decision %d) below %d", r.id, r.avgKbps, r.decision.BitrateKbps, prev)
 		}
+		if r.height < minCopyLadderHeight {
+			t.Errorf("under-copy soft rung below floor: %+v", r)
+		}
 		prev = r.avgKbps
 	}
-	if last := rungs[len(rungs)-1]; last.id == "360p800k" {
-		t.Errorf("a 360p rung cannot carry 1500 kbps FLAC in 800 kbps")
+	if last := rungs[len(rungs)-1]; last.id == "360p800k" || last.id == "480p1500k" {
+		t.Errorf("under-copy ladder must not advertise soft 360/480: %s", last.id)
 	}
 }
 

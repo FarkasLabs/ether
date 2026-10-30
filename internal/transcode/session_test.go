@@ -791,8 +791,11 @@ func TestMaxTranscodesCountsEncodingCopySessions(t *testing.T) {
 	}
 
 	fr2 := newFakeRunner()
-	m2 := newTestManager(t, fr2, config.Transcode{MaxTranscodes: 1, ABRLadder: true})
+	m2 := newTestManager(t, fr2, config.Transcode{MaxTranscodes: 1, ABRLadder: true, ABRLadderUnderCopy: true})
 	s2 := startSession(t, m2, remuxRequest(t, "r2", 10*time.Minute))
+	if len(s2.Rungs()) < 2 {
+		t.Fatalf("under-copy ladder missing: %+v", s2.Rungs())
+	}
 	if _, err := m2.StartHLS(context.Background(), transcodeRequest(t, "t2")); err != nil {
 		t.Fatalf("copy session blocked a transcode: %v", err)
 	}

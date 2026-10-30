@@ -321,8 +321,10 @@ file under these names:
   `resolverCommand`, a yt-dlp-compatible tool you install.
 - `personalize`: post-play ranking, detail-page headers and session-based Home
   changes.
-- `transcode`: `fastStart`, `abrLadder`, `vbvReservoir` and `spikeGovernor`
-  control adaptive streaming.
+- `transcode`: `fastStart`, `abrLadder`, `abrLadderUnderCopy`, `vbvReservoir`
+  and `spikeGovernor` control adaptive streaming. Direct Stream / video-copy
+  sessions omit soft encode rungs by default (matching PMS). Set
+  `abrLadderUnderCopy` to advertise SDR ≥720p fallbacks under a copy primary.
 - `usenet.minIdle`: warm provider connections kept ready for playback.
 
 Preview thumbnails appear while a title plays and fill in as playback

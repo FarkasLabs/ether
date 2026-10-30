@@ -48,6 +48,11 @@ var ladderSteps = []struct {
 	{"360p800k", 360, 800},
 }
 
+// minCopyLadderHeight is the softest encode rung allowed under an opt-in
+// video-copy ladder. 360p/480p under Direct Stream are a quality trap for
+// ABR clients (notably Plex Web on Firefox).
+const minCopyLadderHeight = 720
+
 // rungCodecs builds the codecs string of an encode/copy decision.
 func rungCodecs(info core.MediaInfo, d core.Decision, outHeight int) string {
 	v := info.Video()
@@ -154,18 +159,20 @@ func buildRungs(info core.MediaInfo, primary core.Decision, adapt adaptiveSettin
 	}
 	base.peakKbps = peakKbps(avg)
 	rungs := []rung{base}
-	// Direct Stream / remux (video copy) must stay on the bitstream the
-	// client asked for. Advertising cheaper encode rungs under a copy
-	// primary lets ABR clients (notably Plex Web on Firefox) switch to
-	// 360p/480p — often still HDR — and look far worse than PMS Direct
-	// Stream, which typically does not hang a ladder under a copy.
-	if !adapt.Ladder || v == nil || primary.VideoCopy {
+	// Match PMS Direct Stream by default: no soft encode ladder under a
+	// video-copy primary. Opt in with abrLadderUnderCopy for remux ABR;
+	// those soft rungs stay SDR H.264 and never drop below 720p.
+	if !adapt.Ladder || v == nil || (primary.VideoCopy && !adapt.LadderUnderCopy) {
 		return rungs
 	}
+	underCopy := primary.VideoCopy
 	audio := decisionAudioKbps(info, primary) // rungs carry the primary's audio
 	below := avg
 	for _, step := range ladderSteps {
 		if ph > 0 && step.height >= ph {
+			continue
+		}
+		if underCopy && step.height < minCopyLadderHeight {
 			continue
 		}
 		// Advertise what the rung really sends: its video never drops
@@ -183,15 +190,18 @@ func buildRungs(info core.MediaInfo, primary core.Decision, adapt adaptiveSettin
 		d.VideoCopy = false
 		d.MaxHeight = minPositive(step.height, v.Height)
 		d.BitrateKbps = total
-		// Keep HDR only when the primary keeps it in HEVC; otherwise the
-		// cheap, universally decoded SDR H.264 encode.
+		// Soft rungs under copy are always SDR H.264 (bandwidth fallbacks,
+		// not tiny HDR mush). Encode primaries may keep HDR in HEVC.
 		d.VideoCodec = "h264"
 		d.ToneMap = primary.ToneMap || encodedRange(v) != rangeSDR
-		if keepsHDR(v) && !primary.ToneMap && (primary.VideoCodec == "hevc" || (primary.VideoCopy && v.Codec == "hevc")) {
+		if !underCopy && keepsHDR(v) && !primary.ToneMap && primary.VideoCodec == "hevc" {
 			d.VideoCodec = "hevc"
 			d.ToneMap = false
 		}
 		d.Reason = primary.Reason + "; ABR rung " + step.id
+		if underCopy {
+			d.Reason = primary.Reason + "; ABR under-copy rung " + step.id
+		}
 		if enhancementSelected(primary) {
 			d.Reason = "ordinary ABR rung " + step.id + " beneath RTX Video base"
 		}
@@ -339,6 +349,16 @@ func dashRepsLadder(info core.MediaInfo, primary core.Decision, rungs []rung) []
 			}
 			r.ID = dashTrackForRung(i)
 			reps = append(reps, r)
+		}
+	}
+	// Prefer the video-copy primary at startup when soft rungs are present
+	// (Firefox ABR otherwise tends to open on the cheapest Representation).
+	if primary.VideoCopy && len(rungs) > 1 {
+		for i := range reps {
+			if reps[i].Kind == "video" && reps[i].ID == 0 {
+				reps[i].SelectionPriority = 1
+				break
+			}
 		}
 	}
 	return reps
