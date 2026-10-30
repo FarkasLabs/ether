@@ -11,7 +11,7 @@ import (
 func (s *Server) finalizeHomeRows(ctx context.Context, pr *Request, hc core.HubContext, section string, rows []model.Hub) []model.Hub {
 	engine, ok := s.d.Recommender.(core.HomeLayoutSource)
 	if !ok {
-		return rows
+		return stableHomeHubs(rows)
 	}
 	raw := make([]core.Hub, 0, len(rows))
 	byID := map[string]model.Hub{}
@@ -29,6 +29,27 @@ func (s *Server) finalizeHomeRows(ctx context.Context, pr *Request, hc core.HubC
 		if rendered, ok := byID[row.ID]; ok {
 			out = append(out, rendered)
 		}
+	}
+	return stableHomeHubs(out)
+}
+
+// stableHomeHubs drops rows a client would draw empty, and keeps the first
+// copy when the same hub was produced twice (promoted and section builders,
+// or a recommender repeating a row the front end already built).
+func stableHomeHubs(rows []model.Hub) []model.Hub {
+	seen := map[string]bool{}
+	out := make([]model.Hub, 0, len(rows))
+	for _, h := range rows {
+		if len(h.Metadata) == 0 && len(h.Directory) == 0 {
+			continue
+		}
+		if h.HubIdentifier != "" {
+			if seen[h.HubIdentifier] {
+				continue
+			}
+			seen[h.HubIdentifier] = true
+		}
+		out = append(out, h)
 	}
 	return out
 }
