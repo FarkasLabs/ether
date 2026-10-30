@@ -822,6 +822,7 @@
   "m_05ddc3d3e240fa": "ei ole",
   "m_05de79910facc6": "Suosituimmat TMDB:ssä juuri nyt",
   "m_05dee691b6a4cb": "Esikatsele ajankohtana",
+  "m_05df0f186d24f1": "Tämä opas on yli 2 Gt.",
   "m_05df6f55026b7a": "Viimeisin tavallinen jakso saatavilla olevien metatietojen mukaan; tuntemattomat päivämäärät viimeisenä",
   "m_05df964ad9f9b3": "Määrityslähde",
   "m_05dfadd1428cae": "Plexin tila",
@@ -1706,7 +1707,6 @@
     "other": "Käsitelty {count} historiamerkintää, ohitettu {skipped}."
   },
   "m_0c7a3810288c4a": "Sovellus",
-  "m_0c7e5b0f8762e0": "Valittu tiedosto ylittää tuonnin kokorajan.",
   "m_0c7eed91df4e91": "Lähdekatselijan Plex-token",
   "m_0c80f61b732d11": "Levyvälimuisti",
   "m_0c813e59cc859f": "Ether rakentaa Plex-kirjastosi TMDB:stä, joten TMDB API -avain on pakollinen. Se on ilmainen: {link}, liitä se sitten tähän ja testaa se.",
@@ -3481,6 +3481,7 @@
   "m_19acda3eee5ecf": "Kaikki",
   "m_19ad3d12ad931a": "Järjestetään jokaiselle katselijalle hänen makunsa mukaan",
   "m_19aec6ab74aaba": "Tarkastele julkaisujen pisteitä ja hylkäämisen syitä",
+  "m_19aff30f861eb2": "Tämä soittolista on yli 64 Mt.",
   "m_19b37237967b11": "Nyt",
   "m_19b9ec61326f5a": "Lisää kuvan URL-osoite omaa kuvitusta varten.",
   "m_19bc29cf34e34a": "Kyseisen katselijan käyttötoken lähdepalvelimella. Sitä käytetään esikatseluun, eikä sitä tallenneta.",

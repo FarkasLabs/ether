@@ -822,6 +822,7 @@
   "m_05ddc3d3e240fa": "is not",
   "m_05de79910facc6": "Most popular on TMDB right now",
   "m_05dee691b6a4cb": "Preview at",
+  "m_05df0f186d24f1": "This guide is larger than 2 GB.",
   "m_05df6f55026b7a": "Latest regular episode from available metadata; unknown dates last",
   "m_05df964ad9f9b3": "Definitions source",
   "m_05dfadd1428cae": "Plex status",
@@ -1706,7 +1707,6 @@
     "other": "Processed {count} history entries; skipped {skipped}."
   },
   "m_0c7a3810288c4a": "App",
-  "m_0c7e5b0f8762e0": "The selected file exceeds the import size limit.",
   "m_0c7eed91df4e91": "Source viewer’s Plex token",
   "m_0c80f61b732d11": "Disk cache",
   "m_0c813e59cc859f": "Ether builds your Plex library from TMDB, so a TMDB API key is required. It is free: {link}, then paste it here and test it.",
@@ -3481,6 +3481,7 @@
   "m_19acda3eee5ecf": "Everyone",
   "m_19ad3d12ad931a": "Ordered for each viewer by their taste",
   "m_19aec6ab74aaba": "Inspect release scores and rejection reasons",
+  "m_19aff30f861eb2": "This playlist is larger than 64 MB.",
   "m_19b37237967b11": "Now",
   "m_19b9ec61326f5a": "Add an image URL for custom artwork.",
   "m_19bc29cf34e34a": "That viewer's access token on the source server. It's used for the preview and not stored.",

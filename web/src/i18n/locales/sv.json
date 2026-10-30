@@ -822,6 +822,7 @@
   "m_05ddc3d3e240fa": "är inte",
   "m_05de79910facc6": "Mest populärt på TMDB just nu",
   "m_05dee691b6a4cb": "Förhandsvisa vid",
+  "m_05df0f186d24f1": "Den här guiden är större än 2 GB.",
   "m_05df6f55026b7a": "Senaste ordinarie avsnitt enligt tillgänglig metadata; okända datum sist",
   "m_05df964ad9f9b3": "Definitionskälla",
   "m_05dfadd1428cae": "Plex-status",
@@ -1706,7 +1707,6 @@
     "other": "{count} historikposter bearbetades; {skipped} hoppades över."
   },
   "m_0c7a3810288c4a": "App",
-  "m_0c7e5b0f8762e0": "Den valda filen överskrider storleksgränsen för import.",
   "m_0c7eed91df4e91": "Källtittarens Plex-token",
   "m_0c80f61b732d11": "Diskcache",
   "m_0c813e59cc859f": "Ether bygger ditt Plex-bibliotek från TMDB, så en TMDB API-nyckel krävs. Den är gratis: {link}, klistra sedan in den här och testa den.",
@@ -3481,6 +3481,7 @@
   "m_19acda3eee5ecf": "Alla",
   "m_19ad3d12ad931a": "Ordnad för varje tittare efter deras smak",
   "m_19aec6ab74aaba": "Granska releasepoäng och avvisningsorsaker",
+  "m_19aff30f861eb2": "Den här spellistan är större än 64 MB.",
   "m_19b37237967b11": "Nu",
   "m_19b9ec61326f5a": "Lägg till en bild-URL för eget omslag.",
   "m_19bc29cf34e34a": "Tittarens åtkomsttoken på källservern. Den används för förhandsgranskningen och sparas inte.",
