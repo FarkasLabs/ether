@@ -452,6 +452,7 @@ func (s *Server) handleDecision(w http.ResponseWriter, r *http.Request) {
 		if ctx.Err() != nil {
 			return
 		}
+		s.observeResolve(pr, p.sessionID, t, err, nil)
 		s.log.Info("playback decision failed", "key", p.key, "user", pr.User.Username, "reason", playbackMessage(err), "err", err)
 		// The client follows a failed decision with start.mpd/start.m3u8
 		// for the same session: answer it with this error, not a second
@@ -460,6 +461,7 @@ func (s *Server) handleDecision(w http.ResponseWriter, r *http.Request) {
 		s.write(w, r, s.decisionError(ctx, pr, t, err, p))
 		return
 	}
+	s.observeResolve(pr, p.sessionID, t, nil, &dec)
 	s.write(w, r, s.decisionContainer(ctx, pr, t, ps, dec, p))
 }
 
