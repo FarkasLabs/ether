@@ -54,15 +54,44 @@ type ResumePoint struct {
 	Key       core.RatingKey
 	Release   core.Release
 	NZB       []byte
-	Profile   string        // quality profile it was resolved for
+	Profile   string        // quality profile name it was resolved for
 	Size      int64         // media file size, 0 if never opened
 	Duration  time.Duration // probed duration, 0 if unknown
 	Keyframes []core.KeyframePoint
 	UpdatedAt time.Time
+
+	// profileKey is the stored `Name|<key>` value (a plain name on
+	// legacy records); Profile above exposes the name only.
+	profileKey string
 }
 
 // ReleaseID is the stable release identifier.
 func (p *ResumePoint) ReleaseID() string { return p.Release.ID }
+
+// profileKey is the stored form of a profile's selection key:
+// `Name|<key>`, where key is p.SelectionKey — the hash of the
+// configured definition computed pre-clamp by SelectProfile, so caps
+// are not an input and the same definition keys identically for
+// every client. Profiles built outside SelectProfile (tests/stubs)
+// have no SelectionKey: fall back to the same canonical hash of the
+// object's own fields.
+func profileKey(p core.QualityProfile) string {
+	key := p.SelectionKey
+	if key == "" {
+		key = p.ComputeSelectionKey()
+	}
+	return p.Name + "|" + key
+}
+
+// profileName is the bare profile name of a stored profile value,
+// which is `Name|<key>` for new records and a plain name for old
+// ones. A "|" in a configured name truncates it here — cosmetic only.
+func profileName(stored string) string {
+	if i := strings.Index(stored, "|"); i >= 0 {
+		return stored[:i]
+	}
+	return stored
+}
 
 type resumeRecord struct {
 	userID    int64
@@ -456,10 +485,12 @@ func (rec *resumeRecord) point(nzb []byte) *ResumePoint {
 		Key:       rec.key,
 		Release:   rec.release,
 		NZB:       nzb,
-		Profile:   rec.profile,
+		Profile:   profileName(rec.profile),
 		Size:      rec.size,
 		Duration:  rec.duration,
 		UpdatedAt: rec.updatedAt,
+
+		profileKey: rec.profile,
 	}
 }
 

@@ -83,6 +83,11 @@ func SelectProfile(q config.Quality, caps core.ClientCaps, user *core.User) core
 		prof.CustomFormatScores = copyScores
 	}
 
+	// Key of the configured definition, taken from this pristine copy
+	// before download reshaping and the client-cap clamp below, so the
+	// same configured profile keys identically for every client.
+	prof.SelectionKey = prof.ComputeSelectionKey()
+
 	if caps.Download {
 		prof = downloadProfile(prof, caps)
 	}

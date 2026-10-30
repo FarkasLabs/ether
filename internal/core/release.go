@@ -1,6 +1,11 @@
 package core
 
-import "time"
+import (
+	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json"
+	"time"
+)
 
 // Source is the release source parsed from a release name.
 type Source string
@@ -119,4 +124,21 @@ type QualityProfile struct {
 	MaxSizeMBPerMin      float64        `json:"maxSizeMbPerMin"`
 	PreferredLanguages   []string       `json:"preferredLanguages"`
 	AllowCam             bool           `json:"allowCam"` // also gated by the owner's global cam setting
+	// SelectionKey is the canonical hash of this profile's configured
+	// definition, computed by resolver.SelectProfile from the pristine
+	// configured profile before download reshaping or client-cap
+	// clamping. Runtime-only, never persisted with the profile.
+	SelectionKey string `json:"-"`
+}
+
+// ComputeSelectionKey returns the canonical key of the configured
+// definition in p: sha256 of its JSON (runtime-only SelectionKey
+// excluded) truncated to 16 hex chars. Any selection-field edit
+// (heights, HDR/DV, codecs, sources, audio, languages, sizes,
+// qualities, scores) changes it; client caps never enter it.
+func (p QualityProfile) ComputeSelectionKey() string {
+	p.SelectionKey = ""
+	b, _ := json.Marshal(p)
+	sum := sha256.Sum256(b)
+	return hex.EncodeToString(sum[:])[:16]
 }
