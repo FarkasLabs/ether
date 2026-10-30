@@ -35,7 +35,8 @@ const guideCap = 2 * 1024 * 1024 * 1024;
 /** Reject a file the server will not accept. Gzip stays compressed; the server streams it. */
 function uploadError(file: File, key: "playlist" | "guide"): string {
   const gzip = /\.gz$/i.test(file.name);
-  if (key === "playlist" && file.size > playlistCap) return t("This playlist is larger than 64 MB.");
+  if (key === "playlist" && file.size > playlistCap)
+    return t("This playlist is larger than 64 MB.");
   if (key === "guide" && !gzip && file.size > guideCap) return t("This guide is larger than 2 GB.");
   return "";
 }

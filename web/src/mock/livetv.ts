@@ -377,7 +377,10 @@ export function createLiveTVMock(titles: FakeTitle[]) {
       s.updatedAt = new Date().toISOString();
       return { body: source(s) };
     }
-    if (route === "POST /sources" || (method === "PUT" && seg[1] === "sources" && seg[2] && !seg[3])) {
+    if (
+      route === "POST /sources" ||
+      (method === "PUT" && seg[1] === "sources" && seg[2] && !seg[3])
+    ) {
       const b = body as Source & { playlist?: string; guide?: string; playlistUrl?: string };
       const s: Source = {
         ...b,
