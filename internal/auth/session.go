@@ -75,6 +75,19 @@ func (s *Service) IssueOwnerSession(ctx context.Context, credential string) (str
 		return "", time.Time{}, err
 	}
 	defer tx.Rollback()
+	// Lock the owner's row first. On PostgreSQL (READ COMMITTED) two
+	// sign-ins would otherwise both see room under the cap and both insert;
+	// the second now waits here and its cap check sees the first's session.
+	// SQLite already serialises write transactions.
+	locked, err := tx.ExecContext(ctx, `UPDATE auth_users SET updated_at=updated_at WHERE id=? AND is_owner=1 AND active=1`, u.ID)
+	if err != nil {
+		return "", time.Time{}, err
+	}
+	if n, err := locked.RowsAffected(); err != nil {
+		return "", time.Time{}, err
+	} else if n != 1 {
+		return "", time.Time{}, core.ErrUnauthorized
+	}
 	if _, err := tx.ExecContext(ctx, `DELETE FROM auth_sessions WHERE expires_at<=? OR created_at<=?`,
 		now.Unix(), now.Add(-OwnerSessionMaxAge).Unix()); err != nil {
 		return "", time.Time{}, err
@@ -95,7 +108,6 @@ func (s *Service) IssueOwnerSession(ctx context.Context, credential string) (str
 	if n, err := result.RowsAffected(); err != nil {
 		return "", time.Time{}, err
 	} else if n != 1 {
-		// Ownership moved between Authenticate and the insert.
 		return "", time.Time{}, core.ErrUnauthorized
 	}
 	if err := tx.Commit(); err != nil {

@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -191,5 +192,39 @@ func TestOwnerSessionAcrossClusterNodes(t *testing.T) {
 	}
 	if _, err := a.OwnerSession(ctx, token); !errors.Is(err, core.ErrUnauthorized) {
 		t.Fatalf("revocation on another node ignored: %v", err)
+	}
+}
+
+// Concurrent sign-ins at the cap never leave more than maxOwnerSessions.
+// With ETHER_TEST_POSTGRES the goroutines use separate pooled connections,
+// which is where the owner-row lock matters.
+func TestOwnerSessionCapHoldsUnderConcurrentIssuance(t *testing.T) {
+	s, _, _ := setup(t)
+	ctx := context.Background()
+	for i := 0; i < maxOwnerSessions-1; i++ {
+		if _, _, err := s.IssueOwnerSession(ctx, "server-token"); err != nil {
+			t.Fatal(err)
+		}
+	}
+	var wg sync.WaitGroup
+	errs := make(chan error, 16)
+	for i := 0; i < 16; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			_, _, err := s.IssueOwnerSession(ctx, "server-token")
+			errs <- err
+		}()
+	}
+	wg.Wait()
+	close(errs)
+	for err := range errs {
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	var n int
+	if err := s.db.QueryRow(`SELECT COUNT(*) FROM auth_sessions`).Scan(&n); err != nil || n != maxOwnerSessions {
+		t.Fatalf("sessions=%d err=%v", n, err)
 	}
 }
