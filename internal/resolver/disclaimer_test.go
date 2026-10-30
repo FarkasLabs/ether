@@ -51,3 +51,18 @@ func TestDisclaimerDoesNotChangeEpisodesOrMatchingAlternateTitles(t *testing.T) 
 		t.Fatalf("alternate title rejected: %s", got)
 	}
 }
+
+func TestDirectorDisclaimerAppliesToAnyMovie(t *testing.T) {
+	title := &core.Title{Type: core.TypeMovie, Title: "Dune", Year: 2021, Directors: []core.Person{{Name: "Denis Villeneuve"}}}
+	req := core.SearchRequest{Type: core.TypeMovie, Title: title.Title, Year: title.Year}
+	name := "Dune.2021.NOT.The.Denis.Villeneuve.FILM.1080p.WEB-DL.x264-GRP"
+	r := core.Release{Name: name, Info: releaseparse.Parse(name)}
+	if got := rejectIdentity(r, title, req); got != "director disclaimer" {
+		t.Fatalf("got %q", got)
+	}
+	name = "Dune.2021.1080p.WEB-DL.x264-GRP"
+	r = core.Release{Name: name, Info: releaseparse.Parse(name)}
+	if got := rejectIdentity(r, title, req); got != "" {
+		t.Fatalf("plain release rejected: %q", got)
+	}
+}
