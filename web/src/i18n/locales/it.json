@@ -60,6 +60,7 @@
   "m_005da0cdacdcc3": "Chiave rifiutata",
   "m_006052e9c63e38": "link {time}",
   "m_00609f822e0571": "Fatto",
+  "m_00622d72a2d977": "Nome della libreria Serie TV",
   "m_00641db82a3ca1": "Tag di focus per {path}",
   "m_0066da6f167909": "backup snapshot istantanea",
   "m_006a89c66f9dff": "Condividi questo server da plex.tv; ogni persona compare qui dopo aver effettuato l'accesso.",
@@ -2691,6 +2692,7 @@
     "other": "Accesso effettuato e ricerca eseguita: {count} risultati, ad esempio:"
   },
   "m_135af2a37f0b4d": "I torrent che il tuo servizio possiede già vengono riprodotti tramite HTTPS. Usa il token API del tuo account.",
+  "m_135e148c69f89c": "Come la libreria Film appare nelle app Plex. Ether imposta questo nome; la rinomina in Plex non resta.",
   "m_135f54444eef95": "Categorie TV",
   "m_136064c1a8aa9b": "Upload",
   "m_1364ac76efe405": "Risultati della ricerca",
@@ -3549,6 +3551,7 @@
   "m_19759626500d10": "La sincronizzazione mantiene la cronologia esistente e non rimuove i titoli visti. Gli episodi anime senza una corrispondenza verificata vengono saltati.",
   "m_197805698e6a5b": "Al termine della configurazione questa pagina di amministrazione viene riservata al tuo account Plex. Potrai riaprire la configurazione più tardi da Connettività.",
   "m_197f395ae133e3": "I nuovi programmi sono nella guida.",
+  "m_198004f13e8ffa": "Come la libreria Serie TV appare nelle app Plex. Ether imposta questo nome; la rinomina in Plex non resta.",
   "m_1982dc436baac0": "Impostazioni del sito",
   "m_1983b9b0ef1f2a": {
     "one": "Completa o rimuovi la fonte incompleta.",
@@ -3862,6 +3865,7 @@
   "m_1bf8ce0d45765d": "Dai a uno spettatore un ordine diverso per questa serie.",
   "m_1bf94dfbaf9d45": "Canali virtuali",
   "m_1c02a207c830f5": "Giorni a settimana",
+  "m_1c05a9887885f3": "Nome della libreria Film",
   "m_1c07ce6431ba09": "Importa da Prowlarr",
   "m_1c090a2710e098": "OK · {ms} ms",
   "m_1c0dcf152406de": "Debrid riproduce i torrent in streaming, ma nessun indexer attivo ne restituisce. Aggiungi un addon Stremio o un indexer Torznab.",

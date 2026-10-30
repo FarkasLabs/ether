@@ -57,6 +57,7 @@
   "m_005da0cdacdcc3": "Anahtar reddedildi",
   "m_006052e9c63e38": "bağlantı {time}",
   "m_00609f822e0571": "Bitti",
+  "m_00622d72a2d977": "Diziler kitaplığı adı",
   "m_00641db82a3ca1": "{path} için odak etiketleri",
   "m_0066da6f167909": "yedek anlık görüntü",
   "m_006a89c66f9dff": "Bu sunucuyu plex.tv üzerinden paylaşın; her kişi oturum açtığında burada görünür.",
@@ -2601,6 +2602,7 @@
     "other": "Oturum açıldı ve arama yapıldı: {count} sonuç, örneğin:"
   },
   "m_135af2a37f0b4d": "Hizmetinizin zaten sahip olduğu torrent'ler HTTPS üzerinden akar. Hesabınızın API belirtecini kullanın.",
+  "m_135e148c69f89c": "Filmler kitaplığının Plex uygulamalarında nasıl göründüğü. Bu adı Ether belirler; Plex’teki yeniden adlandırma kalıcı olmaz.",
   "m_135f54444eef95": "Dizi kategorileri",
   "m_136064c1a8aa9b": "Yükleme",
   "m_1364ac76efe405": "Arama sonuçları",
@@ -3429,6 +3431,7 @@
   "m_19759626500d10": "Eşitleme mevcut geçmişi korur ve izlenen öğeleri kaldırmaz. Doğrulanmış eşlemesi olmayan anime bölümleri atlanır.",
   "m_197805698e6a5b": "Kurulumu tamamlamak bu yönetim sayfasını Plex hesabınıza kilitler. Kurulumu daha sonra Bağlantı bölümünden yeniden açabilirsiniz.",
   "m_197f395ae133e3": "Güncel programlar rehberde.",
+  "m_198004f13e8ffa": "Diziler kitaplığının Plex uygulamalarında nasıl göründüğü. Bu adı Ether belirler; Plex’teki yeniden adlandırma kalıcı olmaz.",
   "m_1982dc436baac0": "Site ayarları",
   "m_1983b9b0ef1f2a": {
     "one": "Tamamlanmamış kaynağı bitirin veya kaldırın.",
@@ -3735,6 +3738,7 @@
   "m_1bf8ce0d45765d": "Bu dizi için bir izleyiciye farklı bir sıra verin.",
   "m_1bf94dfbaf9d45": "Sanal kanallar",
   "m_1c02a207c830f5": "Haftada gün",
+  "m_1c05a9887885f3": "Filmler kitaplığı adı",
   "m_1c07ce6431ba09": "Prowlarr'dan içe aktar",
   "m_1c090a2710e098": "Tamam · {ms} ms",
   "m_1c0dcf152406de": "Debrid torrent'leri akışa alır ancak etkin hiçbir dizinleyici bunları döndürmüyor. Bir Stremio eklentisi veya Torznab dizinleyicisi ekleyin.",

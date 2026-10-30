@@ -57,6 +57,7 @@
   "m_005da0cdacdcc3": "Nøgle afvist",
   "m_006052e9c63e38": "link {time}",
   "m_00609f822e0571": "Færdig",
+  "m_00622d72a2d977": "Navn på tv-seriebibliotek",
   "m_00641db82a3ca1": "Fokusmærker for {path}",
   "m_0066da6f167909": "backup snapshot",
   "m_006a89c66f9dff": "Del denne server fra plex.tv; hver person vises her, når vedkommende logger ind.",
@@ -2601,6 +2602,7 @@
     "other": "Logget ind og søgt: {count} resultater, for eksempel:"
   },
   "m_135af2a37f0b4d": "Torrents, som din tjeneste allerede har, streames over HTTPS. Brug din kontos API-token.",
+  "m_135e148c69f89c": "Hvordan filmbiblioteket vises i Plex-apps. Ether angiver navnet; omdøbning i Plex bliver ikke gemt.",
   "m_135f54444eef95": "Tv-kategorier",
   "m_136064c1a8aa9b": "Upload",
   "m_1364ac76efe405": "Søgeresultater",
@@ -3429,6 +3431,7 @@
   "m_19759626500d10": "Synkronisering beholder den eksisterende historik og fjerner ikke sete elementer. Animeafsnit uden en verificeret tilknytning springes over.",
   "m_197805698e6a5b": "Når opsætningen er færdig, låses denne administrationsside til din Plex-konto. Du kan åbne opsætningen igen senere under Forbindelse.",
   "m_197f395ae133e3": "Friske programmer er i guiden.",
+  "m_198004f13e8ffa": "Hvordan tv-seriebiblioteket vises i Plex-apps. Ether angiver navnet; omdøbning i Plex bliver ikke gemt.",
   "m_1982dc436baac0": "Site-indstillinger",
   "m_1983b9b0ef1f2a": {
     "one": "Gør den ufuldstændige kilde færdig, eller fjern den.",
@@ -3735,6 +3738,7 @@
   "m_1bf8ce0d45765d": "Giv én seer en anden rækkefølge for denne serie.",
   "m_1bf94dfbaf9d45": "Virtuelle kanaler",
   "m_1c02a207c830f5": "Dage om ugen",
+  "m_1c05a9887885f3": "Navn på filmbibliotek",
   "m_1c07ce6431ba09": "Importer fra Prowlarr",
   "m_1c090a2710e098": "OK · {ms} ms",
   "m_1c0dcf152406de": "Debrid streamer torrents, men ingen aktiveret indexer returnerer dem. Tilføj et Stremio-addon eller en Torznab-indexer.",

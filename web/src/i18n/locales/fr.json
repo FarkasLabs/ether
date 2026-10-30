@@ -60,6 +60,7 @@
   "m_005da0cdacdcc3": "Clé rejetée",
   "m_006052e9c63e38": "lien {time}",
   "m_00609f822e0571": "Terminé",
+  "m_00622d72a2d977": "Nom de la bibliothèque Séries",
   "m_00641db82a3ca1": "Étiquettes de mise en avant pour {path}",
   "m_0066da6f167909": "sauvegarde instantané",
   "m_006a89c66f9dff": "Partagez ce serveur depuis plex.tv ; chaque personne apparaît ici dès sa première connexion.",
@@ -2691,6 +2692,7 @@
     "other": "Connexion et recherche réussies : {count} résultats, par exemple :"
   },
   "m_135af2a37f0b4d": "Les torrents déjà détenus par votre service sont diffusés via HTTPS. Utilisez le jeton API de votre compte.",
+  "m_135e148c69f89c": "Comment la bibliothèque Films apparaît dans les applications Plex. Ether définit ce nom ; le renommage dans Plex ne reste pas.",
   "m_135f54444eef95": "Catégories de séries",
   "m_136064c1a8aa9b": "Envoi",
   "m_1364ac76efe405": "Résultats de recherche",
@@ -3549,6 +3551,7 @@
   "m_19759626500d10": "La synchronisation conserve l’historique existant et ne supprime aucun élément vu. Les épisodes d’anime sans correspondance vérifiée sont ignorés.",
   "m_197805698e6a5b": "Terminer la configuration verrouille cette page d’administration sur votre compte Plex. Vous pourrez rouvrir la configuration plus tard depuis Connectivité.",
   "m_197f395ae133e3": "Les nouveaux programmes sont dans le guide.",
+  "m_198004f13e8ffa": "Comment la bibliothèque Séries apparaît dans les applications Plex. Ether définit ce nom ; le renommage dans Plex ne reste pas.",
   "m_1982dc436baac0": "Paramètres du site",
   "m_1983b9b0ef1f2a": {
     "one": "Terminez ou supprimez la source incomplète.",
@@ -3862,6 +3865,7 @@
   "m_1bf8ce0d45765d": "Donnez à un spectateur un autre ordre pour cette série.",
   "m_1bf94dfbaf9d45": "Chaînes virtuelles",
   "m_1c02a207c830f5": "Jours par semaine",
+  "m_1c05a9887885f3": "Nom de la bibliothèque Films",
   "m_1c07ce6431ba09": "Importer depuis Prowlarr",
   "m_1c090a2710e098": "OK · {ms} ms",
   "m_1c0dcf152406de": "Debrid diffuse les torrents, mais aucun indexeur activé n’en renvoie. Ajoutez un addon Stremio ou un indexeur Torznab.",

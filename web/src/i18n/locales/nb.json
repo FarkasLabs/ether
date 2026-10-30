@@ -57,6 +57,7 @@
   "m_005da0cdacdcc3": "Nøkkel avvist",
   "m_006052e9c63e38": "lenke {time}",
   "m_00609f822e0571": "Ferdig",
+  "m_00622d72a2d977": "Navn på TV-seriebibliotek",
   "m_00641db82a3ca1": "Fokusmerker for {path}",
   "m_0066da6f167909": "sikkerhetskopi øyeblikksbilde",
   "m_006a89c66f9dff": "Del denne serveren fra plex.tv; hver person vises her når de har logget inn.",
@@ -2601,6 +2602,7 @@
     "other": "Logget inn og søkte: {count} resultater, for eksempel:"
   },
   "m_135af2a37f0b4d": "Torrenter tjenesten din allerede har, strømmes over HTTPS. Bruk API-tokenet til kontoen din.",
+  "m_135e148c69f89c": "Hvordan filmbiblioteket vises i Plex-apper. Ether angir navnet; omdøping i Plex blir ikke beholdt.",
   "m_135f54444eef95": "TV-kategorier",
   "m_136064c1a8aa9b": "Opplasting",
   "m_1364ac76efe405": "Søkeresultater",
@@ -3429,6 +3431,7 @@
   "m_19759626500d10": "Synkronisering beholder eksisterende historikk og fjerner ikke sette elementer. Anime-episoder uten bekreftet tilordning hoppes over.",
   "m_197805698e6a5b": "Når oppsettet er fullført, låses denne administrasjonssiden til Plex-kontoen din. Du kan åpne oppsettet igjen senere fra Tilkobling.",
   "m_197f395ae133e3": "Nye programoppføringer er i programguiden.",
+  "m_198004f13e8ffa": "Hvordan TV-seriebiblioteket vises i Plex-apper. Ether angir navnet; omdøping i Plex blir ikke beholdt.",
   "m_1982dc436baac0": "Nettstedsinnstillinger",
   "m_1983b9b0ef1f2a": {
     "one": "Fullfør eller fjern den ufullstendige kilden.",
@@ -3735,6 +3738,7 @@
   "m_1bf8ce0d45765d": "Gi én seer en annen rekkefølge for denne serien.",
   "m_1bf94dfbaf9d45": "Virtuelle kanaler",
   "m_1c02a207c830f5": "Dager i uken",
+  "m_1c05a9887885f3": "Navn på filmbibliotek",
   "m_1c07ce6431ba09": "Importer fra Prowlarr",
   "m_1c090a2710e098": "OK · {ms} ms",
   "m_1c0dcf152406de": "Debrid strømmer torrenter, men ingen aktivert indekserer returnerer dem. Legg til et Stremio-tillegg eller en Torznab-indekserer.",

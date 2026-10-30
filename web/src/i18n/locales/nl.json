@@ -57,6 +57,7 @@
   "m_005da0cdacdcc3": "Sleutel geweigerd",
   "m_006052e9c63e38": "link {time}",
   "m_00609f822e0571": "Gereed",
+  "m_00622d72a2d977": "Naam van de tv-seriebibliotheek",
   "m_00641db82a3ca1": "Focustags voor {path}",
   "m_0066da6f167909": "back-up snapshot",
   "m_006a89c66f9dff": "Deel deze server via plex.tv; iedereen verschijnt hier zodra diegene inlogt.",
@@ -2601,6 +2602,7 @@
     "other": "Ingelogd en gezocht: {count} resultaten, bijvoorbeeld:"
   },
   "m_135af2a37f0b4d": "Torrents die je dienst al heeft, worden via HTTPS gestreamd. Gebruik het API-token van je account.",
+  "m_135e148c69f89c": "Hoe de filmbibliotheek in Plex-apps verschijnt. Ether stelt deze naam in; hernoemen in Plex blijft niet behouden.",
   "m_135f54444eef95": "Tv-categorieën",
   "m_136064c1a8aa9b": "Upload",
   "m_1364ac76efe405": "Zoekresultaten",
@@ -3429,6 +3431,7 @@
   "m_19759626500d10": "Synchronisatie behoudt de bestaande geschiedenis en verwijdert geen bekeken titels. Anime-afleveringen zonder geverifieerde koppeling worden overgeslagen.",
   "m_197805698e6a5b": "Als je de installatie afrondt, wordt deze beheerpagina aan je Plex-account vergrendeld. Je kunt de installatie later opnieuw openen via Connectiviteit.",
   "m_197f395ae133e3": "Nieuwe programma's staan in de gids.",
+  "m_198004f13e8ffa": "Hoe de tv-seriebibliotheek in Plex-apps verschijnt. Ether stelt deze naam in; hernoemen in Plex blijft niet behouden.",
   "m_1982dc436baac0": "Site-instellingen",
   "m_1983b9b0ef1f2a": {
     "one": "Voltooi of verwijder de onvolledige bron.",
@@ -3735,6 +3738,7 @@
   "m_1bf8ce0d45765d": "Geef één kijker een andere volgorde voor deze serie.",
   "m_1bf94dfbaf9d45": "Virtuele kanalen",
   "m_1c02a207c830f5": "Dagen per week",
+  "m_1c05a9887885f3": "Naam van de filmbibliotheek",
   "m_1c07ce6431ba09": "Importeren uit Prowlarr",
   "m_1c090a2710e098": "OK · {ms} ms",
   "m_1c0dcf152406de": "Debrid streamt torrents, maar geen enkele ingeschakelde indexer levert ze. Voeg een Stremio-add-on of Torznab-indexer toe.",

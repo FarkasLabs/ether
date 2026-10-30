@@ -57,6 +57,7 @@
   "m_005da0cdacdcc3": "Key rejected",
   "m_006052e9c63e38": "link {time}",
   "m_00609f822e0571": "Done",
+  "m_00622d72a2d977": "TV Shows library name",
   "m_00641db82a3ca1": "Focus tags for {path}",
   "m_0066da6f167909": "backup snapshot",
   "m_006a89c66f9dff": "Share this server from plex.tv; each person appears here once they sign in.",
@@ -2601,6 +2602,7 @@
     "other": "Signed in and searched: {count} results, for example:"
   },
   "m_135af2a37f0b4d": "Torrents your service already holds stream over HTTPS. Use your account's API token.",
+  "m_135e148c69f89c": "How the Movies library appears in Plex apps. Ether sets this; Plex's own rename does not stick.",
   "m_135f54444eef95": "TV categories",
   "m_136064c1a8aa9b": "Upload",
   "m_1364ac76efe405": "Search results",
@@ -3429,6 +3431,7 @@
   "m_19759626500d10": "Sync keeps existing history and does not remove watched items. Anime episodes without a verified mapping are skipped.",
   "m_197805698e6a5b": "Finishing setup locks this admin page to your Plex account. You can reopen setup later from Connectivity.",
   "m_197f395ae133e3": "Fresh listings are in the guide.",
+  "m_198004f13e8ffa": "How the TV Shows library appears in Plex apps. Ether sets this; Plex's own rename does not stick.",
   "m_1982dc436baac0": "Site settings",
   "m_1983b9b0ef1f2a": {
     "one": "Finish or remove the incomplete source.",
@@ -3735,6 +3738,7 @@
   "m_1bf8ce0d45765d": "Give one viewer a different order for this show.",
   "m_1bf94dfbaf9d45": "Virtual channels",
   "m_1c02a207c830f5": "Days a week",
+  "m_1c05a9887885f3": "Movies library name",
   "m_1c07ce6431ba09": "Import from Prowlarr",
   "m_1c090a2710e098": "OK · {ms} ms",
   "m_1c0dcf152406de": "Debrid streams torrents, but no enabled indexer returns them. Add a Stremio addon or Torznab indexer.",
