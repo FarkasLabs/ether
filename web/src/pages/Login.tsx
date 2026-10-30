@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { EtherLogo } from "../components/brand";
 import { t, tx } from "../i18n";
 import { LanguagePicker } from "../i18n/react";
-import { api, ApiError, errorMessage, getToken, setToken } from "../lib/api";
+import { api, ApiError, errorMessage, setToken } from "../lib/api";
 import type { Bootstrap } from "../lib/types";
 
 const SIGN_IN_TIMEOUT_MS = 10 * 60 * 1000;
@@ -128,7 +128,7 @@ export default function Login({ boot, onReady }: { boot: Bootstrap; onReady: () 
 }
 
 function TokenFallback({ onReady }: { onReady: () => void }) {
-  const [value, setValue] = useState(getToken());
+  const [value, setValue] = useState("");
   const [error, setError] = useState<unknown>(null);
   const [checking, setChecking] = useState(false);
   const cancelled = useRef(false);
@@ -143,14 +143,15 @@ function TokenFallback({ onReady }: { onReady: () => void }) {
     setChecking(true);
     setError(null);
     const token = value.trim();
-    setToken(token);
     try {
-      await api.setupStatus(); // cheap authenticated probe
-      if (cancelled.current || getToken() !== token) return;
+      // The pasted Plex token is exchanged for a console session and never
+      // stored in the browser.
+      const { token: session } = await api.createSession(token);
+      if (cancelled.current) return;
+      setToken(session);
       onReady();
     } catch (err) {
-      if (cancelled.current || getToken() !== token) return;
-      setToken("");
+      if (cancelled.current) return;
       setError(
         err instanceof ApiError && err.status === 401
           ? new Error(t("That token was not accepted as the owner token."))

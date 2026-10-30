@@ -37,7 +37,7 @@ describe("sign-in", () => {
     expect(screen.getByRole("heading", { name: "Ether" })).toHaveClass("sr-only");
   });
 
-  it("stores the owner token once plex.tv approves and opens the app", async () => {
+  it("stores the console session once plex.tv approves and opens the app", async () => {
     vi.useFakeTimers({ shouldAdvanceTime: true });
     const fake = createFakeServer();
     vi.stubGlobal("fetch", vi.fn(fake.fetch));
@@ -52,7 +52,7 @@ describe("sign-in", () => {
     const poll = vi
       .spyOn(api, "signInPoll")
       .mockResolvedValueOnce({ done: false })
-      .mockResolvedValueOnce({ done: true, token: "owner-token" });
+      .mockResolvedValueOnce({ done: true, token: "ether-admin-session-1" });
     vi.spyOn(window, "open").mockReturnValue(null);
     renderApp();
     fireEvent.click(await screen.findByRole("button", { name: "Sign in with Plex" }));
@@ -70,15 +70,22 @@ describe("sign-in", () => {
     );
     expect(poll).toHaveBeenCalledTimes(2);
     expect(poll).toHaveBeenCalledWith("h1");
-    expect(getToken()).toBe("owner-token");
-    // Signed in remotely: the shell offers Sign out.
-    expect(await screen.findByRole("button", { name: /Sign out/ })).toBeInTheDocument();
+    expect(getToken()).toBe("ether-admin-session-1");
+    // Signed in remotely: the shell offers Sign out, which ends the session
+    // on the server before leaving.
+    const signOut = vi.spyOn(api, "signOut").mockResolvedValue({ ok: true });
+    const reload = vi.fn();
+    vi.stubGlobal("location", { ...window.location, reload });
+    fireEvent.click(await screen.findByRole("button", { name: /Sign out/ }));
+    await waitFor(() => expect(reload).toHaveBeenCalledOnce());
+    expect(signOut).toHaveBeenCalledOnce();
+    expect(getToken()).toBe("");
   });
 
   it("rejects a token that isn't the owner's", async () => {
     vi.spyOn(api, "bootstrap").mockResolvedValue(remoteBoot);
     const { ApiError } = await import("../lib/api");
-    vi.spyOn(api, "setupStatus").mockRejectedValue(new ApiError(401, "unauthorized", "nope"));
+    vi.spyOn(api, "createSession").mockRejectedValue(new ApiError(401, "unauthorized", "nope"));
     renderApp();
     fireEvent.click(await screen.findByText("Use a Plex token instead"));
     fireEvent.change(screen.getByLabelText("Owner token (X-Plex-Token)"), {

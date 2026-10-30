@@ -385,6 +385,11 @@ func (s *Service) Authenticate(ctx context.Context, token string) (*core.User, e
 	if strings.HasPrefix(token, delegationPrefix) {
 		return s.authenticateDelegation(ctx, token)
 	}
+	if IsOwnerSession(token) {
+		// Console sessions only open the admin API (OwnerSession), and must
+		// never be forwarded to plex.tv for validation.
+		return nil, core.ErrUnauthorized
+	}
 	h := HashToken(token)
 	now := s.o.Now()
 
@@ -749,6 +754,10 @@ ON CONFLICT(plex_id) DO UPDATE SET
 		return fmt.Errorf("auth: save owner: %w", err)
 	}
 	if _, err := tx.ExecContext(ctx, `DELETE FROM auth_tokens WHERE source=?`, sourceServer); err != nil {
+		return err
+	}
+	// A former owner's console sessions end with their ownership.
+	if _, err := tx.ExecContext(ctx, `DELETE FROM auth_sessions WHERE user_id NOT IN (SELECT id FROM auth_users WHERE is_owner=1)`); err != nil {
 		return err
 	}
 	if serverToken != "" {

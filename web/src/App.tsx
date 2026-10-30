@@ -349,8 +349,15 @@ function Shell() {
               variant="ghost"
               size="sm"
               onClick={() => {
-                setToken("");
-                window.location.reload();
+                // End the session on the server too, so a copy cannot outlive
+                // sign-out; leave the browser either way.
+                void api
+                  .signOut()
+                  .catch(() => undefined)
+                  .finally(() => {
+                    setToken("");
+                    window.location.reload();
+                  });
               }}
             >
               <LogOut size={15} /> <span className="hidden sm:inline">{t("Sign out")}</span>
