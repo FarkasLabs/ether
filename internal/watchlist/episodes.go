@@ -21,7 +21,7 @@ import (
 func init() {
 	store.Register("watchlist_episodes", 1, `
 CREATE TABLE watchlist_episodes(user_id INTEGER NOT NULL,item_key INTEGER NOT NULL,episode_key INTEGER NOT NULL,at INTEGER NOT NULL,PRIMARY KEY(user_id,item_key,episode_key));
-CREATE TABLE watchlist_episodes_alerts(episode_key INTEGER PRIMARY KEY,label TEXT NOT NULL,at INTEGER NOT NULL,sent INTEGER NOT NULL DEFAULT 0);
+CREATE TABLE watchlist_episodes_alerts(episode_key INTEGER PRIMARY KEY,label TEXT NOT NULL,at INTEGER NOT NULL,sent INTEGER NOT NULL DEFAULT 0,attempts INTEGER NOT NULL DEFAULT 0);
 `)
 }
 
@@ -33,7 +33,20 @@ const (
 	// alertLease is how long a pass that took a pending alert may take to
 	// queue it before another pass retries it.
 	alertLease = 2 * time.Minute
+	// alertAttempts bounds how often one alert is retried. With a plain
+	// Notifier a retry after "queued but not marked sent" repeats the alert,
+	// so this also bounds those repeats.
+	alertAttempts = 5
 )
+
+// OnceNotifier queues an alert at most once per key, however often it is
+// called (notify.Service implements it). With it, an episode alert is queued
+// exactly once even when a crash or error interrupts marking it sent. A plain
+// Notifier is still supported but then at least once: such a retry repeats
+// the alert, at most alertAttempts more times.
+type OnceNotifier interface {
+	TitleAvailableOnce(ctx context.Context, key, title string) error
+}
 
 // episodeRange returns the first and the newest released regular episodes
 // of a show or season that u may see. Specials (season 0) air out of order
@@ -161,7 +174,13 @@ func (s *Service) newEpisode(ctx context.Context, cfg Settings, u *core.User, sh
 // sendAlert queues a pending episode alert whose lease (its at) the caller
 // holds, and marks it sent. A failed alert stays pending for retryAlerts.
 func (s *Service) sendAlert(ctx context.Context, episode core.RatingKey, label string, at int64) error {
-	if e := s.o.Notifier.TitleAvailable(ctx, label); e != nil {
+	var e error
+	if once, ok := s.o.Notifier.(OnceNotifier); ok {
+		e = once.TitleAvailableOnce(ctx, "watchlist.episode:"+episode.String(), label)
+	} else {
+		e = s.o.Notifier.TitleAvailable(ctx, label)
+	}
+	if e != nil {
 		s.o.Logger.Warn("watchlist: new episode alert failed; retrying later", "episode", episode, "err", e)
 		return nil
 	}
@@ -170,14 +189,16 @@ func (s *Service) sendAlert(ctx context.Context, episode core.RatingKey, label s
 }
 
 // retryAlerts queues episode alerts left pending by a failed or interrupted
-// pass, once their lease has expired. Taking the lease is a conditional
-// update, so two passes never queue the same alert.
+// pass, once their lease has expired, up to alertAttempts times. Taking the
+// lease is a conditional update, so two passes never retry an alert at the
+// same time; whether a retry can repeat an alert that was queued but not
+// marked sent depends on the notifier (see OnceNotifier).
 func (s *Service) retryAlerts(ctx context.Context) error {
 	if s.o.Notifier == nil {
 		return nil
 	}
 	now := s.o.Now().Unix()
-	rows, err := s.db.QueryContext(ctx, `SELECT episode_key,label,at FROM watchlist_episodes_alerts WHERE sent=0 AND at<=? ORDER BY at LIMIT 20`, now-int64(alertLease/time.Second))
+	rows, err := s.db.QueryContext(ctx, `SELECT episode_key,label,at FROM watchlist_episodes_alerts WHERE sent=0 AND attempts<? AND at<=? ORDER BY at LIMIT 20`, alertAttempts, now-int64(alertLease/time.Second))
 	if err != nil {
 		return err
 	}
@@ -201,7 +222,7 @@ func (s *Service) retryAlerts(ctx context.Context) error {
 	}
 	for _, p := range ps {
 		lease := max(now, p.at+1)
-		res, err := s.db.ExecContext(ctx, `UPDATE watchlist_episodes_alerts SET at=? WHERE episode_key=? AND sent=0 AND at=?`, lease, p.key, p.at)
+		res, err := s.db.ExecContext(ctx, `UPDATE watchlist_episodes_alerts SET at=?,attempts=attempts+1 WHERE episode_key=? AND sent=0 AND at=?`, lease, p.key, p.at)
 		if err != nil {
 			return err
 		}

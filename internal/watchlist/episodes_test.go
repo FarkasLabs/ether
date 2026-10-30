@@ -263,3 +263,90 @@ func TestNewEpisodeAlertSurvivesFailures(t *testing.T) {
 		t.Fatalf("alerts %q", got)
 	}
 }
+
+// onceNotifier queues each key once, like notify.Service.
+type onceNotifier struct {
+	recordingNotifier
+	keys map[string]bool
+}
+
+func (n *onceNotifier) TitleAvailableOnce(ctx context.Context, key, title string) error {
+	if n.keys[key] {
+		return nil
+	}
+	n.keys[key] = true
+	return n.recordingNotifier.TitleAvailable(ctx, title)
+}
+
+// The alert was queued but marking it sent failed (or the process died): a
+// once-notifier is never asked to queue it twice in effect, and a plain one
+// repeats it a bounded number of times.
+func TestNewEpisodeAlertQueuedButNotMarkedSent(t *testing.T) {
+	for _, tc := range []struct {
+		name      string
+		notifier  Notifier
+		wantMax   int
+		wantExact bool
+	}{
+		{"once notifier", &onceNotifier{keys: map[string]bool{}}, 1, true},
+		{"plain notifier", &recordingNotifier{}, 1 + alertAttempts, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			ctx := context.Background()
+			now := time.Date(2026, 10, 19, 12, 0, 0, 0, time.UTC)
+			const show = 777
+			ep := func(e int, aired time.Duration) core.Title {
+				return core.Title{Key: core.EpisodeKey(show, 1, e), Type: core.TypeEpisode, ShowTitle: "Once", Season: 1, Episode: e, Released: now.Add(aired)}
+			}
+			showTitle := core.Title{Key: core.ShowKey(show), Type: core.TypeShow, Title: "Once", Released: now.Add(-30 * 24 * time.Hour)}
+			cat := &showCatalog{fakeCatalog: fakeCatalog{titles: map[core.RatingKey]core.Title{showTitle.Key: showTitle}},
+				episodes: []core.Title{ep(1, -30*24*time.Hour), ep(2, 2*time.Hour)}}
+			db, err := store.OpenMemory(ctx)
+			if err != nil {
+				t.Fatal(err)
+			}
+			t.Cleanup(func() { db.Close() })
+			s := New(db, Options{Catalog: cat, Resolver: &episodeResolver{missing: map[core.RatingKey]bool{}}, Notifier: tc.notifier, Now: func() time.Time { return now }})
+			if err := s.SaveSettings(ctx, Settings{Enabled: true, Notify: true, CheckHours: 6}); err != nil {
+				t.Fatal(err)
+			}
+			u := &core.User{ID: 1}
+			if err := s.Remind(ctx, u, showTitle.Key); err != nil {
+				t.Fatal(err)
+			}
+			if err := s.Check(ctx, u); err != nil {
+				t.Fatal(err)
+			}
+			base := 1 // the show's own availability alert
+			if _, err := db.Exec(`CREATE TRIGGER fail_sent BEFORE UPDATE OF sent ON watchlist_episodes_alerts WHEN NEW.sent=1 BEGIN SELECT RAISE(ABORT,'database is locked'); END`); err != nil {
+				t.Skipf("trigger unsupported: %v", err)
+			}
+			now = now.Add(3 * time.Hour)
+			if err := s.Check(ctx, u); err == nil {
+				t.Fatal("failure to mark the alert sent not reported")
+			}
+			for i := 0; i < 2*alertAttempts; i++ { // many later passes
+				now = now.Add(alertLease + time.Second)
+				_ = s.Check(ctx, u)
+			}
+			if _, err := db.Exec(`DROP TRIGGER fail_sent`); err != nil {
+				t.Fatal(err)
+			}
+			now = now.Add(alertLease + time.Second)
+			if err := s.Check(ctx, u); err != nil {
+				t.Fatal(err)
+			}
+			var titles []string
+			switch n := tc.notifier.(type) {
+			case *onceNotifier:
+				titles = n.titles
+			case *recordingNotifier:
+				titles = n.titles
+			}
+			got := len(titles) - base
+			if got < 1 || got > tc.wantMax || (tc.wantExact && got != tc.wantMax) {
+				t.Fatalf("episode alert queued %d times, want <=%d (exact=%v)", got, tc.wantMax, tc.wantExact)
+			}
+		})
+	}
+}
