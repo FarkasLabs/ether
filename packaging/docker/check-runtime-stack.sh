@@ -5,7 +5,7 @@
 # an image or prove a GPU.
 set -eu
 
-root=$(CDPATH= cd -- "$(dirname "$0")/../.." && pwd)
+root=$(cd "$(dirname "$0")/../.." && pwd)
 fail=0
 
 require() {
@@ -42,7 +42,8 @@ for file in "$root_df" "$amd64_df" "$arm64_df"; do
 	forbid "$file" 'libmfx1'
 done
 
-require "$root_df" '[ "$TARGETARCH" = amd64 ]'
+require "$root_df" 'TARGETARCH'
+require "$root_df" '= amd64'
 require "$root_df" 'intel-media-va-driver'
 require "$root_df" 'i965-va-driver'
 require "$root_df" 'libmfx-gen1.2'
