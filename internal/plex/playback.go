@@ -605,14 +605,18 @@ func (s *Server) decisionMedia(t *core.Title, ps *core.PlaySession, dec core.Dec
 		}
 	}
 
+	// Only Android builds its in-player track menu from unselected streams.
+	// Other clients must keep the PMS decision shape: video plus the
+	// selected audio and subtitle.
+	listAlternates := androidClient(p.caps.Product, p.caps.Platform)
 	if dec.Kind == core.DecisionDirectPlay {
-		return directPlayMedia(m, streams)
+		return directPlayMedia(m, streams, listAlternates)
 	}
 	applyTranscodeMedia(&m, dec, p.protocol)
 	var kept []model.Stream
 	for _, st := range streams {
 		ref, _ := s.streams.lookup(st.ID)
-		if shaped, keep := applyStreamDecision(st, ref.info, dec); keep {
+		if shaped, keep := applyStreamDecision(st, ref.info, dec, listAlternates); keep {
 			kept = append(kept, shaped)
 		}
 	}
@@ -623,15 +627,18 @@ func (s *Server) decisionMedia(t *core.Title, ps *core.PlaySession, dec core.Dec
 	return m
 }
 
-// directPlayMedia preserves stream ordering. Every audio and subtitle
-// stays in the list; selected marks the one that will play. Plex Android
-// builds its playback track menu from this response, so dropping the
-// alternates leaves the menu empty.
-func directPlayMedia(m model.Media, streams []model.Stream) model.Media {
+// directPlayMedia preserves stream ordering. Non-Android clients get the
+// video and the selected audio and subtitle, matching PMS. Android keeps
+// every audio and subtitle; selected marks the one that will play, and
+// dropping the alternates leaves its playback menu empty.
+func directPlayMedia(m model.Media, streams []model.Stream, listAlternates bool) model.Media {
 	part := &m.Part[0]
 	part.Decision = "directplay"
 	var kept []model.Stream
 	for _, st := range streams {
+		if !listAlternates && st.StreamType != 1 && (st.Selected == nil || !*st.Selected) {
+			continue
+		}
 		st.Location = "direct"
 		kept = append(kept, st)
 	}
@@ -687,7 +694,9 @@ func applyTranscodeMedia(m *model.Media, dec core.Decision, protocol string) {
 }
 
 // applyStreamDecision shapes one already-resolved stream without registry I/O.
-func applyStreamDecision(st model.Stream, src core.StreamInfo, dec core.Decision) (model.Stream, bool) {
+// listAlternates keeps an unselected audio or subtitle for Android, with its
+// source index and no decision or location. Other clients omit that stream.
+func applyStreamDecision(st model.Stream, src core.StreamInfo, dec core.Decision, listAlternates bool) (model.Stream, bool) {
 	idx := st.Index
 	st.Index = nil // segments carry their own stream layout
 	switch st.StreamType {
@@ -729,6 +738,9 @@ func applyStreamDecision(st model.Stream, src core.StreamInfo, dec core.Decision
 		st.Location = "segments-av"
 	case 2:
 		if st.Selected == nil || !*st.Selected {
+			if !listAlternates {
+				return st, false
+			}
 			st.Index = idx
 			return st, true
 		}
@@ -744,6 +756,9 @@ func applyStreamDecision(st model.Stream, src core.StreamInfo, dec core.Decision
 		st.Location = "segments-av"
 	case 3:
 		if st.Selected == nil || !*st.Selected {
+			if !listAlternates {
+				return st, false
+			}
 			st.Index = idx
 			return st, true
 		}
