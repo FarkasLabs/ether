@@ -177,9 +177,18 @@ func TestPresentationVisitSeedIsStableUntilIdleOrNewClientSession(t *testing.T) 
 	first = a.visit
 	now = now.Add(time.Second)
 	key.session = "visit-b"
+	key.client = "android-tv"
+	key.limit = 4
+	key.hour = 23
+	a = makeA()
+	e.assemblePage(a, key, false)
+	if a.visit != first {
+		t.Fatal("count, session or client id started a new visit")
+	}
+	key.user = 2
 	a = makeA()
 	e.assemblePage(a, key, false)
 	if a.visit == first {
-		t.Fatal("new app session reused visit")
+		t.Fatal("another viewer reused the visit")
 	}
 }
