@@ -1319,7 +1319,7 @@ func rejectPolicy(rel core.Release, t *core.Title, profile core.QualityProfile, 
 		}
 		return "above profile max height"
 	}
-	if !preferred && profile.MinHeight > 0 && rel.Info.Height > 0 && rel.Info.Height < profile.MinHeight {
+	if h := floorHeight(rel.Info); !preferred && profile.MinHeight > 0 && h > 0 && h < profile.MinHeight {
 		return "below profile min height"
 	}
 	if !preferred && rel.Info.DolbyVision && !profile.AllowDolbyVision && !(rel.Info.HDR10 && profile.AllowHDR) {
@@ -1374,6 +1374,22 @@ func isLegacyTranscodableCodec(codec string) bool {
 	default:
 		return false
 	}
+}
+
+// floorHeight is the height a release is held to against a profile's
+// minimum. Scene WEB releases name no resolution only when they are SD
+// ("Title.2026.WEB-DL.H.264-GRP"), so an unlabelled WEB-DL or WEBRip counts
+// as 480 and cannot pass a 4K floor while the 4K release is unplayable for
+// the client. Other unlabelled releases (legacy HDTV and DVD rips, which may
+// be all an older title has, and obfuscated names) stay exempt.
+func floorHeight(info core.ReleaseInfo) int {
+	if info.Height > 0 {
+		return info.Height
+	}
+	if info.Source == core.SourceWEBDL || info.Source == core.SourceWEBRip {
+		return 480
+	}
+	return 0
 }
 
 // effectiveMinSizeMBPerMin scales a profile's size floor down for lower-resolution
