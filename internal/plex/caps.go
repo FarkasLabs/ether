@@ -80,6 +80,10 @@ var (
 )
 
 // browserCaps is Plex Web, which depends on the browser in X-Plex-Platform.
+// Chromium/Firefox are given HEVC+HDR10 so Decide can Direct Stream (video
+// copy) the way official PMS does for modern desktop browsers; MDE/profile-
+// extra limitations still narrow this per request. Audio stays conservative
+// (no EAC3 on Chrome/Firefox) so incompatible soundtracks remux to AAC.
 func browserCaps(platform string) baseCaps {
 	p := strings.ToLower(platform)
 	c := baseCaps{
@@ -97,10 +101,13 @@ func browserCaps(platform string) baseCaps {
 	case strings.Contains(p, "edge"):
 		c.video = []string{"h264", "hevc", "vp9", "av1"}
 		c.audio = append(c.audio, "ac3", "eac3")
+		c.hdr10 = true
 	case strings.Contains(p, "chrome"), strings.Contains(p, "opera"), strings.Contains(p, "brave"):
 		c.video = []string{"h264", "vp9", "av1", "hevc"}
+		c.hdr10 = true
 	case strings.Contains(p, "firefox"):
-		c.video = []string{"h264", "vp9", "av1"}
+		c.video = []string{"h264", "vp9", "av1", "hevc"}
+		c.hdr10 = true
 	}
 	return c
 }
