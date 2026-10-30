@@ -130,19 +130,28 @@ func (a *App) buildPlex(cfg config.Config) (http.Handler, error) {
 	}
 	srv := plex.NewServer(deps)
 	a.plexServer = srv
+	a.publishLibrarySections()
+	a.closers = append(a.closers, func() { srv.Close() })
+	if !cfg.Spike.Enabled {
+		a.closers = append(a.closers, subscribeWatchRefresh(a.state, srv.WatchStateChanged))
+	}
+	return srv, nil
+}
+
+// publishLibrarySections pushes the live Movies / TV Shows identities
+// (including configured titles) to plex.tv account registration.
+func (a *App) publishLibrarySections() {
+	if a.plexServer == nil || a.registrar == nil {
+		return
+	}
 	libraries := make([]plextv.LibrarySection, 0)
-	for _, sec := range srv.LibrarySections() {
+	for _, sec := range a.plexServer.LibrarySections() {
 		libraries = append(libraries, plextv.LibrarySection{
 			Key: sec.ID, Type: string(sec.Type), Title: sec.Title,
 			UUID: sec.UUID, Language: sec.Language,
 		})
 	}
 	a.registrar.SetLibrarySections(libraries)
-	a.closers = append(a.closers, func() { srv.Close() })
-	if !cfg.Spike.Enabled {
-		a.closers = append(a.closers, subscribeWatchRefresh(a.state, srv.WatchStateChanged))
-	}
-	return srv, nil
 }
 
 // State emits only after committing, including deferred cluster writes. Do not

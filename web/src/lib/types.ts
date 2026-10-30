@@ -217,6 +217,8 @@ export interface EtherConfig {
     port: number;
     bindAddress: string;
     friendlyName: string;
+    moviesLibraryName: string;
+    tvShowsLibraryName: string;
     machineIdentifier: string;
     logLevel: string;
     defaultStreamLimit: number;

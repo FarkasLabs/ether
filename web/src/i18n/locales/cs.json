@@ -63,6 +63,7 @@
   "m_005da0cdacdcc3": "Klíč odmítnut",
   "m_006052e9c63e38": "odkaz {time}",
   "m_00609f822e0571": "Hotovo",
+  "m_00622d72a2d977": "Název knihovny Seriály",
   "m_00641db82a3ca1": "Štítky zaměření pro {path}",
   "m_0066da6f167909": "záloha snímek",
   "m_006a89c66f9dff": "Sdílejte tento server na plex.tv; každý se tu objeví po přihlášení.",
@@ -2781,6 +2782,7 @@
     "other": "Přihlášeno a vyhledáno: {count} výsledků, například:"
   },
   "m_135af2a37f0b4d": "Torrenty, které vaše služba již uchovává, se streamují přes HTTPS. Použijte token API svého účtu.",
+  "m_135e148c69f89c": "Jak se knihovna Filmy zobrazuje v aplikacích Plex. Tento název nastavuje Ether; přejmenování v Plexu se neuloží.",
   "m_135f54444eef95": "Kategorie seriálů",
   "m_136064c1a8aa9b": "Odesílání",
   "m_1364ac76efe405": "Výsledky hledání",
@@ -3669,6 +3671,7 @@
   "m_19759626500d10": "Synchronizace zachová stávající historii a neodstraňuje zhlédnuté položky. Epizody anime bez ověřeného mapování se přeskakují.",
   "m_197805698e6a5b": "Dokončením nastavení se tato administrační stránka uzamkne na váš účet Plex. Nastavení můžete později znovu otevřít v části Připojení.",
   "m_197f395ae133e3": "Nové pořady jsou v průvodci.",
+  "m_198004f13e8ffa": "Jak se knihovna Seriály zobrazuje v aplikacích Plex. Tento název nastavuje Ether; přejmenování v Plexu se neuloží.",
   "m_1982dc436baac0": "Nastavení webu",
   "m_1983b9b0ef1f2a": {
     "one": "Dokončete nebo odeberte nedokončený zdroj.",
@@ -3989,6 +3992,7 @@
   "m_1bf8ce0d45765d": "Dejte jednomu divákovi u tohoto seriálu jiné pořadí.",
   "m_1bf94dfbaf9d45": "Virtuální kanály",
   "m_1c02a207c830f5": "Dní v týdnu",
+  "m_1c05a9887885f3": "Název knihovny Filmy",
   "m_1c07ce6431ba09": "Importovat z Prowlarru",
   "m_1c090a2710e098": "OK · {ms} ms",
   "m_1c0dcf152406de": "Debrid streamuje torrenty, ale žádný zapnutý indexer je nevrací. Přidejte doplněk Stremio nebo indexer Torznab.",

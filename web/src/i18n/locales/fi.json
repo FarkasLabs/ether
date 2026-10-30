@@ -57,6 +57,7 @@
   "m_005da0cdacdcc3": "Avain hylätty",
   "m_006052e9c63e38": "linkki {time}",
   "m_00609f822e0571": "Valmis",
+  "m_00622d72a2d977": "TV-sarjakirjaston nimi",
   "m_00641db82a3ca1": "Painopistetunnisteet: {path}",
   "m_0066da6f167909": "varmuuskopio tilannekuva",
   "m_006a89c66f9dff": "Jaa tämä palvelin plex.tv:stä; jokainen henkilö näkyy täällä kirjauduttuaan sisään.",
@@ -2601,6 +2602,7 @@
     "other": "Kirjauduttu ja haettu: {count} tulosta, esimerkiksi:"
   },
   "m_135af2a37f0b4d": "Palvelusi jo hallussaan pitämät torrentit toistetaan HTTPS:n yli. Käytä tilisi API-tokenia.",
+  "m_135e148c69f89c": "Miten elokuvakirjasto näkyy Plex-sovelluksissa. Ether asettaa nimen; Plexissä tehty uudelleennimeäminen ei säily.",
   "m_135f54444eef95": "TV-luokat",
   "m_136064c1a8aa9b": "Lähetys",
   "m_1364ac76efe405": "Hakutulokset",
@@ -3429,6 +3431,7 @@
   "m_19759626500d10": "Synkronointi säilyttää nykyisen historian eikä poista katsottuja kohteita. Anime-jaksot, joilla ei ole vahvistettua vastaavuutta, ohitetaan.",
   "m_197805698e6a5b": "Asennuksen viimeistely lukitsee tämän hallintasivun Plex-tilillesi. Voit avata asennuksen uudelleen myöhemmin kohdasta Yhteydet.",
   "m_197f395ae133e3": "Tuoreet ohjelmatiedot ovat oppaassa.",
+  "m_198004f13e8ffa": "Miten TV-sarjakirjasto näkyy Plex-sovelluksissa. Ether asettaa nimen; Plexissä tehty uudelleennimeäminen ei säily.",
   "m_1982dc436baac0": "Sivuston asetukset",
   "m_1983b9b0ef1f2a": {
     "one": "Viimeistele tai poista keskeneräinen lähde.",
@@ -3735,6 +3738,7 @@
   "m_1bf8ce0d45765d": "Anna yhdelle katselijalle eri järjestys tälle sarjalle.",
   "m_1bf94dfbaf9d45": "Virtuaalikanavat",
   "m_1c02a207c830f5": "Päivää viikossa",
+  "m_1c05a9887885f3": "Elokuvakirjaston nimi",
   "m_1c07ce6431ba09": "Tuo Prowlarrista",
   "m_1c090a2710e098": "OK · {ms} ms",
   "m_1c0dcf152406de": "Debrid toistaa torrentteja, mutta mikään käytössä oleva indeksoija ei palauta niitä. Lisää Stremio-lisäosa tai Torznab-indeksoija.",

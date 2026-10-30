@@ -62,6 +62,8 @@ var mixedSections = map[string]map[string]Scope{
 		"bindAddress":        Local,
 		"logLevel":           Local,
 		"friendlyName":       Shared,
+		"moviesLibraryName":  Shared,
+		"tvShowsLibraryName": Shared,
 		"webFrameOrigins":    Shared,
 		"machineIdentifier":  Shared, // one server identity for the cluster
 		"defaultStreamLimit": Shared,

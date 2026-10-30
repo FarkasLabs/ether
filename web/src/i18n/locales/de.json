@@ -57,6 +57,7 @@
   "m_005da0cdacdcc3": "Schlüssel abgelehnt",
   "m_006052e9c63e38": "Link {time}",
   "m_00609f822e0571": "Fertig",
+  "m_00622d72a2d977": "Name der Serien-Mediathek",
   "m_00641db82a3ca1": "Fokus-Tags für {path}",
   "m_0066da6f167909": "Backup Snapshot",
   "m_006a89c66f9dff": "Gib diesen Server über plex.tv frei; jede Person erscheint hier, sobald sie sich anmeldet.",
@@ -2601,6 +2602,7 @@
     "other": "Angemeldet und gesucht: {count} Ergebnisse, zum Beispiel:"
   },
   "m_135af2a37f0b4d": "Torrents, die dein Dienst bereits vorhält, werden über HTTPS gestreamt. Verwende das API-Token deines Kontos.",
+  "m_135e148c69f89c": "Wie die Filme-Mediathek in Plex-Apps erscheint. Ether setzt diesen Namen; eine Umbenennung in Plex bleibt nicht erhalten.",
   "m_135f54444eef95": "Serienkategorien",
   "m_136064c1a8aa9b": "Upload",
   "m_1364ac76efe405": "Suchergebnisse",
@@ -3429,6 +3431,7 @@
   "m_19759626500d10": "Die Synchronisierung behält den vorhandenen Verlauf bei und entfernt keine gesehenen Titel. Anime-Folgen ohne überprüfte Zuordnung werden übersprungen.",
   "m_197805698e6a5b": "Mit dem Abschluss der Einrichtung wird diese Admin-Seite an dein Plex-Konto gebunden. Du kannst die Einrichtung später über „Konnektivität“ erneut öffnen.",
   "m_197f395ae133e3": "Neue Programmeinträge sind im Programm.",
+  "m_198004f13e8ffa": "Wie die Serien-Mediathek in Plex-Apps erscheint. Ether setzt diesen Namen; eine Umbenennung in Plex bleibt nicht erhalten.",
   "m_1982dc436baac0": "Seiteneinstellungen",
   "m_1983b9b0ef1f2a": {
     "one": "Vervollständige oder entferne die unvollständige Quelle.",
@@ -3735,6 +3738,7 @@
   "m_1bf8ce0d45765d": "Gib einem Zuschauer eine andere Reihenfolge für diese Serie.",
   "m_1bf94dfbaf9d45": "Virtuelle Kanäle",
   "m_1c02a207c830f5": "Tage pro Woche",
+  "m_1c05a9887885f3": "Name der Filme-Mediathek",
   "m_1c07ce6431ba09": "Aus Prowlarr importieren",
   "m_1c090a2710e098": "OK · {ms} ms",
   "m_1c0dcf152406de": "Debrid streamt Torrents, aber kein aktivierter Indexer liefert welche. Füge ein Stremio-Addon oder einen Torznab-Indexer hinzu.",
