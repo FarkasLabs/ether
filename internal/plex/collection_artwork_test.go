@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -14,15 +15,31 @@ import (
 // artCollections adds generated posters to the fake collections.
 type artCollections struct {
 	*fakeCollections
-	calls []string
+	mu        sync.Mutex
+	calls     []string
+	allowArt  bool
 }
 
 func (a *artCollections) CollectionArtwork(_ context.Context, u *core.User, key core.RatingKey, element string, width int) ([]byte, string, bool, error) {
-	a.calls = append(a.calls, element+":"+strconv.Itoa(width))
-	if (element != "thumb" && element != "art") || key.Kind() != core.KindSmart {
+	a.mu.Lock()
+	allowArt := a.allowArt
+	if element == "thumb" || (element == "art" && allowArt) {
+		a.calls = append(a.calls, element+":"+strconv.Itoa(width))
+	}
+	a.mu.Unlock()
+	if key.Kind() != core.KindSmart {
+		return nil, "", false, nil
+	}
+	if element != "thumb" && !(element == "art" && allowArt) {
 		return nil, "", false, nil
 	}
 	return []byte("GENERATED-" + u.Username), "image/jpeg", true, nil
+}
+
+func (a *artCollections) snapshotCalls() []string {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	return append([]string(nil), a.calls...)
 }
 
 func TestGeneratedCollectionArtwork(t *testing.T) {
@@ -55,13 +72,14 @@ func TestGeneratedCollectionArtwork(t *testing.T) {
 	if rec.Code != http.StatusOK || rec.Body.String() != "GENERATED-owner" {
 		t.Fatalf("photo transcode: %d %q", rec.Code, rec.Body)
 	}
-	if last := art.calls[len(art.calls)-1]; last != "thumb:400" {
-		t.Fatalf("width not passed: %v", art.calls)
+	callsSnap := art.snapshotCalls()
+	if len(callsSnap) == 0 || callsSnap[len(callsSnap)-1] != "thumb:400" {
+		t.Fatalf("width not passed: %v", callsSnap)
 	}
 	// Franchise collections keep their TMDB poster (the hook declines).
-	calls := len(art.calls)
+	calls := len(art.snapshotCalls())
 	f.get(t, "/library/collections/5000000000008091/thumb/1")
-	if len(art.calls) != calls {
+	if len(art.snapshotCalls()) != calls {
 		t.Fatal("franchise art should not ask the collection engine")
 	}
 }
@@ -74,7 +92,7 @@ func TestCustomCollectionArtEndpoint(t *testing.T) {
 		ChildCount: 1, PosterPath: "https://example.com/custom.jpg", BackdropPath: "https://example.com/custom.jpg", UpdatedAt: updated}
 	f.cols.cols[owned.Key] = owned
 	f.cols.items[owned.Key] = []core.Title{alien}
-	art := &artCollections{fakeCollections: f.cols}
+	art := &artCollections{fakeCollections: f.cols, allowArt: true}
 	d := f.srv.d
 	d.Collections = art
 	f.srv = NewServer(d)
