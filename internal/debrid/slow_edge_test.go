@@ -33,25 +33,26 @@ type roundTripFunc func(*http.Request) (*http.Response, error)
 func (f roundTripFunc) RoundTrip(r *http.Request) (*http.Response, error) { return f(r) }
 
 func TestHedgeWaitsForPrimaryConnectionSetup(t *testing.T) {
-	r := newEngineRig(t, 256<<10, 25*time.Millisecond)
+	r := newEngineRig(t, testBlock, 25*time.Millisecond)
 	cfg := r.svc.Config()
 	cfg.ReadAheadChunks = -1
 	r.svc.UpdateConfig(cfg)
 
 	var primaryCalls, hedgeCalls atomic.Int32
+	var hedgeDuringHandshake, hedgeBeforeConnect atomic.Bool
 	primaryConnected := make(chan struct{})
 	var connectOnce sync.Once
 
 	r.eng.hc = &http.Client{Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
-		primaryCalls.Add(1)
+		call := primaryCalls.Add(1)
 		tr := httptrace.ContextClientTrace(req.Context())
 		if tr != nil && tr.TLSHandshakeStart != nil {
 			tr.TLSHandshakeStart()
 		}
 		// Hold in handshake longer than HedgeDelay (25ms): hedge must NOT fire yet.
 		time.Sleep(80 * time.Millisecond)
-		if hedgeCalls.Load() != 0 {
-			t.Errorf("hedge fired while primary was still handshaking (hedgeCalls=%d)", hedgeCalls.Load())
+		if call == 1 && hedgeCalls.Load() != 0 {
+			hedgeDuringHandshake.Store(true)
 		}
 		if tr != nil && tr.GotConn != nil {
 			tr.GotConn(httptrace.GotConnInfo{})
@@ -67,7 +68,7 @@ func TestHedgeWaitsForPrimaryConnectionSetup(t *testing.T) {
 		select {
 		case <-primaryConnected:
 		default:
-			t.Errorf("hedge started before primary finished connecting")
+			hedgeBeforeConnect.Store(true)
 		}
 		body := r.media.data[:testBlock]
 		return &http.Response{
@@ -90,6 +91,12 @@ func TestHedgeWaitsForPrimaryConnectionSetup(t *testing.T) {
 	}
 	if !bytes.Equal(buf, r.media.data[:1024]) {
 		t.Fatal("content mismatch")
+	}
+	if hedgeDuringHandshake.Load() {
+		t.Fatal("hedge fired while primary was still handshaking")
+	}
+	if hedgeBeforeConnect.Load() {
+		t.Fatal("hedge started before primary finished connecting")
 	}
 	if primaryCalls.Load() != 1 || hedgeCalls.Load() != 1 {
 		t.Fatalf("primaryCalls=%d hedgeCalls=%d, want 1 and 1", primaryCalls.Load(), hedgeCalls.Load())
