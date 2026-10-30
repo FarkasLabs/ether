@@ -111,8 +111,11 @@ src_name=ether-abi-src-$$
 boot_name=ether-abi-boot-$$
 probe_tag=ether-abi-bookworm:$$
 
+# The Ether image declares VOLUME /config and /cache, so create/run mint
+# anonymous volumes. -v removes only those volumes with the container.
+# Do not prune volumes this script did not create.
 cleanup() {
-	docker rm -f "$src_name" "$boot_name" >/dev/null 2>&1 || true
+	docker rm -fv "$src_name" "$boot_name" >/dev/null 2>&1 || true
 	docker rmi "$probe_tag" >/dev/null 2>&1 || true
 	rm -rf "$work"
 }
@@ -218,7 +221,7 @@ fi
 docker create --name "$src_name" "$image" >/dev/null
 docker cp "$src_name:$libva" "$work/libva.so.2"
 docker cp "$src_name:/usr/lib/ether" "$work/bundled"
-docker rm "$src_name" >/dev/null
+docker rm -v "$src_name" >/dev/null
 
 sym_line=$(python3 "$root/packaging/docker/elf-dynsym.py" "$symbol" "$work/libva.so.2")
 echo "runtime check: $sym_line"
@@ -269,8 +272,9 @@ echo "runtime check: Bookworm libva regression"
 cp "$root/packaging/docker/va-probe.c" "$work/va-probe.c"
 docker run --rm -v "$work:/src" -w /src debian:bookworm-slim \
 	sh -c 'apt-get update && apt-get install -y --no-install-recommends gcc libc6-dev && gcc -O2 -o va-probe va-probe.c -ldl'
-mkdir -p "$work/bookworm"
-cp -R "$work/bundled" "$work/bookworm/ether"
+mkdir -p "$work/bookworm/ether"
+# The regression only dlopens libva from ffmpeg. Leave the server binary out.
+cp "$work/bundled/ffmpeg" "$work/bundled/ffprobe" "$work/bookworm/ether/"
 cp "$work/va-probe" "$work/bookworm/va-probe"
 cat > "$work/bookworm/Dockerfile" <<'EOF'
 FROM debian:bookworm-slim
@@ -292,7 +296,7 @@ echo "runtime check: bookworm dlopen path $probe_libva"
 docker run --rm --entrypoint /bin/sh "$probe_tag" -c 'dpkg-query -W libva2 libva-drm2'
 docker create --name "$src_name" "$probe_tag" >/dev/null
 docker cp "$src_name:$probe_libva" "$work/libva-bookworm.so.2"
-docker rm "$src_name" >/dev/null
+docker rm -v "$src_name" >/dev/null
 probe_sym=$(python3 "$root/packaging/docker/elf-dynsym.py" "$symbol" "$work/libva-bookworm.so.2")
 echo "runtime check: $probe_sym"
 case "$probe_sym" in
@@ -323,7 +327,8 @@ fi
 echo "runtime check: bookworm reproduces undefined symbol $symbol"
 
 echo "runtime check: image boot"
-docker run -d --name "$boot_name" "$image" >/dev/null
+# No network: startup must still reach the listener without a claim or account.
+docker run -d --name "$boot_name" --network none "$image" >/dev/null
 booted=0
 i=0
 while [ "$i" -lt 60 ]; do
@@ -347,6 +352,6 @@ if [ "$uid_line" != 999 ]; then
 	exit 1
 fi
 docker stop -t 15 "$boot_name" >/dev/null
-docker rm "$boot_name" >/dev/null
+docker rm -v "$boot_name" >/dev/null
 
 echo "runtime check: passed for $image (no GPU or Quick Sync claim)"
