@@ -12,13 +12,16 @@ import (
 // New episodes of watchlisted shows. watchlist_episodes records, per viewer
 // and show, the episodes already handled (found or present when the show
 // became available), so each newer episode is processed once.
-// watchlist_episodes_alerts claims each episode's owner alert once for every
-// viewer, node and restart. Its own migration component keeps the numbering
-// independent of the watchlist component's.
+// watchlist_episodes_alerts holds each episode's owner alert once for every
+// viewer, node and restart: it is created in the same transaction that
+// records the episode and stays pending (sent=0) until the alert is queued,
+// so a failure or crash in between is retried rather than lost. Its own
+// migration component keeps the numbering independent of the watchlist
+// component's.
 func init() {
 	store.Register("watchlist_episodes", 1, `
 CREATE TABLE watchlist_episodes(user_id INTEGER NOT NULL,item_key INTEGER NOT NULL,episode_key INTEGER NOT NULL,at INTEGER NOT NULL,PRIMARY KEY(user_id,item_key,episode_key));
-CREATE TABLE watchlist_episodes_alerts(episode_key INTEGER PRIMARY KEY,at INTEGER NOT NULL);
+CREATE TABLE watchlist_episodes_alerts(episode_key INTEGER PRIMARY KEY,label TEXT NOT NULL,at INTEGER NOT NULL,sent INTEGER NOT NULL DEFAULT 0);
 `)
 }
 
@@ -27,6 +30,9 @@ const (
 	// for more often, at freshAiringCheck instead of the check interval.
 	freshAiring      = 48 * time.Hour
 	freshAiringCheck = time.Hour
+	// alertLease is how long a pass that took a pending alert may take to
+	// queue it before another pass retries it.
+	alertLease = 2 * time.Minute
 )
 
 // episodeRange returns the first and the newest released regular episodes
@@ -99,10 +105,10 @@ func (s *Service) claimEpisode(ctx context.Context, userID int64, show, episode 
 }
 
 // newEpisode looks for a release of an available show's newest episode.
-// Once one is found the episode is recorded for the viewer, announced once
-// (whichever viewer finds it first) and prewarmed. Until then the show is
-// checked again on the next due pass; a failed alert leaves the episode
-// unrecorded so it is retried.
+// Once one is found, one transaction records the episode for the viewer and
+// (with alerts on, the first time any viewer finds it) creates its pending
+// alert; the alert is then queued, and the episode prewarmed separately.
+// Until a release exists the show is checked again on the next due pass.
 func (s *Service) newEpisode(ctx context.Context, cfg Settings, u *core.User, show, episode *core.Title) error {
 	res, e := s.resolve(ctx, u, episode)
 	if _, err := s.db.ExecContext(ctx, `UPDATE watchlist_items SET checked=? WHERE user_id=? AND item_key=?`, s.o.Now().Unix(), u.ID, show.Key); err != nil {
@@ -111,32 +117,100 @@ func (s *Service) newEpisode(ctx context.Context, cfg Settings, u *core.User, sh
 	if e != nil || res == nil {
 		return nil
 	}
-	claimed, err := s.claimEpisode(ctx, u.ID, show.Key, episode.Key)
-	if err != nil || !claimed {
+	now := s.o.Now().Unix()
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
 		return err
 	}
+	defer tx.Rollback()
+	rec, err := tx.ExecContext(ctx, `INSERT INTO watchlist_episodes(user_id,item_key,episode_key,at) VALUES(?,?,?,?) ON CONFLICT(user_id,item_key,episode_key) DO NOTHING`, u.ID, show.Key, episode.Key, now)
+	if err != nil {
+		return err
+	}
+	if n, err := rec.RowsAffected(); err != nil || n == 0 {
+		return err // recorded already, here or on another node
+	}
+	alert := false
 	if cfg.Notify && s.o.Notifier != nil {
-		alert, err := s.db.ExecContext(ctx, `INSERT INTO watchlist_episodes_alerts(episode_key,at) VALUES(?,?) ON CONFLICT(episode_key) DO NOTHING`, episode.Key, s.o.Now().Unix())
+		res, err := tx.ExecContext(ctx, `INSERT INTO watchlist_episodes_alerts(episode_key,label,at) VALUES(?,?,?) ON CONFLICT(episode_key) DO NOTHING`, episode.Key, episodeLabel(show, episode), now)
 		if err != nil {
 			return err
 		}
-		if n, err := alert.RowsAffected(); err != nil {
+		n, err := res.RowsAffected()
+		if err != nil {
 			return err
-		} else if n == 1 {
-			if e := s.o.Notifier.TitleAvailable(ctx, episodeLabel(show, episode)); e != nil {
-				s.o.Logger.Warn("watchlist: new episode alert failed", "episode", episode.Key, "err", e)
-				_, err1 := s.db.ExecContext(ctx, `DELETE FROM watchlist_episodes_alerts WHERE episode_key=?`, episode.Key)
-				_, err2 := s.db.ExecContext(ctx, `DELETE FROM watchlist_episodes WHERE user_id=? AND item_key=? AND episode_key=?`, u.ID, show.Key, episode.Key)
-				if err1 != nil {
-					return err1
-				}
-				return err2
-			}
+		}
+		alert = n == 1
+	}
+	if err := tx.Commit(); err != nil {
+		return err
+	}
+	if alert {
+		if err := s.sendAlert(ctx, episode.Key, episodeLabel(show, episode), now); err != nil {
+			return err
 		}
 	}
 	if cfg.Prewarm && s.o.Engine != nil {
 		if e := s.prewarm(ctx, res); e != nil {
 			s.o.Logger.Debug("watchlist: prewarm new episode", "episode", episode.Key, "err", e)
+		}
+	}
+	return nil
+}
+
+// sendAlert queues a pending episode alert whose lease (its at) the caller
+// holds, and marks it sent. A failed alert stays pending for retryAlerts.
+func (s *Service) sendAlert(ctx context.Context, episode core.RatingKey, label string, at int64) error {
+	if e := s.o.Notifier.TitleAvailable(ctx, label); e != nil {
+		s.o.Logger.Warn("watchlist: new episode alert failed; retrying later", "episode", episode, "err", e)
+		return nil
+	}
+	_, err := s.db.ExecContext(ctx, `UPDATE watchlist_episodes_alerts SET sent=1 WHERE episode_key=? AND at=?`, episode, at)
+	return err
+}
+
+// retryAlerts queues episode alerts left pending by a failed or interrupted
+// pass, once their lease has expired. Taking the lease is a conditional
+// update, so two passes never queue the same alert.
+func (s *Service) retryAlerts(ctx context.Context) error {
+	if s.o.Notifier == nil {
+		return nil
+	}
+	now := s.o.Now().Unix()
+	rows, err := s.db.QueryContext(ctx, `SELECT episode_key,label,at FROM watchlist_episodes_alerts WHERE sent=0 AND at<=? ORDER BY at LIMIT 20`, now-int64(alertLease/time.Second))
+	if err != nil {
+		return err
+	}
+	type pending struct {
+		key   core.RatingKey
+		label string
+		at    int64
+	}
+	var ps []pending
+	for rows.Next() {
+		var p pending
+		if err := rows.Scan(&p.key, &p.label, &p.at); err != nil {
+			rows.Close()
+			return err
+		}
+		ps = append(ps, p)
+	}
+	rows.Close()
+	if err := rows.Err(); err != nil {
+		return err
+	}
+	for _, p := range ps {
+		lease := max(now, p.at+1)
+		res, err := s.db.ExecContext(ctx, `UPDATE watchlist_episodes_alerts SET at=? WHERE episode_key=? AND sent=0 AND at=?`, lease, p.key, p.at)
+		if err != nil {
+			return err
+		}
+		if n, err := res.RowsAffected(); err != nil {
+			return err
+		} else if n == 1 {
+			if err := s.sendAlert(ctx, p.key, p.label, lease); err != nil {
+				return err
+			}
 		}
 	}
 	return nil

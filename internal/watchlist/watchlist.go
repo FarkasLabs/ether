@@ -301,6 +301,11 @@ func (s *Service) Check(ctx context.Context, u *core.User) error {
 	if err != nil || !cfg.Enabled || s.o.Resolver == nil {
 		return err
 	}
+	if cfg.Notify {
+		if err := s.retryAlerts(ctx); err != nil {
+			return err
+		}
+	}
 	items, err := s.Items(ctx, u)
 	if err != nil {
 		return err
