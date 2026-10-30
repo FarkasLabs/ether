@@ -313,7 +313,7 @@ func (s *Server) homeHubs(w http.ResponseWriter, r *http.Request, promotedOnly b
 	if ids := q["identifier"]; len(ids) > 0 {
 		mc.Hub = filterHubs(mc.Hub, ids)
 	}
-	mc.Hub = s.finalizeHomeRows(ctx, pr, hc, "home", mc.Hub)
+	mc.Hub = stableHomeHubs(s.finalizeHomeRows(ctx, pr, hc, "home", mc.Hub))
 	mc.Size = len(mc.Hub)
 	s.write(w, r, mc)
 	s.recordImpressions(pr, hc, mc.Hub, served)
@@ -534,7 +534,7 @@ func (s *Server) handleSectionHubs(w http.ResponseWriter, r *http.Request) {
 	if sec.Type == core.TypeShow {
 		sectionName = "shows"
 	}
-	mc.Hub = s.finalizeHomeRows(ctx, pr, pc, sectionName, mc.Hub)
+	mc.Hub = stableHomeHubs(s.finalizeHomeRows(ctx, pr, pc, sectionName, mc.Hub))
 	s.log.Debug("section hubs rendered", "section", sec.ID, "user", pr.User.ID, "count", count, "rows", len(mc.Hub))
 	mc.Size = len(mc.Hub)
 	s.write(w, r, mc)

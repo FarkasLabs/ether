@@ -103,6 +103,7 @@ func (a *App) buildPlex(cfg config.Config) (http.Handler, error) {
 	deps.Subtitles = plexSubtitles{a}
 	deps.TrackPreferences = a.trackprefs
 	deps.Markers = a.markers
+	deps.Support = a.support
 	if a.transcoder != nil && !cfg.Spike.Enabled {
 		if dl, err := a.transcoder.NewDownloadRemuxer(cfg.Downloads); err == nil {
 			deps.Downloads = dl

@@ -331,6 +331,8 @@ export interface EtherConfig {
     };
   };
   trakt: { enabled: boolean; clientId: string; clientSecret: string };
+  simkl?: { enabled: boolean; clientId: string; clientSecret: string };
+  markers?: { theIntroDb: boolean; apiKey: string };
   openSubtitles: { enabled: boolean; apiKey: string; username: string; password: string };
   llm: { enabled: boolean; provider: string; baseUrl: string; apiKey: string; model: string };
   updates: {
@@ -368,6 +370,7 @@ export interface EtherConfig {
 }
 
 export interface QualityProfile {
+  releaseRules?: ReleaseRule[] | null;
   name: string;
   maxHeight: number;
   minHeight: number;
@@ -716,4 +719,29 @@ export interface AvailabilityConfig {
   checks: number;
   checkBytes: number;
   reservePercent: number;
+}
+
+export interface ReleaseCondition {
+  field: string;
+  operator: "equals" | "contains" | "regex" | "range";
+  value?: string;
+  min?: number;
+  max?: number;
+}
+export interface ReleaseRule {
+  id: string;
+  name: string;
+  action: "require" | "prefer" | "avoid";
+  match?: "all" | "any";
+  conditions: ReleaseCondition[];
+  unless?: ReleaseCondition[];
+  fallback?: ReleaseCondition[];
+  disabled?: boolean;
+}
+export interface ReleasePreferenceResult {
+  rejected: boolean;
+  unknown: boolean;
+  fallback: number;
+  preferences: number[];
+  explanations: { id: string; name: string; action: string; state: string; outcome: string }[];
 }

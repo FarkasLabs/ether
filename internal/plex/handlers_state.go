@@ -177,6 +177,7 @@ func (s *Server) handleTimeline(w http.ResponseWriter, r *http.Request) {
 		u := *user
 		s.goHook("OnTimeline", func() { hook(&u, key, offset, duration, state) })
 	}
+	s.observePlaybackReported(pr)
 	s.write(w, r, mc)
 }
 
@@ -194,6 +195,7 @@ func (s *Server) handleProgress(w http.ResponseWriter, r *http.Request) {
 		s.writeErr(w, r, err)
 		return
 	}
+	s.observePlaybackReported(pr)
 	w.WriteHeader(http.StatusOK)
 }
 
