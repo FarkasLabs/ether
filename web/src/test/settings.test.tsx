@@ -483,7 +483,7 @@ describe("Settings", () => {
       clientId: "app-id",
     });
     expect(screen.getByRole("switch", { name: "Simkl enabled" })).toBeChecked();
-    expect(screen.getByRole("tab", { name: "Simkl" })).toBeInTheDocument();
+    expect(await screen.findByRole("tab", { name: "Simkl" }, WAIT)).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("switch", { name: "OMDb and MDBList enabled" }));
     const ratings = await screen.findByRole("dialog", { name: "Set up OMDb and MDBList" }, WAIT);
@@ -501,7 +501,7 @@ describe("Settings", () => {
     expect(
       await screen.findByRole("switch", { name: "OMDb and MDBList enabled" }, WAIT),
     ).toBeChecked();
-    expect(screen.getByRole("tab", { name: "Ratings" })).toBeInTheDocument();
+    expect(await screen.findByRole("tab", { name: "Ratings" }, WAIT)).toBeInTheDocument();
     expect(screen.getByText("Configured")).toBeInTheDocument();
     expect(screen.queryByText(/^Connected/)).toBeNull();
   });
