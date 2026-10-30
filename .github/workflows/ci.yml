@@ -218,3 +218,4 @@ jobs:
         run: |
           scripts/fetch-ffmpeg.sh linux-amd64
           docker build -t ether:ci .
+          packaging/docker/check-runtime-stack.sh --image ether:ci
