@@ -81,9 +81,8 @@ var (
 
 // browserCaps is Plex Web, which depends on the browser in X-Plex-Platform.
 // Base caps stay conservative: only Safari claims HEVC+HDR10 by default.
-// Chromium may list HEVC without HDR10; Firefox lists neither. Affirmative
-// hevc in X-Plex-Client-Profile-Extra adds the codec (see
-// promoteHEVCFromProfile) but never HDR10 — HEVC ≠ HDR10.
+// Chromium may list HEVC without HDR10; Firefox lists neither. Profile-extra
+// can add codecs via applyProfileExtra, but hevc alone never implies HDR10.
 // Audio stays conservative (no EAC3 on Chrome/Firefox) so incompatible
 // soundtracks remux to AAC.
 func browserCaps(platform string) baseCaps {
@@ -188,30 +187,12 @@ func (pr *Request) ClientCaps(remoteMaxKbps int) core.ClientCaps {
 		applyLegacyCapabilities(&c, pr.ClientCapabilities)
 	}
 	if pr.ProfileExtra != "" {
-		ev := applyProfileExtra(&c, pr.ProfileExtra)
-		promoteHEVCFromProfile(&c, ev)
+		applyProfileExtra(&c, pr.ProfileExtra)
 	}
 	if c.Remote && remoteMaxKbps > 0 && (c.MaxBitrateKbps == 0 || c.MaxBitrateKbps > remoteMaxKbps) {
 		c.MaxBitrateKbps = remoteMaxKbps
 	}
 	return c
-}
-
-// profileExtraEvidence records affirmative codec claims from
-// X-Plex-Client-Profile-Extra. Omission is not support: only verbs that list
-// hevc count. HDR denials are applied via add-limitation (clear HDR10);
-// hevc alone never implies HDR10.
-type profileExtraEvidence struct {
-	affirmativeHEVC bool
-}
-
-// promoteHEVCFromProfile adds hevc when profile-extra affirmatively listed it.
-// Does not set HDR10: listing hevc is not evidence of HDR10 playback.
-func promoteHEVCFromProfile(c *core.ClientCaps, ev profileExtraEvidence) {
-	if !ev.affirmativeHEVC {
-		return
-	}
-	c.VideoCodecs = addUnique(c.VideoCodecs, "hevc")
 }
 
 // Directive is one parsed X-Plex-Client-Profile-Extra directive, e.g.
@@ -305,8 +286,7 @@ func addUnique(xs []string, add ...string) []string {
 	return xs
 }
 
-func applyProfileExtra(c *core.ClientCaps, extra string) profileExtraEvidence {
-	var ev profileExtraEvidence
+func applyProfileExtra(c *core.ClientCaps, extra string) {
 	for _, d := range ParseProfileExtra(extra) {
 		a := d.Args
 		switch d.Verb {
@@ -314,11 +294,7 @@ func applyProfileExtra(c *core.ClientCaps, extra string) profileExtraEvidence {
 			if t := a["type"]; t != "" && t != "videoProfile" {
 				continue
 			}
-			codecs := splitList(a["videoCodec"])
-			if slices.Contains(codecs, "hevc") {
-				ev.affirmativeHEVC = true
-			}
-			c.VideoCodecs = addUnique(c.VideoCodecs, codecs...)
+			c.VideoCodecs = addUnique(c.VideoCodecs, splitList(a["videoCodec"])...)
 			c.AudioCodecs = addUnique(c.AudioCodecs, splitList(a["audioCodec"])...)
 			if ct := a["container"]; ct != "" {
 				c.Containers = addUnique(c.Containers, splitList(ct)...)
@@ -330,18 +306,13 @@ func applyProfileExtra(c *core.ClientCaps, extra string) profileExtraEvidence {
 			if t := a["type"]; t != "" && t != "videoProfile" {
 				continue
 			}
-			codecs := splitList(a["videoCodec"])
-			if slices.Contains(codecs, "hevc") {
-				ev.affirmativeHEVC = true
-			}
-			c.VideoCodecs = addUnique(c.VideoCodecs, codecs...)
+			c.VideoCodecs = addUnique(c.VideoCodecs, splitList(a["videoCodec"])...)
 			c.AudioCodecs = addUnique(c.AudioCodecs, splitList(a["audioCodec"])...)
 			c.Containers = addUnique(c.Containers, splitList(a["container"])...)
 		case "add-limitation":
 			applyLimitation(c, a)
 		}
 	}
-	return ev
 }
 
 func applyLimitation(c *core.ClientCaps, a map[string]string) {
