@@ -57,6 +57,12 @@ type Server struct {
 	Port         int    `json:"port"`
 	BindAddress  string `json:"bindAddress"`
 	FriendlyName string `json:"friendlyName"`
+	// MoviesLibraryName is the Movies section title shown in Plex apps.
+	// Empty falls back to "Movies".
+	MoviesLibraryName string `json:"moviesLibraryName"`
+	// TVShowsLibraryName is the TV Shows section title shown in Plex apps.
+	// Empty falls back to "TV Shows".
+	TVShowsLibraryName string `json:"tvShowsLibraryName"`
 	// MachineIdentifier is generated on first run and never changes.
 	MachineIdentifier string `json:"machineIdentifier"`
 	LogLevel          string `json:"logLevel"`

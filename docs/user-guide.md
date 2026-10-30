@@ -198,9 +198,12 @@ own history and recommendations.
 ## Libraries, catalogue and Home
 
 Ether appears as its own server in Plex, with Movies and TV Shows libraries.
-These libraries contain the titles exposed by Ether's catalogue and visibility
-rules; they are not folders of downloaded media. A catalogue entry does not
-guarantee that your configured sources have a playable release.
+Rename those libraries under **General › Server** (Movies library name and TV
+Shows library name); Plex's own library rename does not stick because Ether
+generates the libraries. These libraries contain the titles exposed by Ether's
+catalogue and visibility rules; they are not folders of downloaded media. A
+catalogue entry does not guarantee that your configured sources have a playable
+release.
 
 Your existing Plex Media Server keeps its own libraries and files. Ether does
 not merge or replace them. Plex Home can show rows from multiple pinned

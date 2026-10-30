@@ -102,6 +102,8 @@ function defaultConfig(): EtherConfig {
       port: 32400,
       bindAddress: "0.0.0.0",
       friendlyName: "Living Room Ether",
+      moviesLibraryName: "Movies",
+      tvShowsLibraryName: "TV Shows",
       machineIdentifier: "mock-machine",
       logLevel: "info",
       defaultStreamLimit: 2,
