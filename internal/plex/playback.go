@@ -10,6 +10,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -340,6 +341,7 @@ func (s *Server) prepare(ctx context.Context, pr *Request, p *playRequest) (*cor
 	resolvePlaySelection(p, ps.Info)
 	s.applyStreamPreferences(ctx, pr, p, t, ps.Info)
 	applySelections(p, ps.Info, s.audioLanguages(pr.User))
+	p.caps.TranscodeAudioCodecs = streamingAudioTarget(pr.ProfileExtra, p.protocol)
 	dec := core.Decision{Kind: core.DecisionDirectPlay, VideoCopy: true, AudioCopy: true, Container: ps.Info.Container, AudioStream: p.opts.AudioStream, SubtitleStream: p.opts.SubtitleStream}
 	if s.d.Transcoder != nil {
 		dec = s.d.Transcoder.Decide(ps.Info, p.caps, p.opts)
@@ -382,6 +384,13 @@ func (s *Server) prepare(ctx context.Context, pr *Request, p *playRequest) (*cor
 			dec.Container = transcode.HLSContainer(p.caps, videoCodec, audioCodec)
 		}
 		dec.Reason = "Direct stream preserves playback across source changes."
+		if len(p.caps.TranscodeAudioCodecs) > 0 && audioCodec != "" && !slices.Contains(p.caps.TranscodeAudioCodecs, audioCodec) {
+			// A forced direct stream still has to meet the segmented player's
+			// output target, even when the original file was direct-playable.
+			opts := p.opts
+			opts.DirectPlay = false
+			dec = s.d.Transcoder.Decide(ps.Info, p.caps, opts)
+		}
 	}
 	if v := ps.Info.Video(); v != nil {
 		s.log.Debug("playback media decision", "key", p.key, "client", pr.ClientID, "device", pr.Device, "model", pr.Model, "platformVersion", pr.PlatformVersion, "video", v.Codec, "videoProfile", v.Profile, "height", v.Height, "bitDepth", v.BitDepth, "transfer", v.ColorTransfer, "dvProfile", v.DolbyVisionProfile, "dvLevel", v.DolbyVisionLevel, "dvCompatibility", v.DolbyVisionCompatibilityID, "kind", dec.Kind, "outputContainer", dec.Container, "videoCopy", dec.VideoCopy, "audioCopy", dec.AudioCopy, "hdrCap", p.caps.HDR10, "dvCap", p.caps.DolbyVision, "profileExtra", pr.ProfileExtra)
@@ -827,6 +836,12 @@ func (s *Server) handleStartHLS(w http.ResponseWriter, r *http.Request) {
 	if dec.Kind == core.DecisionDirectPlay {
 		// The client asked for HLS anyway: remux.
 		dec.Kind, dec.VideoCopy, dec.AudioCopy, dec.Container = core.DecisionRemux, true, true, "mpegts"
+		if len(entry.caps.TranscodeAudioCodecs) > 0 && dec.AudioCodec != "" && !slices.Contains(entry.caps.TranscodeAudioCodecs, dec.AudioCodec) {
+			opts := entry.opts
+			opts.DirectPlay = false
+			opts.DirectStream = true
+			dec = s.d.Transcoder.Decide(ps.Info, entry.caps, opts)
+		}
 	}
 	if dec.Container == "" {
 		dec.Container = "mpegts"
