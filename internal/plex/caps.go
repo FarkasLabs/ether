@@ -80,10 +80,12 @@ var (
 )
 
 // browserCaps is Plex Web, which depends on the browser in X-Plex-Platform.
-// Chromium/Firefox are given HEVC+HDR10 so Decide can Direct Stream (video
-// copy) the way official PMS does for modern desktop browsers; MDE/profile-
-// extra limitations still narrow this per request. Audio stays conservative
-// (no EAC3 on Chrome/Firefox) so incompatible soundtracks remux to AAC.
+// Base caps stay conservative: only Safari claims HEVC+HDR10 by default.
+// Chromium may list HEVC without HDR10; Firefox lists neither. HEVC/HDR10
+// Direct Stream is promoted only when X-Plex-Client-Profile-Extra
+// affirmatively lists hevc and does not deny 10-bit/HDR (see
+// promoteHEVCHDRFromProfile). Audio stays conservative (no EAC3 on
+// Chrome/Firefox) so incompatible soundtracks remux to AAC.
 func browserCaps(platform string) baseCaps {
 	p := strings.ToLower(platform)
 	c := baseCaps{
@@ -101,13 +103,10 @@ func browserCaps(platform string) baseCaps {
 	case strings.Contains(p, "edge"):
 		c.video = []string{"h264", "hevc", "vp9", "av1"}
 		c.audio = append(c.audio, "ac3", "eac3")
-		c.hdr10 = true
 	case strings.Contains(p, "chrome"), strings.Contains(p, "opera"), strings.Contains(p, "brave"):
 		c.video = []string{"h264", "vp9", "av1", "hevc"}
-		c.hdr10 = true
 	case strings.Contains(p, "firefox"):
-		c.video = []string{"h264", "vp9", "av1", "hevc"}
-		c.hdr10 = true
+		c.video = []string{"h264", "vp9", "av1"}
 	}
 	return c
 }
@@ -189,12 +188,32 @@ func (pr *Request) ClientCaps(remoteMaxKbps int) core.ClientCaps {
 		applyLegacyCapabilities(&c, pr.ClientCapabilities)
 	}
 	if pr.ProfileExtra != "" {
-		applyProfileExtra(&c, pr.ProfileExtra)
+		ev := applyProfileExtra(&c, pr.ProfileExtra)
+		promoteHEVCHDRFromProfile(&c, ev)
 	}
 	if c.Remote && remoteMaxKbps > 0 && (c.MaxBitrateKbps == 0 || c.MaxBitrateKbps > remoteMaxKbps) {
 		c.MaxBitrateKbps = remoteMaxKbps
 	}
 	return c
+}
+
+// profileExtraEvidence records affirmative codec claims and HDR denials from
+// X-Plex-Client-Profile-Extra. Omission is not support: only verbs that list
+// hevc count, and HDR-denying limitations block promotion.
+type profileExtraEvidence struct {
+	affirmativeHEVC bool
+	hdrDenied       bool
+}
+
+// promoteHEVCHDRFromProfile enables HEVC+HDR10 when profile-extra affirmatively
+// listed hevc and did not deny 10-bit/HDR. Base browser caps alone never
+// promote HDR10 (omission is not evidence of support).
+func promoteHEVCHDRFromProfile(c *core.ClientCaps, ev profileExtraEvidence) {
+	if !ev.affirmativeHEVC || ev.hdrDenied {
+		return
+	}
+	c.VideoCodecs = addUnique(c.VideoCodecs, "hevc")
+	c.HDR10 = true
 }
 
 // Directive is one parsed X-Plex-Client-Profile-Extra directive, e.g.
@@ -288,7 +307,8 @@ func addUnique(xs []string, add ...string) []string {
 	return xs
 }
 
-func applyProfileExtra(c *core.ClientCaps, extra string) {
+func applyProfileExtra(c *core.ClientCaps, extra string) profileExtraEvidence {
+	var ev profileExtraEvidence
 	for _, d := range ParseProfileExtra(extra) {
 		a := d.Args
 		switch d.Verb {
@@ -296,7 +316,11 @@ func applyProfileExtra(c *core.ClientCaps, extra string) {
 			if t := a["type"]; t != "" && t != "videoProfile" {
 				continue
 			}
-			c.VideoCodecs = addUnique(c.VideoCodecs, splitList(a["videoCodec"])...)
+			codecs := splitList(a["videoCodec"])
+			if slices.Contains(codecs, "hevc") {
+				ev.affirmativeHEVC = true
+			}
+			c.VideoCodecs = addUnique(c.VideoCodecs, codecs...)
 			c.AudioCodecs = addUnique(c.AudioCodecs, splitList(a["audioCodec"])...)
 			if ct := a["container"]; ct != "" {
 				c.Containers = addUnique(c.Containers, splitList(ct)...)
@@ -308,13 +332,42 @@ func applyProfileExtra(c *core.ClientCaps, extra string) {
 			if t := a["type"]; t != "" && t != "videoProfile" {
 				continue
 			}
-			c.VideoCodecs = addUnique(c.VideoCodecs, splitList(a["videoCodec"])...)
+			codecs := splitList(a["videoCodec"])
+			if slices.Contains(codecs, "hevc") {
+				ev.affirmativeHEVC = true
+			}
+			c.VideoCodecs = addUnique(c.VideoCodecs, codecs...)
 			c.AudioCodecs = addUnique(c.AudioCodecs, splitList(a["audioCodec"])...)
 			c.Containers = addUnique(c.Containers, splitList(a["container"])...)
 		case "add-limitation":
+			if limitationDeniesHDR(a) {
+				ev.hdrDenied = true
+			}
 			applyLimitation(c, a)
 		}
 	}
+	return ev
+}
+
+// limitationDeniesHDR reports profile-extra limits that mean this client
+// cannot take HEVC HDR10 (8-bit cap or explicit PQ rejection).
+func limitationDeniesHDR(a map[string]string) bool {
+	if a["scope"] != "videoCodec" {
+		return false
+	}
+	sn := normalizeCodec(a["scopeName"])
+	if sn != "hevc" && sn != "av1" && sn != "*" && sn != "" {
+		return false
+	}
+	name, typ, val := a["name"], a["type"], a["value"]
+	if name == "video.bitDepth" && typ == "upperBound" {
+		n, err := strconv.Atoi(val)
+		return err == nil && n < 10
+	}
+	if name == "video.colorTrc" && typ == "notMatch" {
+		return strings.Contains(val, "smpte2084")
+	}
+	return false
 }
 
 func applyLimitation(c *core.ClientCaps, a map[string]string) {
