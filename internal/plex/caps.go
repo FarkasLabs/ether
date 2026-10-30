@@ -81,11 +81,11 @@ var (
 
 // browserCaps is Plex Web, which depends on the browser in X-Plex-Platform.
 // Base caps stay conservative: only Safari claims HEVC+HDR10 by default.
-// Chromium may list HEVC without HDR10; Firefox lists neither. HEVC/HDR10
-// Direct Stream is promoted only when X-Plex-Client-Profile-Extra
-// affirmatively lists hevc and does not deny 10-bit/HDR (see
-// promoteHEVCHDRFromProfile). Audio stays conservative (no EAC3 on
-// Chrome/Firefox) so incompatible soundtracks remux to AAC.
+// Chromium may list HEVC without HDR10; Firefox lists neither. Affirmative
+// hevc in X-Plex-Client-Profile-Extra adds the codec (see
+// promoteHEVCFromProfile) but never HDR10 — HEVC ≠ HDR10.
+// Audio stays conservative (no EAC3 on Chrome/Firefox) so incompatible
+// soundtracks remux to AAC.
 func browserCaps(platform string) baseCaps {
 	p := strings.ToLower(platform)
 	c := baseCaps{
@@ -189,7 +189,7 @@ func (pr *Request) ClientCaps(remoteMaxKbps int) core.ClientCaps {
 	}
 	if pr.ProfileExtra != "" {
 		ev := applyProfileExtra(&c, pr.ProfileExtra)
-		promoteHEVCHDRFromProfile(&c, ev)
+		promoteHEVCFromProfile(&c, ev)
 	}
 	if c.Remote && remoteMaxKbps > 0 && (c.MaxBitrateKbps == 0 || c.MaxBitrateKbps > remoteMaxKbps) {
 		c.MaxBitrateKbps = remoteMaxKbps
@@ -197,23 +197,21 @@ func (pr *Request) ClientCaps(remoteMaxKbps int) core.ClientCaps {
 	return c
 }
 
-// profileExtraEvidence records affirmative codec claims and HDR denials from
+// profileExtraEvidence records affirmative codec claims from
 // X-Plex-Client-Profile-Extra. Omission is not support: only verbs that list
-// hevc count, and HDR-denying limitations block promotion.
+// hevc count. HDR denials are applied via add-limitation (clear HDR10);
+// hevc alone never implies HDR10.
 type profileExtraEvidence struct {
 	affirmativeHEVC bool
-	hdrDenied       bool
 }
 
-// promoteHEVCHDRFromProfile enables HEVC+HDR10 when profile-extra affirmatively
-// listed hevc and did not deny 10-bit/HDR. Base browser caps alone never
-// promote HDR10 (omission is not evidence of support).
-func promoteHEVCHDRFromProfile(c *core.ClientCaps, ev profileExtraEvidence) {
-	if !ev.affirmativeHEVC || ev.hdrDenied {
+// promoteHEVCFromProfile adds hevc when profile-extra affirmatively listed it.
+// Does not set HDR10: listing hevc is not evidence of HDR10 playback.
+func promoteHEVCFromProfile(c *core.ClientCaps, ev profileExtraEvidence) {
+	if !ev.affirmativeHEVC {
 		return
 	}
 	c.VideoCodecs = addUnique(c.VideoCodecs, "hevc")
-	c.HDR10 = true
 }
 
 // Directive is one parsed X-Plex-Client-Profile-Extra directive, e.g.
@@ -340,34 +338,10 @@ func applyProfileExtra(c *core.ClientCaps, extra string) profileExtraEvidence {
 			c.AudioCodecs = addUnique(c.AudioCodecs, splitList(a["audioCodec"])...)
 			c.Containers = addUnique(c.Containers, splitList(a["container"])...)
 		case "add-limitation":
-			if limitationDeniesHDR(a) {
-				ev.hdrDenied = true
-			}
 			applyLimitation(c, a)
 		}
 	}
 	return ev
-}
-
-// limitationDeniesHDR reports profile-extra limits that mean this client
-// cannot take HEVC HDR10 (8-bit cap or explicit PQ rejection).
-func limitationDeniesHDR(a map[string]string) bool {
-	if a["scope"] != "videoCodec" {
-		return false
-	}
-	sn := normalizeCodec(a["scopeName"])
-	if sn != "hevc" && sn != "av1" && sn != "*" && sn != "" {
-		return false
-	}
-	name, typ, val := a["name"], a["type"], a["value"]
-	if name == "video.bitDepth" && typ == "upperBound" {
-		n, err := strconv.Atoi(val)
-		return err == nil && n < 10
-	}
-	if name == "video.colorTrc" && typ == "notMatch" {
-		return strings.Contains(val, "smpte2084")
-	}
-	return false
 }
 
 func applyLimitation(c *core.ClientCaps, a map[string]string) {

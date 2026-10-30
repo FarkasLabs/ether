@@ -23,8 +23,8 @@ var (
 		VideoCodecs: []string{"h264"}, AudioCodecs: []string{"aac", "mp3", "opus", "flac"},
 		Containers: []string{"mp4"},
 	}
-	// Caps already promoted for HEVC+HDR10 (as after affirmative profile-extra).
-	// Inference of those flags belongs in plex ClientCaps tests, not Decide.
+	// Fixture with HDR10 already set — Decide behavior only. ClientCaps must
+	// not infer HDR10 from hevc alone; that belongs in plex ClientCaps tests.
 	plexWebModern = core.ClientCaps{
 		Product: "Plex Web", Platform: "Chrome", MaxHeight: 2160, HDR10: true,
 		VideoCodecs: []string{"h264", "vp9", "av1", "hevc"},
