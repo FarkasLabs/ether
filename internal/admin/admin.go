@@ -109,6 +109,9 @@ type Deps struct {
 	// 2000-entry buffer is created when nil (retrieve it via
 	// Handler.Logs()); pass a shared one to tail server logs.
 	Logs *LogBuffer
+	// LogDir holds the on-disk logs offered by GET /api/logs/download;
+	// empty offers the in-memory buffer instead.
+	LogDir string
 	// Version is reported by /ether/api/bootstrap ("dev" when empty).
 	Version string
 
@@ -308,6 +311,7 @@ func (h *Handler) routes() *http.ServeMux {
 	api("PATCH /api/users/{id}", h.handleUpdateUser)
 
 	api("GET /api/logs", h.handleLogs)
+	api("GET /api/logs/download", h.handleLogsDownload)
 	api("DELETE /api/logs", h.handleClearLogs)
 
 	for path, handler := range h.deps.Extensions {

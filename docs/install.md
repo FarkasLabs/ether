@@ -392,6 +392,27 @@ rollback copy) or the platform installer (DMG/setup.exe). Linux packages
 update through your package manager or a new Docker image. Nothing is
 ever installed without a valid ed25519 signature and SHA-256 match.
 
+### Database snapshots before upgrades
+
+When an upgrade brings database migrations, Ether first writes a consistent
+copy of a SQLite database (`ether.db.pre-migrate.bak` in the data directory).
+It stores the matching `config.json` and credential key, as they were before
+the upgrade touched them, in `ether.db.pre-migrate.bak.files/`. The three newest
+sets are kept: older ones become `.pre-migrate.bak.1` and `.2`. Everything is
+readable only by the server account. To roll back by hand, stop Ether, install
+the previous version, and replace `ether.db`, `config.json` and
+`.credentials-key` with a set's copies.
+
+If an older version starts on a database a newer one already migrated, for
+example after the updater rolled back a release that kept crashing, it keeps
+running (migrations only add) and logs a warning naming the newer components
+and the newest snapshot. It does not refuse to start, so automatic rollback and
+rolling cluster updates keep working.
+
+Not covered: PostgreSQL databases get no pre-upgrade snapshot (use scheduled
+backups), and rolling back a release never restores a snapshot automatically,
+because that would discard everything written since the upgrade.
+
 ### Signed feed freshness
 
 Update feeds carry signed issue and expiry times, valid for 30 days. Ether rejects
