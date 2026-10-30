@@ -13,12 +13,12 @@ import (
 	"github.com/braedonsaunders/ether/internal/core"
 )
 
-func TestDASHCopyLadderUsesShortSharedGrid(t *testing.T) {
+func TestDASHEncodeLadderUsesShortSharedGrid(t *testing.T) {
 	fr := newFakeRunner()
 	m := newTestManager(t, fr, config.Transcode{ABRLadder: true}, withRungDwell(0))
-	s := startDASHSession(t, m, dashRequest(t, "short-ladder", 10*time.Minute))
-	if !s.decision.VideoCopy || len(s.rungs) < 2 {
-		t.Fatal("fixture must have a copy primary and encoded lower rungs")
+	s := startDASHSession(t, m, ladderEncodeDASHRequest(t, "short-ladder", 10*time.Minute))
+	if s.decision.VideoCopy || len(s.rungs) < 2 {
+		t.Fatal("fixture must have an encode primary and lower rungs")
 	}
 	rec := httptest.NewRecorder()
 	s.ServeManifest(rec, httptest.NewRequest(http.MethodGet, "/start.mpd", nil))
@@ -35,9 +35,9 @@ func TestDASHCopyLadderUsesShortSharedGrid(t *testing.T) {
 	mustContain(t, fr.lastStart(), "-force_key_frames expr:gte(t,n_forced*2.000)")
 }
 
-func TestDASHCopyLadderHonorsExplicitDuration(t *testing.T) {
+func TestDASHEncodeLadderHonorsExplicitDuration(t *testing.T) {
 	m := newTestManager(t, newFakeRunner(), config.Transcode{ABRLadder: true})
-	req := dashRequest(t, "explicit-ladder", time.Minute)
+	req := ladderEncodeDASHRequest(t, "explicit-ladder", time.Minute)
 	req.SegmentDuration = 3 * time.Second
 	s := startDASHSession(t, m, req)
 	if s.SegmentDuration() != req.SegmentDuration {
@@ -45,8 +45,23 @@ func TestDASHCopyLadderHonorsExplicitDuration(t *testing.T) {
 	}
 }
 
-// Real muxer coverage matters: the copied primary can have GOPs longer than
-// the grid, while encoded lower rungs must start on that same grid after seeks.
+func TestDASHCopySessionHasNoLadder(t *testing.T) {
+	m := newTestManager(t, newFakeRunner(), config.Transcode{ABRLadder: true})
+	s := startDASHSession(t, m, dashRequest(t, "copy-noladder", 10*time.Minute))
+	if !s.decision.VideoCopy {
+		t.Fatalf("fixture must be video copy: %+v", s.decision)
+	}
+	if len(s.rungs) != 1 {
+		t.Fatalf("copy session rungs = %+v", s.rungs)
+	}
+	rec := httptest.NewRecorder()
+	s.ServeManifest(rec, httptest.NewRequest(http.MethodGet, "/start.mpd", nil))
+	if n := strings.Count(rec.Body.String(), "mimeType=\"video/mp4\""); n != 1 {
+		t.Fatalf("video representations = %d\n%s", n, rec.Body.String())
+	}
+}
+
+// Real muxer coverage: encoded primary with lower ABR rungs on a short grid.
 func TestIntegrationDASHShortLadderLongGOPAndSeeks(t *testing.T) {
 	e := newRealEnv(t, WithoutHWDetection(), withRungDwell(0), WithSegmentTimeout(10*time.Second))
 	e.m.UpdateConfig(config.Transcode{ABRLadder: true})
@@ -55,9 +70,9 @@ func TestIntegrationDASHShortLadderLongGOPAndSeeks(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	d := e.m.Decide(*info, plexWeb, allow())
-	if !d.VideoCopy {
-		t.Fatalf("expected copy primary: %+v", d)
+	d := core.Decision{
+		Kind: core.DecisionTranscode, VideoCodec: "h264", MaxHeight: 720, BitrateKbps: 8000,
+		AudioStream: 1, AudioCodec: "aac", Container: ContainerFMP4,
 	}
 	ds := startDASH(t, e.m, core.HLSRequest{SessionID: "short-grid", InputURL: e.url("ladder.mkv"), Info: *info, Decision: d})
 	doc := dashManifest(t, ds)
@@ -65,8 +80,8 @@ func TestIntegrationDASHShortLadderLongGOPAndSeeks(t *testing.T) {
 		t.Fatalf("missing short ladder: %+v", doc)
 	}
 	// Slot 3 lies inside the first ten-second GOP; it must remain decodable.
-	if st, first := e.probeDASH(t, "copy.mp4", dashGet(t, ds, 0, 3)); st.CodecName != "h264" || first > 6 {
-		t.Fatalf("copy alias: %+v at %v", st, first)
+	if st, first := e.probeDASH(t, "base.mp4", dashGet(t, ds, 0, 3)); st.CodecName != "h264" || first > 6 {
+		t.Fatalf("base segment: %+v at %v", st, first)
 	}
 	// Request a lower rendition far forward and then back. Both tracks retain
 	// absolute times; independently decoded video starts with a keyframe.
@@ -136,7 +151,7 @@ func TestDASHNewRenditionClearsPriorRunEOF(t *testing.T) {
 	fr := newFakeRunner()
 	fr.dashEnd = 24*time.Second + 21*time.Millisecond
 	m := newTestManager(t, fr, config.Transcode{ABRLadder: true}, withRungDwell(0))
-	s := startDASHSession(t, m, dashRequest(t, "tail-rung", fr.dashEnd))
+	s := startDASHSession(t, m, ladderEncodeDASHRequest(t, "tail-rung", fr.dashEnd))
 	s.mu.Lock()
 	s.endSeg = 11 // a seek at 24s saw no complete audio/video pair
 	s.wantTrack = 2

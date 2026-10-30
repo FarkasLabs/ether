@@ -28,7 +28,7 @@ func TestIntegrationAdaptiveRapidMediaHandoff(t *testing.T) {
 			if transport == core.ProtocolDASH {
 				proto, container = core.ProtocolDASH, ContainerFMP4
 			}
-			d := core.Decision{Kind: core.DecisionRemux, Container: container, VideoCopy: true, AudioCopy: true, AudioStream: 1}
+			d := core.Decision{Kind: core.DecisionTranscode, Container: container, VideoCodec: "h264", MaxHeight: 720, BitrateKbps: 8000, AudioStream: 1, AudioCodec: "aac"}
 			hs, err := e.m.StartHLS(t.Context(), core.HLSRequest{SessionID: "adaptive-" + transport, InputURL: e.url("adaptive.mkv"), Info: *info, Decision: d, Protocol: proto, SegmentDuration: 2 * time.Second})
 			if err != nil {
 				t.Fatal(err)

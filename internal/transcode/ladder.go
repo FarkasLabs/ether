@@ -154,7 +154,12 @@ func buildRungs(info core.MediaInfo, primary core.Decision, adapt adaptiveSettin
 	}
 	base.peakKbps = peakKbps(avg)
 	rungs := []rung{base}
-	if !adapt.Ladder || v == nil {
+	// Direct Stream / remux (video copy) must stay on the bitstream the
+	// client asked for. Advertising cheaper encode rungs under a copy
+	// primary lets ABR clients (notably Plex Web on Firefox) switch to
+	// 360p/480p — often still HDR — and look far worse than PMS Direct
+	// Stream, which typically does not hang a ladder under a copy.
+	if !adapt.Ladder || v == nil || primary.VideoCopy {
 		return rungs
 	}
 	audio := decisionAudioKbps(info, primary) // rungs carry the primary's audio
