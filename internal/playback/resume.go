@@ -36,6 +36,11 @@ CREATE TABLE playback_resume (
 CREATE INDEX playback_resume_release ON playback_resume(release_id);
 CREATE INDEX playback_resume_hash ON playback_resume(nzb_hash);
 `)
+	// Catalogue language is per-title context, not part of the profile
+	// selection key. Rows remember the language a release was chosen
+	// under so a later edit can drop that memory without changing the
+	// stored `Name|<16 hex>` profile column.
+	store.Register("playback", 3, `ALTER TABLE playback_resume ADD COLUMN original_language TEXT NOT NULL DEFAULT '';`)
 	// Keep the existing playback migration immutable; indexes have their own
 	// component history.
 	store.Register("playback_index", 1, `CREATE TABLE playback_index (
@@ -63,6 +68,9 @@ type ResumePoint struct {
 	// profileKey is the stored `Name|<key>` value (a plain name on
 	// legacy records); Profile above exposes the name only.
 	profileKey string
+	// originalLanguage is the catalogue language the release was chosen
+	// under. Empty on rows written before that context was stored.
+	originalLanguage string
 }
 
 // ReleaseID is the stable release identifier.
@@ -110,15 +118,16 @@ func selectionKeySuffix(s string) bool {
 }
 
 type resumeRecord struct {
-	userID    int64
-	key       core.RatingKey
-	releaseID string
-	release   core.Release
-	nzbHash   string
-	profile   string
-	size      int64
-	duration  time.Duration
-	updatedAt time.Time
+	userID           int64
+	key              core.RatingKey
+	releaseID        string
+	release          core.Release
+	nzbHash          string
+	profile          string
+	originalLanguage string
+	size             int64
+	duration         time.Duration
+	updatedAt        time.Time
 }
 
 // resumeStore persists playback_resume rows; NZB bytes live on disk,
@@ -363,12 +372,13 @@ func (s *resumeStore) saveRow(ctx context.Context, rec resumeRecord, hash string
 		return err
 	}
 	_, err = s.db.ExecContext(ctx, `
-INSERT INTO playback_resume (user_id, rating_key, release_id, release_json, nzb_hash, profile, size, duration_ms, updated_at)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+INSERT INTO playback_resume (user_id, rating_key, release_id, release_json, nzb_hash, profile, original_language, size, duration_ms, updated_at)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 ON CONFLICT (user_id, rating_key) DO UPDATE SET
 	release_id=excluded.release_id, release_json=excluded.release_json, nzb_hash=excluded.nzb_hash,
-	profile=excluded.profile, size=excluded.size, duration_ms=excluded.duration_ms, updated_at=excluded.updated_at`,
-		rec.userID, int64(rec.key), rec.release.ID, string(rel), hash, rec.profile, rec.size,
+	profile=excluded.profile, original_language=excluded.original_language, size=excluded.size,
+	duration_ms=excluded.duration_ms, updated_at=excluded.updated_at`,
+		rec.userID, int64(rec.key), rec.release.ID, string(rel), hash, rec.profile, rec.originalLanguage, rec.size,
 		rec.duration.Milliseconds(), rec.updatedAt.UnixMilli())
 	if err != nil {
 		return err
@@ -379,7 +389,7 @@ ON CONFLICT (user_id, rating_key) DO UPDATE SET
 	return nil
 }
 
-const resumeColumns = `user_id, rating_key, release_id, release_json, nzb_hash, profile, size, duration_ms, updated_at`
+const resumeColumns = `user_id, rating_key, release_id, release_json, nzb_hash, profile, original_language, size, duration_ms, updated_at`
 
 func scanResume(sc interface{ Scan(...any) error }) (resumeRecord, error) {
 	var (
@@ -388,7 +398,7 @@ func scanResume(sc interface{ Scan(...any) error }) (resumeRecord, error) {
 		relJSON      string
 		durMS, updMS int64
 	)
-	if err := sc.Scan(&rec.userID, &key, &rec.releaseID, &relJSON, &rec.nzbHash, &rec.profile, &rec.size, &durMS, &updMS); err != nil {
+	if err := sc.Scan(&rec.userID, &key, &rec.releaseID, &relJSON, &rec.nzbHash, &rec.profile, &rec.originalLanguage, &rec.size, &durMS, &updMS); err != nil {
 		return rec, err
 	}
 	rec.key = core.RatingKey(key)
@@ -506,7 +516,8 @@ func (rec *resumeRecord) point(nzb []byte) *ResumePoint {
 		Duration:  rec.duration,
 		UpdatedAt: rec.updatedAt,
 
-		profileKey: rec.profile,
+		profileKey:       rec.profile,
+		originalLanguage: rec.originalLanguage,
 	}
 }
 

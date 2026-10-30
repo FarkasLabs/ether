@@ -198,7 +198,7 @@ func (m *Manager) Prewarm(_ context.Context, user *core.User, key core.RatingKey
 		}
 		// Warming must not override the source that actually survived the
 		// previous playback with the original, slower top-ranked release.
-		res := m.resumeResolution(ctx, u.ID, key, e.profileKey, caps)
+		res := m.resumeResolution(ctx, u.ID, key, e.profileObj, caps, strings.TrimSpace(title.Language))
 		if releasepolicy.UsesOriginalAudio(e.profileObj.ReleaseRules) {
 			e.originalAudio = true
 			e.originalLanguage = strings.TrimSpace(title.Language)
