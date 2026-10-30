@@ -2,8 +2,8 @@ package admin
 
 import (
 	"crypto/rand"
-	"errors"
 	"encoding/hex"
+	"errors"
 	"net/http"
 	"sync"
 	"time"
