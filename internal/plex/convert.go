@@ -455,7 +455,8 @@ func (s *Server) personTags(key core.RatingKey, ps []core.Person, kind string, m
 }
 
 // mediaInfoFor is the media info shown for a title: the live session's when
-// one exists for this client, otherwise the playback estimate.
+// one exists for this client, otherwise the probe of the release Prepare
+// would still open for this viewer, otherwise the playback estimate.
 func (s *Server) mediaInfoFor(ctx context.Context, pr *Request, t *core.Title) (core.MediaInfo, *core.PlaySession) {
 	if s.d.Playback == nil {
 		return core.MediaInfo{Estimated: true, Duration: t.Runtime}, nil
@@ -464,9 +465,37 @@ func (s *Server) mediaInfoFor(ctx context.Context, pr *Request, t *core.Title) (
 		if ps, ok := s.d.Playback.SessionFor(pr.User.ID, pr.ClientID, t.Key); ok && ps != nil {
 			return ps.Info, ps
 		}
+		if info, _, ok := s.resumedTracks(ctx, pr, t); ok {
+			return info, nil
+		}
 	}
 	caps := pr.ClientCaps(s.cfg().Transcode.RemoteMaxBitrateKbps)
 	return s.d.Playback.Estimate(ctx, t, caps), nil
+}
+
+// resumedTrackSource is implemented by the playback manager. It returns the
+// probed streams of the release ResumeFor would still open: same viewer,
+// same profile selection key, source still allowed, release not blocked,
+// and the payload hash and size still match. An empty release ID is not
+// a hit. There is no separate time-to-live; a profile, source, block, or
+// release change drops the row the same way the next Prepare does.
+type resumedTrackSource interface {
+	ResumedTracks(context.Context, *core.User, core.RatingKey, core.ClientCaps) (core.MediaInfo, string, bool)
+}
+
+func (s *Server) resumedTracks(ctx context.Context, pr *Request, t *core.Title) (core.MediaInfo, string, bool) {
+	if pr == nil || pr.User == nil || pr.User.ID <= 0 || t == nil || s.d.Playback == nil || !s.playableTitle(ctx, pr.User, t) {
+		return core.MediaInfo{}, "", false
+	}
+	src, ok := s.d.Playback.(resumedTrackSource)
+	if !ok {
+		return core.MediaInfo{}, "", false
+	}
+	info, releaseID, ok := src.ResumedTracks(ctx, pr.User, t.Key, pr.ClientCaps(s.cfg().Transcode.RemoteMaxBitrateKbps))
+	if !ok || releaseID == "" || info.Estimated || len(info.Streams) == 0 || info.Video() == nil {
+		return core.MediaInfo{}, "", false
+	}
+	return info, releaseID, true
 }
 
 // mediaFor renders the virtual Media/Part of a playable title: one per
@@ -488,7 +517,13 @@ func (s *Server) mediaFor(ctx context.Context, pr *Request, t *core.Title, withS
 	// response introduces a version picker. Keep its Auto choice stable;
 	// playback quality controls remain independent of the version picker.
 	if withVariants && withStreams && ps == nil && !strings.EqualFold(strings.TrimSpace(pr.Product), "Plex for VIDAA") {
-		if media, edition := s.mediaForVariants(ctx, pr, t, stamp); len(media) > 0 {
+		probed, probedRelease := core.MediaInfo{Estimated: true}, ""
+		if ps == nil {
+			if facts, rel, ok := s.resumedTracks(ctx, pr, t); ok {
+				probed, probedRelease, info = facts, rel, facts
+			}
+		}
+		if media, edition := s.mediaForVariants(ctx, pr, t, stamp, probed, probedRelease); len(media) > 0 {
 			return media, edition
 		}
 	}

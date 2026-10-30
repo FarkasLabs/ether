@@ -176,6 +176,15 @@ func newSubtitleFixture(t *testing.T) (*fixture, *fakeSubtitles) {
 var streamTagRe = regexp.MustCompile(`<Stream [^>]*>`)
 
 // subtitleTags returns the streamType="3" Stream elements of an XML body.
+func selectedTag(tags []string) string {
+	for _, tag := range tags {
+		if strings.Contains(tag, `selected="1"`) {
+			return tag
+		}
+	}
+	return ""
+}
+
 func subtitleTags(body string) []string {
 	var out []string
 	for _, tag := range streamTagRe.FindAllString(body, -1) {
@@ -249,9 +258,13 @@ func TestSidecarSelectionSurvivesProbeAndRemux(t *testing.T) {
 	rec := f.get(t, "/video/:/transcode/universal/decision?path=/library/metadata/"+key+"&directPlay=0&directStream=1&session=remux1&protocol=hls")
 	releaseID := externalID(fightClub.Key, "ether-subtitle:release-en")
 	subs := subtitleTags(rec.Body.String())
-	if len(subs) != 1 || !strings.Contains(subs[0], fmt.Sprintf(`id="%d"`, releaseID)) || !strings.Contains(subs[0], `selected="1"`) ||
-		!strings.Contains(subs[0], fmt.Sprintf(`key="/library/streams/%d"`, releaseID)) || !strings.Contains(subs[0], `decision="copy" location="sidecar"`) {
+	selected := selectedTag(subs)
+	if selected == "" || !strings.Contains(selected, fmt.Sprintf(`id="%d"`, releaseID)) ||
+		!strings.Contains(selected, fmt.Sprintf(`key="/library/streams/%d"`, releaseID)) || !strings.Contains(selected, `decision="copy" location="sidecar"`) {
 		t.Fatalf("decision subtitle: %q\n%s", subs, rec.Body.String())
+	}
+	if len(subs) < 2 {
+		t.Fatalf("decision dropped alternate subtitles: %q", subs)
 	}
 	if f.trans.lastOpts.SubtitleStream != -1 {
 		t.Fatalf("sidecar reached the transcoder: %+v", f.trans.lastOpts)
@@ -272,11 +285,15 @@ func TestSubtitleStreamIDOnDecisionPicksSidecar(t *testing.T) {
 	key := fightClub.Key.String()
 	f.get(t, "/library/metadata/"+key)
 	releaseID := externalID(fightClub.Key, "ether-subtitle:release-en")
-	// Direct play lists only the selected streams, the sidecar among them.
+	// Direct play keeps every subtitle and marks the requested sidecar selected.
 	rec := f.get(t, fmt.Sprintf("/video/:/transcode/universal/decision?path=/library/metadata/%s&subtitleStreamID=%d&session=dp1", key, releaseID))
 	subs := subtitleTags(rec.Body.String())
-	if len(subs) != 1 || !strings.Contains(subs[0], fmt.Sprintf(`key="/library/streams/%d"`, releaseID)) || !strings.Contains(subs[0], `selected="1"`) {
+	selected := selectedTag(subs)
+	if selected == "" || !strings.Contains(selected, fmt.Sprintf(`key="/library/streams/%d"`, releaseID)) {
 		t.Fatalf("direct play subtitle: %q\n%s", subs, rec.Body.String())
+	}
+	if len(subs) < 2 {
+		t.Fatalf("direct play dropped alternate subtitles: %q", subs)
 	}
 }
 
@@ -302,8 +319,13 @@ func TestTrackPreferenceAlwaysSelectsCachedSidecar(t *testing.T) {
 	// And at Play, without any explicit choice.
 	f.playback.info = probedInfo
 	rec := f.get(t, "/video/:/transcode/universal/decision?path=/library/metadata/"+fightClub.Key.String()+"&session=always1")
-	if got := subtitleTags(rec.Body.String()); len(got) != 1 || !strings.Contains(got[0], `external="1"`) || !strings.Contains(got[0], `selected="1"`) {
+	got := subtitleTags(rec.Body.String())
+	selected := selectedTag(got)
+	if selected == "" || !strings.Contains(selected, `external="1"`) {
 		t.Fatalf("always mode at play: %q", got)
+	}
+	if len(got) < 2 {
+		t.Fatalf("always mode dropped alternate subtitles: %q", got)
 	}
 }
 
