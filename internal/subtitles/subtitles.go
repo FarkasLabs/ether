@@ -89,6 +89,11 @@ type Service struct {
 	negative  map[string]time.Time // title+lang -> when nothing was found
 	quotaTill time.Time            // downloads refused until then
 
+	// pickMu serialises writes of a title's picked subtitle: concurrent
+	// picks of one file rename onto the same path, which Windows refuses
+	// while another rename of it is in progress.
+	pickMu sync.Mutex
+
 	alignLanguages []string
 	aligner        *Aligner
 	alignOnce      sync.Once

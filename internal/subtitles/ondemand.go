@@ -249,7 +249,10 @@ func (s *Service) DownloadOnDemand(ctx context.Context, title *core.Title, fileI
 		return core.StreamInfo{}, err
 	}
 	b, _ := json.Marshal(sel)
-	if err := writeFileAtomic(p, b); err != nil {
+	s.pickMu.Lock()
+	err := writeFileAtomic(p, b)
+	s.pickMu.Unlock()
+	if err != nil {
 		return core.StreamInfo{}, err
 	}
 	return sidecarStream(0, o.lang, sel), nil
