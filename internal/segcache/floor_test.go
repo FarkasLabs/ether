@@ -3,6 +3,7 @@ package segcache
 import (
 	"context"
 	"errors"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -107,6 +108,42 @@ func TestFreeSpaceFloorEvictsOldestUnprotected(t *testing.T) {
 	}
 }
 
+// Concurrent passes against one measurement free the shortfall once.
+func TestFreeSpaceFloorConcurrentPassesFreeShortfallOnce(t *testing.T) {
+	for round := 0; round < 20; round++ {
+		c := openT(t, t.TempDir(), 0)
+		now := time.Unix(1_800_000_000, 0)
+		c.now = func() time.Time { return now }
+		for i := 0; i < 10; i++ {
+			mustPut(t, c, "a", i, payload("a", i, 1, 10))
+		}
+		vol := &fakeVolume{total: 1000}
+		vol.cache = func() int64 { used, _ := c.Usage(); return used }
+		vol.other.Store(870) // 1000-870-100 = 30 free: 20 short of the floor
+		c.floorMu.Lock()
+		c.diskFn = vol.usage
+		c.floorMu.Unlock()
+		start := make(chan struct{})
+		var wg sync.WaitGroup
+		for g := 0; g < 8; g++ {
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				<-start
+				c.evict()
+			}()
+		}
+		close(start)
+		wg.Wait()
+		if used, _ := c.Usage(); used != 80 {
+			t.Fatalf("round %d: used %d after concurrent passes, want 80", round, used)
+		}
+		if vol.stats.Load() != 1 {
+			t.Fatalf("measured %d times", vol.stats.Load())
+		}
+	}
+}
+
 func TestFreeSpaceFloorRespectsProtectionAndPausesOnError(t *testing.T) {
 	c := openT(t, t.TempDir(), 0)
 	now := time.Unix(1_800_000_000, 0)
@@ -176,7 +213,9 @@ func TestSharedCacheFreeSpaceFloor(t *testing.T) {
 	if n != 7 {
 		t.Fatalf("%d segments left, want 7", n)
 	}
-	// The next sweep before a new measurement credits what was freed.
+	// The next sweep before a new measurement compares the cap with the
+	// pool usage the eviction left, so it frees nothing more.
+	shared.Store(70)
 	c.Sweep()
 	n = 0
 	for i := 0; i < 10; i++ {

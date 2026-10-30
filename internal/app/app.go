@@ -440,25 +440,11 @@ func (a *App) Run(ctx context.Context) error {
 	background.start(func() { a.plexDiscovery.Run(ctx) })
 	background.start(func() {
 		a.cluster.RunAsLeader(ctx, "scheduled backups", func(ctx context.Context) {
-			failing := false
-			a.backups.Run(ctx, func(err error) {
-				if err == nil {
-					if failing {
-						a.log.Info("scheduled backup succeeded again")
-					}
-					failing = false
-					return
-				}
-				a.log.Warn("scheduled backup", "err", err)
-				if failing || a.notifications == nil {
-					return
-				}
-				// One alert per failure streak; retries back off in backup.Run.
-				failing = true
-				if e := a.notifications.BackupFailed(ctx, err); e != nil {
-					a.log.Warn("backup failure notification", "err", e)
-				}
-			})
+			alerts := &backupAlerts{log: a.log}
+			if a.notifications != nil {
+				alerts.notify = func(err error) error { return a.notifications.BackupFailed(ctx, err) }
+			}
+			a.backups.Run(ctx, alerts.observe)
 		})
 	})
 	background.start(func() { a.runUpdates(ctx, cancel) })

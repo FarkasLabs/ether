@@ -50,7 +50,7 @@ func TestUpdateAvailableOncePerVersionAcrossNodesAndRestarts(t *testing.T) {
 	}
 }
 
-func TestEmitOnceReleasesKeyWhenEmitFails(t *testing.T) {
+func TestEmitOnceKeyAndQueueCommitTogether(t *testing.T) {
 	ctx := context.Background()
 	s := newTestService(t)
 	if err := s.Save(ctx, Channel{ID: "hook", Kind: "webhook", Enabled: true, Endpoint: "https://hooks.example/x", Events: []string{"*"}, PerMinute: 60}); err != nil {
@@ -59,11 +59,28 @@ func TestEmitOnceReleasesKeyWhenEmitFails(t *testing.T) {
 	if ok, err := s.EmitOnce(ctx, "k", Event{Kind: "no.such.kind"}); ok || err == nil {
 		t.Fatalf("bad event: %v %v", ok, err)
 	}
+	// The queue insert fails after the key insert: neither may remain.
+	if _, err := s.db.Exec(`CREATE TRIGGER fail_enqueue BEFORE INSERT ON notify_queue BEGIN SELECT RAISE(ABORT,'disk I/O error'); END`); err != nil {
+		t.Skipf("trigger unsupported: %v", err)
+	}
+	if ok, err := s.EmitOnce(ctx, "k", Event{Kind: "backup.failed", Message: "x"}); ok || err == nil {
+		t.Fatalf("failed enqueue reported %v %v", ok, err)
+	}
+	var keys int
+	if err := s.db.QueryRow(`SELECT COUNT(*) FROM notify_once`).Scan(&keys); err != nil || keys != 0 {
+		t.Fatalf("key kept after failed enqueue: %d %v", keys, err)
+	}
+	if _, err := s.db.Exec(`DROP TRIGGER fail_enqueue`); err != nil {
+		t.Fatal(err)
+	}
 	if ok, err := s.EmitOnce(ctx, "k", Event{Kind: "backup.failed", Message: "x"}); !ok || err != nil {
 		t.Fatalf("retry after failure: %v %v", ok, err)
 	}
 	if ok, err := s.EmitOnce(ctx, "k", Event{Kind: "backup.failed", Message: "x"}); ok || err != nil {
 		t.Fatalf("duplicate: %v %v", ok, err)
+	}
+	if n := queued(t, s, "backup.failed"); n != 1 {
+		t.Fatalf("queued %d", n)
 	}
 }
 

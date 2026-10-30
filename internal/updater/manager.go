@@ -125,10 +125,11 @@ type ManagerOptions struct {
 	// NodeName labels this node in status (the lease holder is compared
 	// with it); optional.
 	NodeName string
-	// OnAvailable, when set, hears each newly found release version. It is
-	// called without the manager's lock held; repeated checks that find the
-	// same version do not call it again in this process.
-	OnAvailable func(version string)
+	// OnAvailable, when set, hears each release version a check finds,
+	// without the manager's lock held. Once it returns nil for a version it
+	// is not called for that version again in this process; an error makes
+	// the next check that finds the version call it again.
+	OnAvailable func(version string) error
 
 	Now             func() time.Time
 	Location        *time.Location // maintenance window zone (default time.Local)
@@ -154,6 +155,7 @@ type Manager struct {
 	kick chan struct{}
 
 	mu             sync.Mutex
+	announced      string // last version OnAvailable accepted
 	client         Checker
 	clientKey      string
 	disabledReason string
@@ -418,9 +420,16 @@ func (m *Manager) check(ctx context.Context, now time.Time) {
 	var announce string
 	defer func() {
 		// Runs after the unlock below.
-		if announce != "" && m.opts.OnAvailable != nil {
-			m.opts.OnAvailable(announce)
+		if announce == "" || m.opts.OnAvailable == nil {
+			return
 		}
+		if err := m.opts.OnAvailable(announce); err != nil {
+			m.log.Warn("updater: update announcement failed; retrying at the next check", "version", announce, "err", err)
+			return
+		}
+		m.mu.Lock()
+		m.announced = announce
+		m.mu.Unlock()
 	}()
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -449,6 +458,8 @@ func (m *Manager) check(ctx context.Context, now time.Time) {
 	if m.available == nil || m.available.Version() != upd.Version() {
 		m.resetAvailableLocked()
 		m.log.Info("updater: update available", "current", m.opts.CurrentVersion, "available", upd.Version(), "kind", upd.Artifact.Kind)
+	}
+	if upd.Version() != m.announced {
 		announce = upd.Version()
 	}
 	m.available = upd

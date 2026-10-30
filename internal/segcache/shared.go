@@ -430,7 +430,9 @@ func (s *sharedCache) evictWhere(id string, expire bool) error {
 		return ErrClosed
 	}
 	prot, _ := s.c.protected()
-	need := s.c.floorNeed()
+	s.c.evictMu.Lock()
+	defer s.c.evictMu.Unlock()
+	floorCap, floorOK := s.c.floorCap(s.sharedUsed)
 	ctx, cancel := s.context()
 	defer cancel()
 	var files []string
@@ -440,14 +442,10 @@ func (s *sharedCache) evictWhere(id string, expire bool) error {
 		if err := tx.QueryRowContext(ctx, `SELECT used FROM segcache_pool WHERE id=1`).Scan(&used); err != nil {
 			return err
 		}
-		// The budget, lowered while the volume is below its free-space floor.
-		limit := int64(-1)
-		if budget > 0 {
-			limit = budget
-		}
-		if need > 0 && (limit < 0 || used-need < limit) {
-			limit = max(used-need, 0)
-		}
+		// The budget, or the free-space floor's cap on pool usage when lower.
+		// The cap is absolute, so a pass that runs after another node's
+		// eviction compares against the pool usage that eviction left.
+		limit := usageLimit(budget, floorCap, floorOK)
 		within := func() bool { return limit < 0 || used <= limit }
 		if id == "" && !expire && within() {
 			return nil
@@ -528,9 +526,6 @@ func (s *sharedCache) evictWhere(id string, expire bool) error {
 	s.c.mu.Lock()
 	s.c.metrics.EvictedBytes += reclaimed
 	s.c.mu.Unlock()
-	// Shared usage is not tracked in c.used; credit the bytes freed so the
-	// next sweep before a fresh measurement does not free them again.
-	s.c.floorFreed(reclaimed)
 	return nil
 }
 func (s *sharedCache) heartbeat() {

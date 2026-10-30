@@ -99,16 +99,15 @@ func (a *App) initUpdates() {
 		RequestRestart: a.requestRestart,
 		Boot:           a.updates.boot,
 		Logger:         log,
-		OnAvailable: func(version string) {
+		OnAvailable: func(version string) error {
 			if a.notifications == nil {
-				return
+				return nil
 			}
 			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 			defer cancel()
-			// Once per version across restarts and cluster nodes.
-			if err := a.notifications.UpdateAvailable(ctx, a.opts.Version, version); err != nil {
-				log.Warn("update notification", "version", version, "err", err)
-			}
+			// Once per version across restarts and cluster nodes; an error
+			// is retried at the next check.
+			return a.notifications.UpdateAvailable(ctx, a.opts.Version, version)
 		},
 	})
 	if !a.updates.mgr.Enabled() {

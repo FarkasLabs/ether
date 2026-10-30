@@ -76,6 +76,7 @@ type Cache struct {
 
 	saveMu sync.Mutex // serialises pins.json writes
 
+	evictMu sync.Mutex // serialises passes that free space; taken before floorMu
 	floorMu sync.Mutex // guards diskFn and floor; taken before mu
 	diskFn  DiskUsageFunc
 	floor   floorStat
@@ -455,6 +456,8 @@ func (c *Cache) Remove(releaseID string) error {
 	if c.shared != nil {
 		return c.shared.remove(releaseID)
 	}
+	c.evictMu.Lock() // a floor measurement must not see these bytes half-freed
+	defer c.evictMu.Unlock()
 	c.mu.Lock()
 	if c.closed {
 		c.mu.Unlock()
@@ -621,19 +624,19 @@ func (c *Cache) overBudgetLocked() bool { return c.budget > 0 && c.used > c.budg
 // overLimitLocked reports whether usage is above limit (see limitLocked).
 func (c *Cache) overLimitLocked(limit int64) bool { return limit >= 0 && c.used > limit }
 
-// limitLocked is the usage eviction aims for: the budget, lowered so that
-// need more bytes are freed when the volume is below its floor. -1 means
-// no limit.
-func (c *Cache) limitLocked(need int64) int64 {
+// limitLocked is the usage eviction aims for: the budget, or the floor's cap
+// when that is lower. -1 means no limit.
+func (c *Cache) limitLocked(floorCap int64, floorOK bool) int64 {
+	return usageLimit(c.budget, floorCap, floorOK)
+}
+
+func usageLimit(budget, floorCap int64, floorOK bool) int64 {
 	limit := int64(-1)
-	if c.budget > 0 {
-		limit = c.budget
+	if budget > 0 {
+		limit = budget
 	}
-	if need > 0 {
-		floorLimit := max(c.used-need, 0)
-		if limit < 0 || floorLimit < limit {
-			limit = floorLimit
-		}
+	if floorOK && (limit < 0 || floorCap < limit) {
+		limit = floorCap
 	}
 	return limit
 }
@@ -648,9 +651,11 @@ func (c *Cache) evict() {
 		c.shared.sweep(false)
 		return
 	}
-	need := c.floorNeed()
+	c.evictMu.Lock()
+	defer c.evictMu.Unlock()
+	floorCap, floorOK := c.floorCap(c.localUsed)
 	c.mu.Lock()
-	if c.closed || !c.overLimitLocked(c.limitLocked(need)) {
+	if c.closed || !c.overLimitLocked(c.limitLocked(floorCap, floorOK)) {
 		c.mu.Unlock()
 		return
 	}
@@ -667,7 +672,7 @@ func (c *Cache) evict() {
 		c.parkDirty = false
 	}
 	var victims []*entry
-	limit := c.limitLocked(need)
+	limit := c.limitLocked(floorCap, floorOK)
 	for c.overLimitLocked(limit) {
 		e := c.victimLocked(prot)
 		if e == nil {

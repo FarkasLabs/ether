@@ -16,23 +16,32 @@ func init() {
 }
 
 // EmitOnce emits e unless an event was already emitted under key, and
-// reports whether it emitted. If Emit fails the key is released, so a later
-// attempt can try again.
+// reports whether it emitted. The key and the queued deliveries commit in one
+// transaction: a crash or a failed enqueue leaves neither, so a later attempt
+// emits it.
 func (s *Service) EmitOnce(ctx context.Context, key string, e Event) (bool, error) {
-	res, err := s.db.ExecContext(ctx, `INSERT INTO notify_once(key,at) VALUES(?,?) ON CONFLICT(key) DO NOTHING`, key, s.opts.Now().Unix())
+	e, selected, err := s.prepare(ctx, e)
+	if err != nil {
+		return false, err
+	}
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return false, err
+	}
+	defer tx.Rollback()
+	res, err := tx.ExecContext(ctx, `INSERT INTO notify_once(key,at) VALUES(?,?) ON CONFLICT(key) DO NOTHING`, key, s.opts.Now().Unix())
 	if err != nil {
 		return false, err
 	}
 	if n, err := res.RowsAffected(); err != nil || n == 0 {
 		return false, err
 	}
-	if err := s.Emit(ctx, e); err != nil {
-		if _, derr := s.db.ExecContext(ctx, `DELETE FROM notify_once WHERE key=?`, key); derr != nil {
-			s.opts.Logger.Warn("release one-time notification", "key", key, "err", derr)
+	for _, c := range selected {
+		if err := enqueueWith(ctx, tx, c, e, s.opts.Now()); err != nil {
+			return false, err
 		}
-		return false, err
 	}
-	return true, nil
+	return true, tx.Commit()
 }
 
 // UpdateAvailable announces a release once per version.

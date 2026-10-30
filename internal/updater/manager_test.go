@@ -691,27 +691,38 @@ func TestManagerWallClockResumeAndRetry(t *testing.T) {
 	}
 }
 
-// OnAvailable hears each newly found version once, without the manager's
-// lock held (it may read Status).
-func TestOnAvailableOncePerVersionOutsideLock(t *testing.T) {
+// OnAvailable hears each found version until it accepts it, without the
+// manager's lock held (it may read Status).
+func TestOnAvailableUntilAcceptedOutsideLock(t *testing.T) {
 	var heard []string
+	fail := true
 	var h *harness
 	h = newHarness(t, func(o *ManagerOptions) {
-		o.OnAvailable = func(v string) {
+		o.OnAvailable = func(v string) error {
 			_ = h.m.Status() // deadlocks if called under the lock
 			heard = append(heard, v)
+			if fail {
+				return errors.New("notification queue unavailable")
+			}
+			return nil
 		}
 		o.SelfApply, o.NotifyReason = false, "notify only"
 	})
-	h.run(3 * DefaultPollInterval)
-	if len(heard) != 1 || heard[0] != "2.0.0" {
-		t.Fatalf("heard %v", heard)
+	h.run(DefaultFirstCheckDelay + DefaultPollInterval + time.Minute)
+	if len(heard) != 2 || heard[0] != "2.0.0" || heard[1] != "2.0.0" {
+		t.Fatalf("heard %v, want a retry after the failed announcement", heard)
+	}
+	fail = false
+	h.run(DefaultPollInterval)
+	h.run(2 * DefaultPollInterval)
+	if len(heard) != 3 {
+		t.Fatalf("heard %v, want no calls after acceptance", heard)
 	}
 	h.checker.mu.Lock()
 	h.checker.upd = binUpdate("2.1.0", []byte("2.1.0"))
 	h.checker.mu.Unlock()
 	h.run(2 * DefaultPollInterval)
-	if len(heard) != 2 || heard[1] != "2.1.0" {
+	if len(heard) != 4 || heard[3] != "2.1.0" {
 		t.Fatalf("heard %v", heard)
 	}
 }
