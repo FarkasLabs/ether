@@ -890,6 +890,7 @@
   "m_05ddc3d3e240fa": "není",
   "m_05de79910facc6": "Aktuálně nejpopulárnější na TMDB",
   "m_05dee691b6a4cb": "Náhled v",
+  "m_05df0f186d24f1": "Tento programový průvodce je větší než 2 GB.",
   "m_05df6f55026b7a": "Nejnovější běžná epizoda z dostupných metadat; neznámá data na konci",
   "m_05df964ad9f9b3": "Zdroj definic",
   "m_05dfadd1428cae": "Stav Plexu",
@@ -1845,7 +1846,6 @@
     "other": "Zpracováno {count} záznamů historie; přeskočeno: {skipped}."
   },
   "m_0c7a3810288c4a": "Aplikace",
-  "m_0c7e5b0f8762e0": "Vybraný soubor překračuje limit velikosti pro import.",
   "m_0c7eed91df4e91": "Token Plexu zdrojového diváka",
   "m_0c80f61b732d11": "Disková mezipaměť",
   "m_0c813e59cc859f": "Ether sestavuje vaši knihovnu Plex z TMDB, proto je nutný klíč API TMDB. Je zdarma: {link}, poté ho sem vložte a otestujte.",
@@ -3787,6 +3787,7 @@
   "m_19acda3eee5ecf": "Všichni",
   "m_19ad3d12ad931a": "Řazeno pro každého diváka podle jeho vkusu",
   "m_19aec6ab74aaba": "Prozkoumat skóre vydání a důvody zamítnutí",
+  "m_19aff30f861eb2": "Tento playlist je větší než 64 MB.",
   "m_19b37237967b11": "Nyní",
   "m_19b9ec61326f5a": "Přidejte URL obrázku pro vlastní artwork.",
   "m_19ba6be4c8d19c": "Je rovno",

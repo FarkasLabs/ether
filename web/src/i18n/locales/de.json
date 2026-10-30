@@ -832,6 +832,7 @@
   "m_05ddc3d3e240fa": "ist nicht",
   "m_05de79910facc6": "Aktuell am beliebtesten auf TMDB",
   "m_05dee691b6a4cb": "Vorschau für",
+  "m_05df0f186d24f1": "Dieser Programmführer ist größer als 2 GB.",
   "m_05df6f55026b7a": "Neueste reguläre Episode laut verfügbaren Metadaten; unbekannte Daten zuletzt",
   "m_05df964ad9f9b3": "Definitionsquelle",
   "m_05dfadd1428cae": "Plex-Status",
@@ -1741,7 +1742,6 @@
     "other": "{count} Verlaufseinträge verarbeitet; {skipped} übersprungen."
   },
   "m_0c7a3810288c4a": "App",
-  "m_0c7e5b0f8762e0": "Die ausgewählte Datei überschreitet das Größenlimit für den Import.",
   "m_0c7eed91df4e91": "Plex-Token des Quell-Zuschauers",
   "m_0c80f61b732d11": "Festplatten-Cache",
   "m_0c813e59cc859f": "Ether baut deine Plex-Mediathek aus TMDB auf, daher wird ein TMDB-API-Schlüssel benötigt. Er ist kostenlos: {link}, dann hier einfügen und testen.",
@@ -3547,6 +3547,7 @@
   "m_19acda3eee5ecf": "Alle",
   "m_19ad3d12ad931a": "Für jeden Zuschauer nach seinem Geschmack sortiert",
   "m_19aec6ab74aaba": "Release-Wertungen und Ablehnungsgründe ansehen",
+  "m_19aff30f861eb2": "Diese Playlist ist größer als 64 MB.",
   "m_19b37237967b11": "Jetzt",
   "m_19b9ec61326f5a": "Gib eine Bild-URL für eigenes Artwork an.",
   "m_19ba6be4c8d19c": "Ist gleich",

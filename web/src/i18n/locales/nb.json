@@ -832,6 +832,7 @@
   "m_05ddc3d3e240fa": "er ikke",
   "m_05de79910facc6": "Mest populære på TMDB akkurat nå",
   "m_05dee691b6a4cb": "Forhåndsvis kl.",
+  "m_05df0f186d24f1": "Denne guiden er større enn 2 GB.",
   "m_05df6f55026b7a": "Siste vanlige episode fra tilgjengelig metadata; ukjente datoer sist",
   "m_05df964ad9f9b3": "Definisjonskilde",
   "m_05dfadd1428cae": "Plex-status",
@@ -1741,7 +1742,6 @@
     "other": "Behandlet {count} historikkoppføringer, hoppet over {skipped}."
   },
   "m_0c7a3810288c4a": "App",
-  "m_0c7e5b0f8762e0": "Den valgte filen overskrider størrelsesgrensen for import.",
   "m_0c7eed91df4e91": "Kildeseerens Plex-token",
   "m_0c80f61b732d11": "Diskhurtigbuffer",
   "m_0c813e59cc859f": "Ether bygger Plex-biblioteket ditt fra TMDB, så en TMDB API-nøkkel er påkrevd. Den er gratis: {link}, lim den deretter inn her og test den.",
@@ -3547,6 +3547,7 @@
   "m_19acda3eee5ecf": "Alle",
   "m_19ad3d12ad931a": "Sortert for hver seer etter smak",
   "m_19aec6ab74aaba": "Undersøk utgivelsespoeng og avvisningsårsaker",
+  "m_19aff30f861eb2": "Denne spillelisten er større enn 64 MB.",
   "m_19b37237967b11": "Nå",
   "m_19b9ec61326f5a": "Legg til en bilde-URL for egendefinert omslag.",
   "m_19ba6be4c8d19c": "Er lik",

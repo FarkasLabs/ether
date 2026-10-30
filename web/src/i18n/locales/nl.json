@@ -832,6 +832,7 @@
   "m_05ddc3d3e240fa": "is niet",
   "m_05de79910facc6": "Nu het populairst op TMDB",
   "m_05dee691b6a4cb": "Voorbeeld op",
+  "m_05df0f186d24f1": "Deze gids is groter dan 2 GB.",
   "m_05df6f55026b7a": "Laatste reguliere aflevering volgens de beschikbare metadata; onbekende datums komen laatst",
   "m_05df964ad9f9b3": "Definitiebron",
   "m_05dfadd1428cae": "Plex-status",
@@ -1741,7 +1742,6 @@
     "other": "{count} geschiedenisitems verwerkt; {skipped} overgeslagen."
   },
   "m_0c7a3810288c4a": "App",
-  "m_0c7e5b0f8762e0": "Het geselecteerde bestand overschrijdt de groottelimiet voor import.",
   "m_0c7eed91df4e91": "Plex-token van de brongebruiker",
   "m_0c80f61b732d11": "Schijfcache",
   "m_0c813e59cc859f": "Ether bouwt je Plex-bibliotheek op basis van TMDB, dus een TMDB API-sleutel is vereist. Die is gratis: {link}, plak hem daarna hier en test hem.",
@@ -3547,6 +3547,7 @@
   "m_19acda3eee5ecf": "Iedereen",
   "m_19ad3d12ad931a": "Voor elke kijker gesorteerd op smaak",
   "m_19aec6ab74aaba": "Releasescores en afwijzingsredenen bekijken",
+  "m_19aff30f861eb2": "Deze afspeellijst is groter dan 64 MB.",
   "m_19b37237967b11": "Nu",
   "m_19b9ec61326f5a": "Voeg een afbeeldings-URL toe voor eigen artwork.",
   "m_19ba6be4c8d19c": "Is gelijk aan",

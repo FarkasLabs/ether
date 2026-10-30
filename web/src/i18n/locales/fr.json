@@ -861,6 +861,7 @@
   "m_05ddc3d3e240fa": "n’est pas",
   "m_05de79910facc6": "Les plus populaires sur TMDB en ce moment",
   "m_05dee691b6a4cb": "Aperçu à",
+  "m_05df0f186d24f1": "Ce guide dépasse 2 Go.",
   "m_05df6f55026b7a": "Dernier épisode régulier d’après les métadonnées disponibles ; dates inconnues en dernier",
   "m_05df964ad9f9b3": "Source de définitions",
   "m_05dfadd1428cae": "État de Plex",
@@ -1793,7 +1794,6 @@
     "other": "{count} entrées d’historique traitées ; {skipped} ignorée(s)."
   },
   "m_0c7a3810288c4a": "Application",
-  "m_0c7e5b0f8762e0": "Le fichier sélectionné dépasse la taille maximale d’import.",
   "m_0c7eed91df4e91": "Jeton Plex du spectateur source",
   "m_0c80f61b732d11": "Cache disque",
   "m_0c813e59cc859f": "Ether construit votre bibliothèque Plex à partir de TMDB, une clé API TMDB est donc nécessaire. Elle est gratuite : {link}, puis collez-la ici et testez-la.",
@@ -3667,6 +3667,7 @@
   "m_19acda3eee5ecf": "Tout le monde",
   "m_19ad3d12ad931a": "Ordonné pour chaque spectateur selon ses goûts",
   "m_19aec6ab74aaba": "Examiner les scores des releases et les raisons de rejet",
+  "m_19aff30f861eb2": "Cette liste de lecture dépasse 64 Mo.",
   "m_19b37237967b11": "Maintenant",
   "m_19b9ec61326f5a": "Ajoutez l’URL d’une image pour une illustration personnalisée.",
   "m_19ba6be4c8d19c": "Est égal à",

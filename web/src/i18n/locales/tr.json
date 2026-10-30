@@ -832,6 +832,7 @@
   "m_05ddc3d3e240fa": "eşit değildir",
   "m_05de79910facc6": "Şu anda TMDB'de en popüler olanlar",
   "m_05dee691b6a4cb": "Önizleme zamanı",
+  "m_05df0f186d24f1": "Bu rehber 2 GB'den büyük.",
   "m_05df6f55026b7a": "Mevcut üst verilerdeki son normal bölüm; bilinmeyen tarihler en sonda",
   "m_05df964ad9f9b3": "Tanım kaynağı",
   "m_05dfadd1428cae": "Plex durumu",
@@ -1741,7 +1742,6 @@
     "other": "{count} geçmiş kaydı işlendi, {skipped} atlandı."
   },
   "m_0c7a3810288c4a": "Uygulama",
-  "m_0c7e5b0f8762e0": "Seçilen dosya içe aktarma boyutu sınırını aşıyor.",
   "m_0c7eed91df4e91": "Kaynak izleyicinin Plex belirteci",
   "m_0c80f61b732d11": "Disk önbelleği",
   "m_0c813e59cc859f": "Ether, Plex kitaplığınızı TMDB'den oluşturur, bu nedenle bir TMDB API anahtarı gereklidir. Ücretsizdir: {link}, ardından buraya yapıştırıp test edin.",
@@ -3547,6 +3547,7 @@
   "m_19acda3eee5ecf": "Herkes",
   "m_19ad3d12ad931a": "Her izleyici için zevkine göre sıralanır",
   "m_19aec6ab74aaba": "Sürüm puanlarını ve ret nedenlerini incele",
+  "m_19aff30f861eb2": "Bu oynatma listesi 64 MB'den büyük.",
   "m_19b37237967b11": "Şimdi",
   "m_19b9ec61326f5a": "Özel görsel için bir görsel URL'si ekleyin.",
   "m_19ba6be4c8d19c": "Eşittir",

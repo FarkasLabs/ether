@@ -861,6 +861,7 @@
   "m_05ddc3d3e240fa": "non è",
   "m_05de79910facc6": "I più popolari su TMDB in questo momento",
   "m_05dee691b6a4cb": "Anteprima alle",
+  "m_05df0f186d24f1": "Questa guida supera i 2 GB.",
   "m_05df6f55026b7a": "Ultimo episodio regolare in base ai metadati disponibili; le date sconosciute vanno in fondo",
   "m_05df964ad9f9b3": "Fonte delle definizioni",
   "m_05dfadd1428cae": "Stato di Plex",
@@ -1793,7 +1794,6 @@
     "other": "{count} voci della cronologia elaborate; {skipped} saltate."
   },
   "m_0c7a3810288c4a": "App",
-  "m_0c7e5b0f8762e0": "Il file selezionato supera il limite di dimensione per l'importazione.",
   "m_0c7eed91df4e91": "Token Plex dello spettatore di origine",
   "m_0c80f61b732d11": "Cache su disco",
   "m_0c813e59cc859f": "Ether crea la tua libreria Plex a partire da TMDB, quindi serve una chiave API di TMDB. È gratuita: {link}, poi incollala qui e provala.",
@@ -3667,6 +3667,7 @@
   "m_19acda3eee5ecf": "Tutti",
   "m_19ad3d12ad931a": "Ordinati per ogni spettatore in base ai suoi gusti",
   "m_19aec6ab74aaba": "Esamina i punteggi delle release e i motivi di scarto",
+  "m_19aff30f861eb2": "Questa playlist supera i 64 MB.",
   "m_19b37237967b11": "Adesso",
   "m_19b9ec61326f5a": "Aggiungi l'URL di un'immagine per la grafica personalizzata.",
   "m_19ba6be4c8d19c": "È uguale a",
