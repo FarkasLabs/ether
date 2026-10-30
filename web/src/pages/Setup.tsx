@@ -200,6 +200,8 @@ export default function Setup() {
   const [pin, setPin] = useState<{ id: string; code: string; authUrl: string } | null>(null);
   const [pinDone, setPinDone] = useState(false);
   const [claimMsg, setClaimMsg] = useState("");
+  const [plexRecovery, setPlexRecovery] = useState(false);
+  const [claimFailed, setClaimFailed] = useState(false);
   const [disk, setDisk] = useState<DiskInfo | null>(null);
   const pollRef = useRef<number | null>(null);
   const mounted = useRef(false);
@@ -263,17 +265,26 @@ export default function Setup() {
         await api.claim();
         if (!current()) return;
         setClaimMsg(t("Server claimed to your Plex account."));
+        setClaimFailed(false);
       } catch (e) {
         if (!current()) return;
         setClaimMsg(t("Signed in, but claiming failed: {error}", { error: (e as Error).message }));
+        setClaimFailed(true);
+        setError(e);
       }
       // PIN approval and claiming update the server, not the wizard's draft.
       // Refresh only Plex so the next full-config save retains those credentials.
       const { plex } = await api.getConfig();
       if (!current()) return;
       setCfg((c) => (c ? { ...c, plex } : c));
+      // Do not allow the old draft token to be saved if refreshing the
+      // newly stored credentials failed.
+      setPlexRecovery(false);
     } catch (e) {
-      if (current()) setError(e);
+      if (current()) {
+        setClaimFailed(true);
+        setError(e);
+      }
     } finally {
       if (current()) {
         claiming.current = false;
@@ -283,6 +294,11 @@ export default function Setup() {
   };
 
   const startPin = async () => {
+    // A saved token may have been revoked at plex.tv. Reauthorize without
+    // clearing the owner, machine identity, or unrelated setup settings.
+    setPlexRecovery(true);
+    setClaimFailed(false);
+    setClaimMsg("");
     const run = ++pinRun.current;
     const current = () => mounted.current && run === pinRun.current;
     if (pollRef.current) window.clearInterval(pollRef.current);
@@ -307,8 +323,12 @@ export default function Setup() {
           setPinDone(true);
           setClaimMsg(t("Signed in. Claiming this server…"));
           await claimServer();
-        } catch {
-          /* keep polling */
+        } catch (e) {
+          if (!current()) return;
+          if (pollRef.current) window.clearInterval(pollRef.current);
+          pollRef.current = null;
+          setPin(null);
+          setError(e);
         } finally {
           polling = false;
         }
@@ -351,7 +371,7 @@ export default function Setup() {
     () =>
       cfg
         ? canAdvance(step, {
-            plexDone: Boolean(cfg.plex.claimed && cfg.plex.token),
+            plexDone: Boolean(cfg.plex.claimed && cfg.plex.token) && !plexRecovery && !claimFailed,
             providers: cfg.usenet.providers ?? [],
             indexers: cfg.indexers ?? [],
             providerTests,
@@ -363,7 +383,18 @@ export default function Setup() {
             skipped,
           })
         : false,
-    [cfg, step, providerTests, indexerTests, debridTests, optTests, tmdbBundled, skipped],
+    [
+      cfg,
+      step,
+      providerTests,
+      indexerTests,
+      debridTests,
+      optTests,
+      tmdbBundled,
+      skipped,
+      plexRecovery,
+      claimFailed,
+    ],
   );
 
   if (loadError && !cfg)
@@ -553,7 +584,7 @@ export default function Setup() {
               "Ether registers with your Plex account like a fresh Plex Media Server, so the official Plex apps can find it.",
             )}
           </p>
-          {plexSigned ? (
+          {plexSigned && !plexRecovery && !claimFailed ? (
             <Alert variant="success">
               <AlertDescription>
                 {cfg.plex.ownerUsername
@@ -591,15 +622,15 @@ export default function Setup() {
                 </p>
               ) : null}
             </div>
-          ) : !plexSigned ? (
+          ) : (
             <Button disabled={saving} onClick={() => void startPin()}>
-              {t("Sign in to plex.tv")}
+              {plexSigned ? t("Reconnect") : t("Sign in to plex.tv")}
             </Button>
-          ) : null}
-          {claimMsg && !cfg.plex.claimed ? (
+          )}
+          {claimMsg && (!cfg.plex.claimed || claimFailed) ? (
             <p className="text-sm text-fg-muted">{claimMsg}</p>
           ) : null}
-          {plexSigned && !cfg.plex.claimed ? (
+          {plexSigned && (!cfg.plex.claimed || claimFailed) && !pin ? (
             <Button variant="outline" disabled={saving} onClick={() => void claimServer()}>
               {t("Claim server")}
             </Button>
