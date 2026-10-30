@@ -119,9 +119,12 @@ case both volumes must already be writable by it.
 Hardware transcoding: for Intel QuickSync/VAAPI or AMD VAAPI pass
 `--device /dev/dri:/dev/dri`. The entrypoint adds the group that owns the
 render node (usually `0660 root:render`) automatically; with `--user` you
-add it yourself: `--group-add "$(stat -c %g /dev/dri/renderD128)"`. The image ships the
-VA-API loader, Mesa (AMD) and, on amd64, Intel's iHD/i965 drivers and the
-QuickSync runtime. The Transcoding page shows what the startup probe found.
+add it yourself: `--group-add "$(stat -c %g /dev/dri/renderD128)"`. The image is Debian 13 and ships libva 2.22, which the bundled Jellyfin
+FFmpeg needs in order to load VAAPI. It also ships Mesa (AMD) and, on
+amd64, Intel's iHD and i965 VAAPI drivers plus Debian's oneVPL Quick Sync
+runtime. That oneVPL package is not the legacy Media SDK runtime older
+Intel GPUs use for Quick Sync. The Transcoding page shows what the startup
+probe found.
 NVENC: use the NVIDIA container toolkit flags shown in
 `docker-compose.example.yml`.
 
