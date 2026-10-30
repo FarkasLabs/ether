@@ -255,7 +255,8 @@ func TestSidecarSelectionSurvivesProbeAndRemux(t *testing.T) {
 	// sidecar. The viewer's English choice follows it; text sidecars are
 	// served to the client, never passed into the remux.
 	f.playback.info = probedInfo
-	rec := f.get(t, "/video/:/transcode/universal/decision?path=/library/metadata/"+key+"&directPlay=0&directStream=1&session=remux1&protocol=hls")
+	android := []string{"X-Plex-Product", "Plex for Android (Mobile)", "X-Plex-Platform", "Android"}
+	rec := f.get(t, "/video/:/transcode/universal/decision?path=/library/metadata/"+key+"&directPlay=0&directStream=1&session=remux1&protocol=hls", android...)
 	releaseID := externalID(fightClub.Key, "ether-subtitle:release-en")
 	subs := subtitleTags(rec.Body.String())
 	selected := selectedTag(subs)
@@ -286,7 +287,8 @@ func TestSubtitleStreamIDOnDecisionPicksSidecar(t *testing.T) {
 	f.get(t, "/library/metadata/"+key)
 	releaseID := externalID(fightClub.Key, "ether-subtitle:release-en")
 	// Direct play keeps every subtitle and marks the requested sidecar selected.
-	rec := f.get(t, fmt.Sprintf("/video/:/transcode/universal/decision?path=/library/metadata/%s&subtitleStreamID=%d&session=dp1", key, releaseID))
+	android := []string{"X-Plex-Product", "Plex for Android (Mobile)", "X-Plex-Platform", "Android"}
+	rec := f.get(t, fmt.Sprintf("/video/:/transcode/universal/decision?path=/library/metadata/%s&subtitleStreamID=%d&session=dp1", key, releaseID), android...)
 	subs := subtitleTags(rec.Body.String())
 	selected := selectedTag(subs)
 	if selected == "" || !strings.Contains(selected, fmt.Sprintf(`key="/library/streams/%d"`, releaseID)) {
@@ -318,7 +320,8 @@ func TestTrackPreferenceAlwaysSelectsCachedSidecar(t *testing.T) {
 	}
 	// And at Play, without any explicit choice.
 	f.playback.info = probedInfo
-	rec := f.get(t, "/video/:/transcode/universal/decision?path=/library/metadata/"+fightClub.Key.String()+"&session=always1")
+	android := []string{"X-Plex-Product", "Plex for Android (Mobile)", "X-Plex-Platform", "Android"}
+	rec := f.get(t, "/video/:/transcode/universal/decision?path=/library/metadata/"+fightClub.Key.String()+"&session=always1", android...)
 	got := subtitleTags(rec.Body.String())
 	selected := selectedTag(got)
 	if selected == "" || !strings.Contains(selected, `external="1"`) {
