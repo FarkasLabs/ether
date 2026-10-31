@@ -64,7 +64,7 @@ func Defaults(dataDir string) Config {
 			SearchCacheTTL:          Duration(6 * time.Hour),
 			UnavailableCooloff:      Duration(24 * time.Hour),
 			MaxCandidates:           3,
-			SameQualityAlternatives: 2,
+			SameQualityAlternatives: 1,
 		},
 		Quality: DefaultQuality(),
 		Transcode: Transcode{

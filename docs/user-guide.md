@@ -320,7 +320,7 @@ high-compatibility 1080p release or an extended cut. Right after the automatic
 choice, other releases of the same cut, resolution and HDR type are listed,
 named by quality, audio, size and release group, so you can switch if one
 fails. Releases → Release selection → **Same-quality versions to offer** sets
-how many (none, one, two or three; two by default). Choose one with Plex's **Play Version**; otherwise Ether picks the
+how many (0 to 3; 1 by default, 0 turns the extra versions off). Choose one with Plex's **Play Version**; otherwise Ether picks the
 best version for the device. Search
 also accepts descriptions such as "90s thrillers under 100 mins" and offers a
 matching collection; rate it to keep it as a personal collection.

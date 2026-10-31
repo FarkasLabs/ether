@@ -372,14 +372,10 @@ export const RESOLVER: FieldGroup[] = localized(() => [
       {
         key: "sameQualityAlternatives",
         label: t("Same-quality versions to offer"),
-        kind: "select",
-        numeric: true,
-        options: [
-          { value: "0", label: t("None") },
-          { value: "1", label: t("One") },
-          { value: "2", label: t("Two") },
-          { value: "3", label: t("Three") },
-        ],
+        kind: "number",
+        min: 0,
+        max: 3,
+        step: 1,
         help: t(
           "Other releases with the same cut, resolution and HDR type, listed after Auto in Plex's Play Version menu so you can switch if one fails.",
         ),

@@ -191,12 +191,11 @@ describe("Source routing", () => {
 });
 
 describe("Release selection", () => {
-  it("lets the owner choose how many same-quality versions Plex lists", async () => {
+  it("lets the owner set how many same-quality versions Plex lists", async () => {
     const { fake } = renderApp("/releases/selection");
-    expect(
-      await screen.findByRole("button", { name: "Same-quality versions to offer" }, WAIT),
-    ).toHaveTextContent("Two");
-    await choose("Same-quality versions to offer", "Three");
+    const field = await screen.findByLabelText("Same-quality versions to offer", {}, WAIT);
+    expect(field).toHaveValue(1);
+    fireEvent.change(field, { target: { value: "3" } });
     fireEvent.click(screen.getByRole("button", { name: "Save changes" }));
     await waitFor(() => expect(calls(fake, "PUT", "/config/resolver")).toHaveLength(1));
     expect(calls(fake, "PUT", "/config/resolver")[0]!.body).toMatchObject({

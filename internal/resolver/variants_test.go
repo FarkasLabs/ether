@@ -386,7 +386,9 @@ func TestVariantsAlternativesFromStrictPoolCacheOnly(t *testing.T) {
 		rel("d", "The.Signal.1999.1080p.WEB-DL.AAC2.0.H.264-KiNGS", 5000),
 		rel("uhd", "The.Signal.1999.2160p.WEB-DL.DV.HDR.H.265-GRP", 20000),
 	}}
-	svc := New(idx, fakeHealth{}, nil, testCfg(), Options{})
+	cfg := testCfg()
+	cfg.Resolver.SameQualityAlternatives = 2
+	svc := New(idx, fakeHealth{}, nil, cfg, Options{})
 	primeSearchCache(t, svc, webCaps())
 	before := idx.searches.Load()
 	vs, err := svc.Variants(context.Background(), core.ResolveRequest{Title: matrixTitle(), Client: webCaps()}, core.MaxVariants)

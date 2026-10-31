@@ -274,7 +274,7 @@ type Resolver struct {
 	MaxCandidates        int                 `json:"maxCandidates"`
 	// SameQualityAlternatives is how many other releases of the same cut,
 	// resolution and HDR type a detail page lists after Auto as Play
-	// Versions (0 = none, at most 3).
+	// Versions (0 = none, at most 3; default 1).
 	SameQualityAlternatives int      `json:"sameQualityAlternatives"`
 	BlockedGroups           []string `json:"blockedGroups"`
 	BlockedTerms            []string `json:"blockedTerms"`
