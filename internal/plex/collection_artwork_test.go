@@ -15,9 +15,9 @@ import (
 // artCollections adds generated posters to the fake collections.
 type artCollections struct {
 	*fakeCollections
-	mu        sync.Mutex
-	calls     []string
-	allowArt  bool
+	mu       sync.Mutex
+	calls    []string
+	allowArt bool
 }
 
 func (a *artCollections) CollectionArtwork(_ context.Context, u *core.User, key core.RatingKey, element string, width int) ([]byte, string, bool, error) {
