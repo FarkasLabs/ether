@@ -890,13 +890,16 @@ func (s *Service) acquireOn(ctx context.Context, e *entry, base Payload, choose 
 	findStarted := time.Now()
 	_, _, torrentID := s.knownFor(ctx, e.cfg.ID, hash)
 	if torrentID == "" {
-		if fast, ok := e.p.(knownTorrentFinder); ok && !core.IsBackgroundCheck(ctx) {
-			// Providers with atomic cached-only create + duplicate recovery
-			// can reuse known IDs without listing the whole account first.
-			// Background checks cannot create anything: they must use the
-			// read-only lookup to discover items added by another client or
-			// before this process started, even when the local cache is cold.
+		if fast, ok := e.p.(knownTorrentFinder); ok {
+			// Atomic cached-only providers need no account listing before
+			// foreground creation. Background discovery reads only local
+			// hints or a fresh snapshot, warming a cold list alongside A.
 			torrentID = fast.findKnown(hash)
+			if torrentID == "" && core.IsBackgroundCheck(ctx) {
+				if finder, ok := e.p.(backgroundTorrentFinder); ok {
+					torrentID = finder.findBackground(ctx, hash)
+				}
+			}
 		} else if id, err := e.p.Find(ctx, hash); err == nil {
 			torrentID = id
 		} else if !errors.Is(err, ErrUnsupported) {
