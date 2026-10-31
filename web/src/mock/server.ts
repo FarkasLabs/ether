@@ -253,6 +253,7 @@ function defaultConfig(): EtherConfig {
       searchCacheTtl: "6h0m0s",
       unavailableCooloff: "24h0m0s",
       maxCandidates: 3,
+      sameQualityAlternatives: 2,
       blockedGroups: null,
       blockedTerms: null,
     },

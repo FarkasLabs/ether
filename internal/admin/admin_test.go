@@ -629,6 +629,24 @@ func TestValidateConfigDirect(t *testing.T) {
 	}
 }
 
+// The owner's same-quality version count is 0 (none) to 3.
+func TestValidateSameQualityAlternatives(t *testing.T) {
+	cfg := config.Defaults(t.TempDir())
+	for _, n := range []int{0, 1, 2, 3} {
+		cfg.Resolver.SameQualityAlternatives = n
+		if errs := admin.ValidateConfig(cfg); len(errs) != 0 {
+			t.Errorf("%d rejected: %v", n, errs)
+		}
+	}
+	for _, n := range []int{-1, 4} {
+		cfg.Resolver.SameQualityAlternatives = n
+		errs := admin.ValidateConfig(cfg)
+		if len(errs) != 1 || errs[0].Field != "resolver.sameQualityAlternatives" {
+			t.Errorf("%d: errs=%v", n, errs)
+		}
+	}
+}
+
 func TestValidateClusterWeight(t *testing.T) {
 	cfg := config.Defaults(t.TempDir())
 	for _, w := range []int{0, 1, 100} {

@@ -342,7 +342,7 @@ func TestPickVariantsSameQualityAlternatives(t *testing.T) {
 	}
 	caps := core.ClientCaps{MaxHeight: 2160}
 	profile := core.QualityProfile{MaxHeight: 2160, AllowHDR: true, AllowDolbyVision: true}
-	out := pickVariants(ep, caps, profile, pool[0].rel, pool, pool, maxVariants)
+	out := pickVariants(ep, caps, profile, pool[0].rel, pool, pool, 2, maxVariants)
 	var ids []string
 	for _, v := range out {
 		ids = append(ids, v.ID)
@@ -362,7 +362,7 @@ func TestPickVariantsSameQualityAlternatives(t *testing.T) {
 		t.Errorf("alternative label %q", got)
 	}
 	// A smaller cap never drops a tier to make room for an alternative.
-	small := pickVariants(ep, caps, profile, pool[0].rel, pool, pool, 4)
+	small := pickVariants(ep, caps, profile, pool[0].rel, pool, pool, 2, 4)
 	var got []string
 	for _, v := range small {
 		got = append(got, v.ID)
@@ -371,7 +371,7 @@ func TestPickVariantsSameQualityAlternatives(t *testing.T) {
 		t.Errorf("max=4 versions %v", got)
 	}
 	// A pool where only Auto and its copy exist yields no alternatives.
-	if out := pickVariants(ep, caps, profile, pool[0].rel, pool[:2], pool[:2], maxVariants); len(out) != 1 {
+	if out := pickVariants(ep, caps, profile, pool[0].rel, pool[:2], pool[:2], 2, maxVariants); len(out) != 1 {
 		t.Errorf("duplicate offered as alternative: %+v", out)
 	}
 }
@@ -410,5 +410,37 @@ func TestVariantsAlternativesFromStrictPoolCacheOnly(t *testing.T) {
 	}
 	if alts != 2 {
 		t.Errorf("%d alternatives, want 2: %+v", alts, vs)
+	}
+}
+
+// The owner chooses how many same-quality alternatives are listed (0-3);
+// the picker never exceeds core.MaxVariants.
+func TestVariantsAlternativeCountSetting(t *testing.T) {
+	releases := []core.Release{
+		rel("a", "The.Signal.1999.1080p.WEB-DL.DDP5.1.H.264-TOP", 8000),
+		rel("b", "The.Signal.1999.1080p.WEB-DL.DDP5.1.H.264-FLUX", 7000),
+		rel("c", "The.Signal.1999.1080p.WEB-DL.AAC2.0.H.264-EDITH", 6000),
+		rel("d", "The.Signal.1999.1080p.WEB-DL.AAC2.0.H.264-KiNGS", 5000),
+		rel("e", "The.Signal.1999.1080p.WEB-DL.AAC2.0.H.264-NTb", 4000),
+	}
+	for _, tc := range []struct{ setting, want int }{{0, 0}, {1, 1}, {3, 3}, {9, 3}, {-2, 0}} {
+		cfg := testCfg()
+		cfg.Resolver.SameQualityAlternatives = tc.setting
+		svc := New(&fakeIndexer{releases: releases}, fakeHealth{}, nil, cfg, Options{})
+		primeSearchCache(t, svc, webCaps())
+		vs, err := svc.Variants(context.Background(), core.ResolveRequest{Title: matrixTitle(), Client: webCaps()}, core.MaxVariants)
+		if err != nil {
+			t.Fatal(err)
+		}
+		got := 0
+		for _, v := range vs[1:] {
+			if variantKey(v.Release.Info) == variantKey(vs[0].Release.Info) {
+				got++
+			}
+		}
+		if got != tc.want || len(vs) > core.MaxVariants {
+			t.Errorf("setting %d: %d alternatives (want %d) in %d versions", tc.setting, got, tc.want, len(vs))
+		}
+		svc.Close()
 	}
 }

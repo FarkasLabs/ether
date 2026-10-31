@@ -13,12 +13,12 @@ import (
 var _ core.VariantResolver = (*Service)(nil)
 
 // maxVariants caps the Play Version picker (core.MaxVariants): Auto, up to
-// maxAlternatives same-quality alternatives, and up to maxTierVariants
+// maxAlternativesLimit same-quality alternatives, and up to maxTierVariants
 // distinct tiers and cuts.
 const (
-	maxVariants     = core.MaxVariants
-	maxAlternatives = 2
-	maxTierVariants = 4 // Auto plus three tiers, the picker before alternatives
+	maxVariants          = core.MaxVariants
+	maxAlternativesLimit = 3
+	maxTierVariants      = 4 // Auto plus three tiers, the picker before alternatives
 )
 
 // Variants implements core.VariantResolver. It reads only the cached
@@ -66,7 +66,7 @@ func (s *Service) Variants(ctx context.Context, req core.ResolveRequest, max int
 			return nil, err
 		}
 	}
-	return pickVariants(req.Title, req.Client, profile, strict[0].rel, pool, strict, max), nil
+	return pickVariants(req.Title, req.Client, profile, strict[0].rel, pool, strict, s.sameQualityAlternatives(), max), nil
 }
 
 // relaxedVariantProfile raises the profile's height cap to the client's
@@ -83,6 +83,18 @@ func relaxedVariantProfile(profile core.QualityProfile, caps core.ClientCaps) (c
 	p := profile
 	p.MaxHeight = clientMax
 	return p, true
+}
+
+// sameQualityAlternatives is the owner's setting, clamped to 0..3.
+func (s *Service) sameQualityAlternatives() int {
+	n := s.resolverCfg().SameQualityAlternatives
+	if n < 0 {
+		return 0
+	}
+	if n > maxAlternativesLimit {
+		return maxAlternativesLimit
+	}
+	return n
 }
 
 func (s *Service) peekSearchCache(key string) ([]core.Release, bool) {
@@ -112,12 +124,12 @@ func variantKey(info core.ReleaseInfo) string {
 }
 
 // pickVariants assembles up to max distinct versions: Auto first, then up to
-// maxAlternatives other releases of Auto's own cut, resolution and HDR type,
+// the configured number of other releases of Auto's own cut, resolution and HDR type,
 // then a 4K HDR/DV tier, a high-compatibility 1080p tier, one entry per
 // distinct cut, and any remaining distinct tiers. Tiers are best-scored
 // first within each slot and deduplicated by (edition, quality tier); the
 // alternatives come from the strict profile pool, in rank order.
-func pickVariants(t *core.Title, caps core.ClientCaps, profile core.QualityProfile, auto core.Release, pool, strict []candidate, max int) []core.ReleaseVariant {
+func pickVariants(t *core.Title, caps core.ClientCaps, profile core.QualityProfile, auto core.Release, pool, strict []candidate, alternatives, max int) []core.ReleaseVariant {
 	usedRel := map[string]bool{}
 	usedKey := map[string]bool{}
 	var out []core.ReleaseVariant
@@ -176,7 +188,7 @@ func pickVariants(t *core.Title, caps core.ClientCaps, profile core.QualityProfi
 	// Same-quality alternatives sit right after Auto, so plain Play and the
 	// first menu entry stay on Auto. They share Auto's variantKey, so none
 	// of them can be a tier above.
-	alts := sameQualityAlternatives(auto, strict, maxAlternatives, max-len(out))
+	alts := pickAlternatives(auto, strict, alternatives, max-len(out))
 	if len(alts) == 0 {
 		return out
 	}
@@ -188,11 +200,11 @@ func pickVariants(t *core.Title, caps core.ClientCaps, profile core.QualityProfi
 	return append(withAlts, out[1:]...)
 }
 
-// sameQualityAlternatives returns up to limit releases from the ranked pool
+// pickAlternatives returns up to limit releases from the ranked pool
 // that share Auto's cut, resolution and HDR type, skipping Auto itself and
 // any release whose name and size repeat one already chosen (the same file
 // on another indexer or source).
-func sameQualityAlternatives(auto core.Release, ranked []candidate, limit, room int) []core.Release {
+func pickAlternatives(auto core.Release, ranked []candidate, limit, room int) []core.Release {
 	if room < limit {
 		limit = room
 	}
