@@ -304,6 +304,7 @@ export interface EtherConfig {
     searchCacheTtl: string;
     unavailableCooloff: string;
     maxCandidates: number;
+    sameQualityAlternatives: number;
     blockedGroups: string[] | null;
     blockedTerms: string[] | null;
   };
