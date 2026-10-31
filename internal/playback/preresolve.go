@@ -177,7 +177,7 @@ func (m *Manager) Prewarm(_ context.Context, user *core.User, key core.RatingKey
 	// Active playback takes priority over speculation, unless the caller
 	// is warming the next thing while the viewer watches (a trailer or
 	// the end of a film).
-	if !opts.DuringPlayback && (len(m.sessions) > 0 || m.pendingN > 0) {
+	if !opts.DuringPlayback && m.hasActivePlaybackLocked() {
 		m.mu.Unlock()
 		return false
 	}
@@ -581,6 +581,21 @@ func (m *Manager) releaseBlocked(ctx context.Context, id string) bool {
 	if checker, ok := m.deps.Resolver.(core.ReleaseBlockChecker); ok {
 		blocked, err := checker.ReleaseBlocked(ctx, id)
 		return blocked || err != nil
+	}
+	return false
+}
+
+func (m *Manager) hasActivePlaybackLocked() bool {
+	if m.pendingN > 0 {
+		return true
+	}
+	for _, s := range m.sessions {
+		s.mu.Lock()
+		active := s.stopAt.IsZero() && s.viewerState != "paused"
+		s.mu.Unlock()
+		if active {
+			return true
+		}
 	}
 	return false
 }

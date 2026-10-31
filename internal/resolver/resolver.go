@@ -1399,6 +1399,9 @@ func floorHeight(info core.ReleaseInfo) int {
 	if info.Source == core.SourceWEBDL || info.Source == core.SourceWEBRip {
 		return 480
 	}
+	if info.Source == core.SourceUnknown && (info.VideoCodec == "xvid" || info.VideoCodec == "mpeg2") {
+		return 480
+	}
 	return 0
 }
 
