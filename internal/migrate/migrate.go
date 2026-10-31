@@ -792,20 +792,6 @@ func importList(ctx context.Context, tx *sql.Tx, source string, l List, now int6
 		return err
 	}
 	if len(l.Keys) == 0 {
-		if id > 0 {
-			switch l.Kind {
-			case "playlist":
-				if _, err := tx.ExecContext(ctx, `DELETE FROM state_playlists WHERE id=? AND user_id=?`, id, l.Viewer); err != nil {
-					return err
-				}
-			case "collection":
-				if _, err := tx.ExecContext(ctx, `DELETE FROM collections_specs WHERE id=? AND builtin=0 AND owner_user_id=?`, id, l.Viewer); err != nil {
-					return err
-				}
-			}
-			_, err := tx.ExecContext(ctx, `DELETE FROM migrate_objects WHERE source=? AND viewer=? AND kind=? AND external=?`, source, l.Viewer, l.Kind, l.External)
-			return err
-		}
 		return nil
 	}
 	switch l.Kind {
