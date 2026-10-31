@@ -677,7 +677,21 @@ func (m *Manager) failoverWith(ctx context.Context, s *session, observed *genera
 		// direct source in place; a healthy mismatched candidate is kept
 		// as a remux-switch fallback instead of being spliced in.
 		if err == nil && direct && g.src.Size() != cur.src.Size() {
-			if fallbackGen == nil {
+			keep := fallbackGen == nil
+			if !keep && fo.down {
+				// A down-failover's remux fallback only helps at a lower
+				// bitrate, so a lower mismatch supersedes an earlier
+				// non-lower one instead of being dropped behind it. The
+				// existing veto below still rejects a fallback that is
+				// not lower when no lower mismatch was found.
+				bps := mediaBps(g.infoSnapshot(), g.src.Size())
+				fallbackBps := mediaBps(fallbackGen.infoSnapshot(), fallbackGen.src.Size())
+				if curBps > 0 && bps > 0 && bps < curBps && !(fallbackBps > 0 && fallbackBps < curBps) {
+					m.dropGeneration(fallbackGen)
+					fallbackGen, keep = nil, true
+				}
+			}
+			if keep {
 				fallbackGen = g
 			} else {
 				m.dropGeneration(g)
