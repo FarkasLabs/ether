@@ -353,21 +353,21 @@ func librarySectionTitle(t core.MediaType, c config.Config) string {
 
 // withLibraryTitles copies secs and applies the configured library names.
 // Section UUIDs stay derived from id only, so renames do not break plex.tv.
-func (s *Server) withLibraryTitles(secs []Section) []Section {
-	c := s.cfg()
+func (s *Server) withLibraryTitles(secs []Section, names ...libraryNames) []Section {
+	n := s.namesOrCurrent(names)
 	out := append([]Section(nil), secs...)
 	for i := range out {
 		switch out[i].Type {
 		case core.TypeMovie, core.TypeShow:
-			out[i].Title = librarySectionTitle(out[i].Type, c)
+			out[i].Title = n.title(out[i].Type)
 		}
 	}
 	return out
 }
 
 // sectionByID returns the section with the given id.
-func (s *Server) sectionByID(id int) (Section, bool) {
-	for _, sec := range s.withLibraryTitles(s.sections) {
+func (s *Server) sectionByID(id int, names ...libraryNames) (Section, bool) {
+	for _, sec := range s.withLibraryTitles(s.sections, names...) {
 		if sec.ID == id {
 			return sec, true
 		}
@@ -376,13 +376,13 @@ func (s *Server) sectionByID(id int) (Section, bool) {
 }
 
 // sectionFor returns the section an item of type t lives in.
-func (s *Server) sectionFor(t core.MediaType) (Section, bool) {
+func (s *Server) sectionFor(t core.MediaType, names ...libraryNames) (Section, bool) {
 	want := core.TypeMovie
 	switch t {
 	case core.TypeShow, core.TypeSeason, core.TypeEpisode:
 		want = core.TypeShow
 	}
-	for _, sec := range s.withLibraryTitles(s.sections) {
+	for _, sec := range s.withLibraryTitles(s.sections, names...) {
 		if sec.Type == want {
 			return sec, true
 		}
@@ -391,8 +391,8 @@ func (s *Server) sectionFor(t core.MediaType) (Section, bool) {
 }
 
 // userSections lists the sections a user may see.
-func (s *Server) userSections(u *core.User) []Section {
-	secs := s.withLibraryTitles(s.sections)
+func (s *Server) userSections(u *core.User, names ...libraryNames) []Section {
+	secs := s.withLibraryTitles(s.sections, names...)
 	if u == nil || len(u.AllowedSections) == 0 || u.IsOwner {
 		return secs
 	}
@@ -408,8 +408,8 @@ func (s *Server) userSections(u *core.User) []Section {
 	return out
 }
 
-func (s *Server) canSeeSection(u *core.User, id int) bool {
-	for _, sec := range s.userSections(u) {
+func (s *Server) canSeeSection(u *core.User, id int, names ...libraryNames) bool {
+	for _, sec := range s.userSections(u, names...) {
 		if sec.ID == id {
 			return true
 		}

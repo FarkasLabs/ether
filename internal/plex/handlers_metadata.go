@@ -55,12 +55,13 @@ func (s *Server) itemContainer(t core.MediaType) *model.MediaContainer {
 }
 
 // titleVisible reports whether the user may see the title's section.
-func (s *Server) titleVisible(u *core.User, t *core.Title) bool {
+func (s *Server) titleVisible(u *core.User, t *core.Title, names ...libraryNames) bool {
 	if !s.titleAllowed(u, t) {
 		return false
 	}
-	sec, ok := s.sectionFor(t.Type)
-	return !ok || s.canSeeSection(u, sec.ID)
+	n := s.namesOrCurrent(names)
+	sec, ok := s.sectionFor(t.Type, n)
+	return !ok || s.canSeeSection(u, sec.ID, n)
 }
 
 func (s *Server) handleMetadata(w http.ResponseWriter, r *http.Request) {

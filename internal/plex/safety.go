@@ -11,10 +11,11 @@ type AccessPolicy interface {
 	Allowed(*core.User, *core.Title) bool
 }
 
-func (s *Server) visibleTitles(u *core.User, ts []core.Title) []core.Title {
+func (s *Server) visibleTitles(u *core.User, ts []core.Title, names ...libraryNames) []core.Title {
+	n := s.namesOrCurrent(names)
 	out := make([]core.Title, 0, len(ts))
 	for i := range ts {
-		if s.titleVisible(u, &ts[i]) {
+		if s.titleVisible(u, &ts[i], n) {
 			out = append(out, ts[i])
 		}
 	}
@@ -34,7 +35,7 @@ func (s *Server) titleAllowed(u *core.User, t *core.Title) bool {
 // visibleTitle also checks section and inherited show policy for artwork and
 // child items whose summaries have not yet inherited the certification.
 func (s *Server) visibleTitle(ctx context.Context, u *core.User, t *core.Title) bool {
-	if !s.titleVisible(u, t) {
+	if !s.titleVisible(u, t, s.renderLibraryNames(ctx)) {
 		return false
 	}
 	if len(s.availableForViewer(ctx, u, []core.Title{*t})) == 0 {
@@ -49,12 +50,12 @@ func (s *Server) visibleTitle(ctx context.Context, u *core.User, t *core.Title) 
 // releases, not a permission: a viewer who presses Play on such a title still
 // gets a resolve attempt and a readable decision instead of a bare 404.
 func (s *Server) playableTitle(ctx context.Context, u *core.User, t *core.Title) bool {
-	if !s.titleVisible(u, t) {
+	if !s.titleVisible(u, t, s.renderLibraryNames(ctx)) {
 		return false
 	}
 	if t.ShowKey != 0 {
 		show, err := s.d.Catalog.Get(ctx, t.ShowKey)
-		if err != nil || !s.titleVisible(u, show) {
+		if err != nil || !s.titleVisible(u, show, s.renderLibraryNames(ctx)) {
 			return false
 		}
 	}

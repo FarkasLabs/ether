@@ -122,8 +122,9 @@ func (s *Server) sectionParam(w http.ResponseWriter, r *http.Request) (Section, 
 		writeHTTPError(w, http.StatusNotFound)
 		return Section{}, false
 	}
-	sec, ok := s.sectionByID(id)
-	if !ok || !s.canSeeSection(FromContext(r.Context()).User, id) {
+	names := s.renderLibraryNames(r.Context())
+	sec, ok := s.sectionByID(id, names)
+	if !ok || !s.canSeeSection(FromContext(r.Context()).User, id, names) {
 		writeHTTPError(w, http.StatusNotFound)
 		return Section{}, false
 	}
@@ -707,8 +708,8 @@ func (s *Server) sectionSearch(w http.ResponseWriter, r *http.Request, sec Secti
 }
 
 // filterAllowed drops titles in sections the user cannot see.
-func (s *Server) filterAllowed(u *core.User, ts []core.Title) []core.Title {
-	return s.visibleTitles(u, ts)
+func (s *Server) filterAllowed(u *core.User, ts []core.Title, names ...libraryNames) []core.Title {
+	return s.visibleTitles(u, ts, names...)
 }
 
 func (s *Server) sectionFacet(w http.ResponseWriter, r *http.Request, sec Section, sub string) {
@@ -773,6 +774,8 @@ func (s *Server) inProgressTitles(ctx context.Context, pr *Request, t core.Media
 	if s.d.State == nil || pr.User == nil {
 		return nil, nil
 	}
+	ctx = s.withRenderLibraryNames(ctx)
+	names := s.renderLibraryNames(ctx)
 	sts, err := s.d.State.InProgress(ctx, pr.User.ID, limit*2+10)
 	if err != nil {
 		s.log.Warn("load in-progress", "err", err)
@@ -809,8 +812,8 @@ func (s *Server) inProgressTitles(ctx context.Context, pr *Request, t core.Media
 				continue
 			}
 		}
-		sec, ok := s.sectionFor(ti.Type)
-		if ok && !s.canSeeSection(pr.User, sec.ID) {
+		sec, ok := s.sectionFor(ti.Type, names)
+		if ok && !s.canSeeSection(pr.User, sec.ID, names) {
 			continue
 		}
 		if ti.Type == core.TypeEpisode {

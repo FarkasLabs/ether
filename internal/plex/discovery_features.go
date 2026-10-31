@@ -122,7 +122,7 @@ func (s *Server) discoveryHubs(ctx context.Context, pr *Request, limit int) []hu
 	var out []hubSpec
 	add := func(hubs []core.Hub) {
 		for _, h := range hubs {
-			h.Items = s.visibleTitles(pr.User, h.Items)
+			h.Items = s.visibleTitles(pr.User, h.Items, s.renderLibraryNames(ctx))
 			if len(h.Items) > 0 {
 				out = append(out, hubSpec{Hub: h})
 			}

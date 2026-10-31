@@ -69,8 +69,9 @@ func discoveryAvailabilityHub(id string) bool {
 }
 
 func (s *Server) renderHub(ctx context.Context, pr *Request, hs hubSpec, hc hubCtx) model.Hub {
+	ctx = s.withRenderLibraryNames(ctx)
 	h := hs.Hub
-	items := s.filterAllowed(pr.User, h.Items)
+	items := s.filterAllowed(pr.User, h.Items, s.renderLibraryNames(ctx))
 	if s.d.PrioritizeAvailable != nil && discoveryAvailabilityHub(h.ID) {
 		items = s.d.PrioritizeAvailable(ctx, items)
 	}
@@ -141,6 +142,7 @@ func stampIncluded(md []model.Metadata) {
 }
 
 func (s *Server) renderHubs(ctx context.Context, pr *Request, hubs []core.Hub, hc hubCtx) []model.Hub {
+	ctx = s.withRenderLibraryNames(ctx)
 	out := make([]model.Hub, 0, len(hubs))
 	for _, h := range hubs {
 		out = append(out, s.renderHub(ctx, pr, hubSpec{Hub: h}, hc))
@@ -233,11 +235,11 @@ func parseSectionList(s string) []int {
 
 // hubInSections reports whether a hub's items belong to one of the
 // sections (mixed hubs always match).
-func (s *Server) hubInSections(h core.Hub, ids []int) bool {
+func (s *Server) hubInSections(h core.Hub, ids []int, names ...libraryNames) bool {
 	if len(ids) == 0 || h.Type == "" {
 		return true
 	}
-	sec, ok := s.sectionFor(h.Type)
+	sec, ok := s.sectionFor(h.Type, names...)
 	if !ok {
 		return true
 	}
@@ -245,7 +247,7 @@ func (s *Server) hubInSections(h core.Hub, ids []int) bool {
 }
 
 func (s *Server) homeHubs(w http.ResponseWriter, r *http.Request, promotedOnly bool) {
-	ctx := r.Context()
+	ctx := s.withRenderLibraryNames(r.Context())
 	pr := FromContext(ctx)
 	q := r.URL.Query()
 	count := countParam(r, 12)
@@ -286,7 +288,7 @@ func (s *Server) homeHubs(w http.ResponseWriter, r *http.Request, promotedOnly b
 		if promotedOnly && !h.Promoted {
 			continue
 		}
-		if !s.hubInSections(h, sections) {
+		if !s.hubInSections(h, sections, s.renderLibraryNames(ctx)) {
 			continue
 		}
 		// Drop a recommender row that repeats a hub we built.
@@ -488,6 +490,7 @@ func (s *Server) handleContinueWatchingItems(w http.ResponseWriter, r *http.Requ
 }
 
 func (s *Server) handleSectionHubs(w http.ResponseWriter, r *http.Request) {
+	r = r.WithContext(s.withRenderLibraryNames(r.Context()))
 	sec, ok := s.sectionParam(w, r)
 	if !ok {
 		return

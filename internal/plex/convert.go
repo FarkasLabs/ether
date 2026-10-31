@@ -182,7 +182,7 @@ func (s *Server) metadata(ctx context.Context, pr *Request, t *core.Title, o ren
 	if len(t.Studios) > 0 {
 		m.Studio = t.Studios[0]
 	}
-	if sec, ok := s.sectionFor(t.Type); ok && !o.inSection && t.Key.Kind() != core.KindCollection {
+	if sec, ok := s.sectionFor(t.Type, s.renderLibraryNames(ctx)); ok && !o.inSection && t.Key.Kind() != core.KindCollection {
 		m.LibrarySectionID = sec.ID
 		m.LibrarySectionKey = "/library/sections/" + strconv.Itoa(sec.ID)
 		m.LibrarySectionTitle = sec.Title
@@ -1093,7 +1093,8 @@ func languageTag(code string) string {
 
 // renderTitles renders a list, loading the user's watch state in one call.
 func (s *Server) renderTitles(ctx context.Context, pr *Request, ts []core.Title, o renderOpts) []model.Metadata {
-	ts = s.visibleTitles(pr.User, ts)
+	ctx = s.withRenderLibraryNames(ctx)
+	ts = s.visibleTitles(pr.User, ts, s.renderLibraryNames(ctx))
 	ts = s.availableForViewer(ctx, pr.User, ts)
 	if len(ts) == 0 {
 		return nil
@@ -1320,7 +1321,7 @@ func (s *Server) applyLeafCounts(ctx context.Context, pr *Request, items []model
 		if err != nil || len(eps) == 0 {
 			continue
 		}
-		eps = s.visibleTitles(pr.User, eps)
+		eps = s.visibleTitles(pr.User, eps, s.renderLibraryNames(ctx))
 		if title.Type == core.TypeShow {
 			// A show's totals are its regular episodes, as the catalogue
 			// counts them on every list: Specials neither add to the badge
