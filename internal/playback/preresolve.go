@@ -232,6 +232,12 @@ func (m *Manager) Prewarm(_ context.Context, user *core.User, key core.RatingKey
 		}
 		if res == nil || !releaseMatchesTitle(res.Release, title) {
 			res, err = m.deps.Resolver.Resolve(ctx, core.ResolveRequest{Title: title, Client: caps, User: &u})
+		} else if reason == core.PrewarmDetail {
+			// Reusing the remembered source skips Resolve/search. Recover only
+			// the picker candidates, without delaying or changing that source.
+			if refill, ok := m.deps.Resolver.(core.SearchCacheRefiller); ok {
+				refill.RefillSearchCache(title)
+			}
 		}
 		if err != nil || res == nil {
 			return

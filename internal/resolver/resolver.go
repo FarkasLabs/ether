@@ -192,6 +192,7 @@ type Service struct {
 	bgMu     sync.Mutex
 	bgClosed bool
 	bgWG     sync.WaitGroup
+	refills  map[string]chan struct{} // episode search key -> completion; guarded by bgMu
 
 	flightMu sync.Mutex
 	flights  map[string]*inflight
