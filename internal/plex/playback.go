@@ -794,7 +794,13 @@ func applyStreamDecision(st model.Stream, src core.StreamInfo, dec core.Decision
 			st.Location = "sidecar"
 		default:
 			st.Decision = "copy"
-			st.Location = "segments-subtitle"
+			st.Location = "sidecar"
+			if st.Key == "" {
+				st.Key = "/library/streams/" + strconv.FormatInt(st.ID, 10)
+			}
+			if st.Format == "" {
+				st.Format = st.Codec
+			}
 		}
 	}
 	return st, true
@@ -1307,12 +1313,20 @@ func (s *Server) handleStream(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	ref, ok := s.streams.lookup(id)
-	if !ok || !ref.info.External || ref.info.ExternalURL == "" {
+	if !ok {
 		writeHTTPError(w, http.StatusNotFound)
 		return
 	}
 	title, titleErr := s.d.Catalog.Get(r.Context(), ref.key)
 	if titleErr != nil || !s.visibleTitle(r.Context(), FromContext(r.Context()).User, title) {
+		writeHTTPError(w, http.StatusNotFound)
+		return
+	}
+	if !ref.info.External {
+		s.serveEmbeddedStream(w, r, ref)
+		return
+	}
+	if ref.info.ExternalURL == "" {
 		writeHTTPError(w, http.StatusNotFound)
 		return
 	}

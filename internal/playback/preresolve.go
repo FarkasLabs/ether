@@ -11,7 +11,7 @@ import (
 	"github.com/braedonsaunders/ether/internal/releasepolicy"
 )
 
-const preResolveTTL = 10 * time.Minute
+const preResolveTTL = 60 * time.Minute
 
 const (
 	detailPrefetchBytes  = 2 << 20
@@ -26,7 +26,10 @@ type warmEntry struct {
 	done       chan struct{}
 	ready      sync.Once
 	foreground chan context.Context
+	started    time.Time
 	expires    time.Time
+	cancelMu   sync.Mutex
+	cancel     context.CancelFunc
 	runtime    time.Duration // title runtime, for size rules without a probe
 	res        *core.Resolution
 	probe      *probeCache
@@ -35,6 +38,21 @@ type warmEntry struct {
 	// that Resolve saw. A later catalogue correction must not reuse it.
 	originalAudio    bool
 	originalLanguage string
+}
+
+func (e *warmEntry) setCancel(cancel context.CancelFunc) {
+	e.cancelMu.Lock()
+	e.cancel = cancel
+	e.cancelMu.Unlock()
+}
+
+func (e *warmEntry) abort() {
+	e.cancelMu.Lock()
+	cancel := e.cancel
+	e.cancelMu.Unlock()
+	if cancel != nil {
+		cancel()
+	}
 }
 
 type probeCache struct {
@@ -65,12 +83,13 @@ func (m *Manager) PreResolve(ctx context.Context, user *core.User, key core.Rati
 // manager shutdown always does. It neither reserves a live stream nor
 // writes resume/history. False means skipped.
 //
-// Budgets: two warm-ups in flight server-wide, one per user, six
-// requests/minute/user. A detail warm-up runs at most 45s, prefetches up to 40s of source media (256 MiB cap) and is
-// skipped while anything is playing. Trailer/post-play warm-ups may run
-// during playback (DuringPlayback), prefetch 48 MiB by default (hard cap
-// 64 MiB) and get 45s. Prefetch goes through Engine.Prefetch, which runs
-// at core.PriorityPrefetch and yields to live streams.
+// Budgets: two warm-ups in flight server-wide, one per user, thirty detail
+// (or six speculative) requests/minute/user. A detail warm-up runs at most 45s,
+// prefetches up to 40s of source media (256 MiB cap) and is skipped while
+// anything is playing. Trailer/post-play warm-ups may run during playback
+// (DuringPlayback), prefetch 48 MiB by default (hard cap 64 MiB) and get 45s.
+// Prefetch goes through Engine.Prefetch, which runs at core.PriorityPrefetch
+// and yields to live streams.
 func (m *Manager) Prewarm(_ context.Context, user *core.User, key core.RatingKey, caps core.ClientCaps, opts core.PrewarmOptions) bool {
 	if user == nil || caps.ClientID == "" || caps.Product == "" {
 		return false
@@ -122,6 +141,11 @@ func (m *Manager) Prewarm(_ context.Context, user *core.User, key core.RatingKey
 			continue
 		default:
 		}
+		if reason == core.PrewarmDetail && ident.userID == user.ID && ident.clientID == caps.ClientID && ident.key != key && now.Sub(e.started) >= 2*time.Second {
+			delete(m.warm, ident)
+			e.abort()
+			continue
+		}
 		active++
 		if ident.userID == user.ID {
 			m.mu.Unlock()
@@ -132,7 +156,7 @@ func (m *Manager) Prewarm(_ context.Context, user *core.User, key core.RatingKey
 		m.mu.Unlock()
 		return false
 	}
-	if len(m.warm) >= 32 {
+	if len(m.warm) >= 128 {
 		var oldest identity
 		var expiry time.Time
 		for ident, e := range m.warm {
@@ -158,8 +182,10 @@ func (m *Manager) Prewarm(_ context.Context, user *core.User, key core.RatingKey
 		return false
 	}
 	budgetReason := "speculative"
+	rateLimit := 6
 	if reason == core.PrewarmDetail {
 		budgetReason = core.PrewarmDetail
+		rateLimit = 30
 	}
 	bk := warmBudgetKey{userID: user.ID, reason: budgetReason}
 	requests := m.warmRequests[bk]
@@ -169,13 +195,13 @@ func (m *Manager) Prewarm(_ context.Context, user *core.User, key core.RatingKey
 			recent = append(recent, at)
 		}
 	}
-	if len(recent) >= 6 {
+	if len(recent) >= rateLimit {
 		m.mu.Unlock()
 		return false
 	}
 	m.warmRequests[bk] = append(recent, now)
 	profileObj := m.deps.SelectProfile(caps, user)
-	e := &warmEntry{profileKey: profileKey(profileObj), profileObj: profileObj, caps: caps, done: make(chan struct{}), foreground: make(chan context.Context, 1), expires: now.Add(preResolveTTL)}
+	e := &warmEntry{profileKey: profileKey(profileObj), profileObj: profileObj, caps: caps, done: make(chan struct{}), foreground: make(chan context.Context, 1), started: now, expires: now.Add(preResolveTTL)}
 	m.warm[id] = e
 	u := *user
 	m.wg.Add(1)
@@ -191,6 +217,7 @@ func (m *Manager) Prewarm(_ context.Context, user *core.User, key core.RatingKey
 			e.ready.Do(func() { close(e.done) })
 		}()
 		ctx, cancel := warmPreparationContext(m.ctx, timeout, e.foreground)
+		e.setCancel(cancel)
 		defer cancel()
 		title, err := m.deps.Catalog.Get(ctx, key)
 		if err != nil || title == nil || (!title.Released.IsZero() && title.Released.After(m.now())) || title.Type == core.TypeShow || title.Type == core.TypeSeason {
@@ -370,6 +397,24 @@ func warmAcceptable(e *warmEntry, profile core.QualityProfile, caps core.ClientC
 	return true
 }
 
+func (m *Manager) findWarmEntryLocked(user *core.User, caps core.ClientCaps, key core.RatingKey, now time.Time) *warmEntry {
+	if caps.ClientID != "" {
+		if e := m.warm[identity{userID: user.ID, clientID: caps.ClientID, key: key}]; e != nil && now.Before(e.expires) {
+			return e
+		}
+	}
+	if m.deps.SelectProfile == nil {
+		return nil
+	}
+	pk := profileKey(m.deps.SelectProfile(caps, user))
+	for ident, e := range m.warm {
+		if ident.userID == user.ID && ident.key == key && now.Before(e.expires) && e.profileKey == pk {
+			return e
+		}
+	}
+	return nil
+}
+
 // WarmProbeInfo returns the probed media info of a completed warm-up for
 // this user/client/key, for metadata/play-queue rendering before Play
 // (core.WarmProber). It never blocks on a warm-up still in flight and never
@@ -378,12 +423,11 @@ func (m *Manager) WarmProbeInfo(user *core.User, caps core.ClientCaps, key core.
 	if user == nil || caps.ClientID == "" {
 		return core.MediaInfo{}, false
 	}
-	id := identity{userID: user.ID, clientID: caps.ClientID, key: key}
+	now := m.now()
 	m.mu.Lock()
-	e := m.warm[id]
-	live := e != nil && m.now().Before(e.expires)
+	e := m.findWarmEntryLocked(user, caps, key, now)
 	m.mu.Unlock()
-	if !live {
+	if e == nil {
 		return core.MediaInfo{}, false
 	}
 	select {
@@ -391,10 +435,43 @@ func (m *Manager) WarmProbeInfo(user *core.User, caps core.ClientCaps, key core.
 	default:
 		return core.MediaInfo{}, false
 	}
-	if e.probe == nil || e.probe.info.Estimated || len(e.probe.info.Streams) == 0 {
+	m.mu.Lock()
+	probe := e.probe
+	m.mu.Unlock()
+	if probe == nil || probe.info.Estimated || len(probe.info.Streams) == 0 {
 		return core.MediaInfo{}, false
 	}
-	return e.probe.info, true
+	return probe.info, true
+}
+
+// WaitWarmProbe waits up to budget for an already-scheduled warm-up for this
+// user/client/key to finish probing, returning its probed media info when
+// ready (core.WarmProbeWaiter). It never cancels the background warm-up when
+// budget expires.
+func (m *Manager) WaitWarmProbe(ctx context.Context, user *core.User, caps core.ClientCaps, key core.RatingKey, budget time.Duration) (core.MediaInfo, bool) {
+	if user == nil || caps.ClientID == "" {
+		return core.MediaInfo{}, false
+	}
+	if info, ok := m.WarmProbeInfo(user, caps, key); ok || budget <= 0 {
+		return info, ok
+	}
+	now := m.now()
+	m.mu.Lock()
+	e := m.findWarmEntryLocked(user, caps, key, now)
+	m.mu.Unlock()
+	if e == nil {
+		return core.MediaInfo{}, false
+	}
+	timer := time.NewTimer(budget)
+	defer timer.Stop()
+	select {
+	case <-e.done:
+	case <-ctx.Done():
+		return core.MediaInfo{}, false
+	case <-timer.C:
+		return core.MediaInfo{}, false
+	}
+	return m.WarmProbeInfo(user, caps, key)
 }
 
 // takeWarmResolution consumes the warm entry for id when its release is
@@ -439,7 +516,11 @@ func (m *Manager) takeWarmResolution(ctx context.Context, id identity, profile c
 		delete(m.warm, id)
 		return nil
 	}
-	delete(m.warm, id)
+	if e.probe == nil {
+		delete(m.warm, id)
+	} else {
+		e.expires = m.now().Add(preResolveTTL)
+	}
 	// Return an immutable snapshot: the background index fill may replace
 	// e.probe after the ready signal.
 	return &warmEntry{res: e.res, probe: e.probe}
@@ -458,9 +539,10 @@ func (m *Manager) InvalidateTitle(key core.RatingKey) int {
 	}
 	m.mu.Lock()
 	n := 0
-	for id := range m.warm {
+	for id, e := range m.warm {
 		if titleIncludes(key, id.key) {
 			delete(m.warm, id)
+			e.abort()
 			n++
 		}
 	}
