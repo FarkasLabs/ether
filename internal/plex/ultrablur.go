@@ -71,13 +71,13 @@ type ultraBlurCache struct {
 	q       *bgQueue
 	now     func() time.Time
 	log     *slog.Logger
-	compute func(ctx context.Context, path string) (model.UltraBlurColors, error)
+	compute func(ctx context.Context, key core.RatingKey, path string) (model.UltraBlurColors, error)
 
 	mu    sync.Mutex
 	items *lru.Cache[core.RatingKey, *ultraBlurEntry]
 }
 
-func newUltraBlurCache(db *sql.DB, q *bgQueue, now func() time.Time, log *slog.Logger, compute func(context.Context, string) (model.UltraBlurColors, error)) *ultraBlurCache {
+func newUltraBlurCache(db *sql.DB, q *bgQueue, now func() time.Time, log *slog.Logger, compute func(context.Context, core.RatingKey, string) (model.UltraBlurColors, error)) *ultraBlurCache {
 	return &ultraBlurCache{db: db, q: q, now: now, log: log, compute: compute, items: lru.New(lru.Options[core.RatingKey, *ultraBlurEntry]{MaxEntries: ultraBlurEntries})}
 }
 
@@ -115,7 +115,7 @@ func (c *ultraBlurCache) schedule(key core.RatingKey, path string) {
 		}
 		cctx, cancel := context.WithTimeout(ctx, ultraBlurTimeout)
 		defer cancel()
-		colors, err := c.compute(cctx, path)
+		colors, err := c.compute(cctx, key, path)
 		if err != nil {
 			if ctx.Err() != nil {
 				return
@@ -243,7 +243,18 @@ func (c *ultraBlurCache) save(ctx context.Context, key core.RatingKey, path stri
 
 // computeUltraBlur fetches a backdrop's small variant through the artwork
 // cache and derives its corner colours.
-func (s *Server) computeUltraBlur(ctx context.Context, path string) (model.UltraBlurColors, error) {
+func (s *Server) computeUltraBlur(ctx context.Context, key core.RatingKey, path string) (model.UltraBlurColors, error) {
+	if key.Kind() == core.KindSmart {
+		if art, ok := s.d.Collections.(CollectionArtworker); ok {
+			if data, _, ok, err := art.CollectionArtwork(ctx, &core.User{ID: 1, IsOwner: true}, key, "art", 300); err == nil && ok && len(data) > 0 {
+				decoded, _, err := image.Decode(bytes.NewReader(data))
+				if err != nil {
+					return model.UltraBlurColors{}, fmt.Errorf("decode collection art %d: %w", key, err)
+				}
+				return ultraBlurFromImage(decoded)
+			}
+		}
+	}
 	// The artwork cache finishes a fetch even if its first caller goes
 	// away (others may be waiting on it), so wait here with ctx: shutdown
 	// must not block on a slow CDN.
